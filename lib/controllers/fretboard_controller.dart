@@ -1,4 +1,4 @@
-// lib/controllers/fretboard_controller.dart - Updated with willIntervalBecomeRoot
+// lib/controllers/fretboard_controller.dart
 import 'package:flutter/material.dart';
 import '../models/music/note.dart';
 import '../models/music/scale.dart';
@@ -24,19 +24,26 @@ class FretboardController {
     final map = <int, Color>{};
     final octaves =
         config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
-    final minOctave = config.minSelectedOctave;
 
     for (final octave in octaves) {
+      // Create the root note for this octave
+      final octaveRootNote = Note.fromString('$effectiveRoot$octave');
+      final octaveRootMidi = octaveRootNote.midi;
+      
+      // For scale mode, we want to show notes from root to root+octave
+      // This means we include all scale notes from the root up to (but not including) the next root
       for (int i = 0; i < pitchClasses.length; i++) {
-        final chromaticStep = pitchClasses[i];
-        final note = Note(
-          pitchClass: (rootNote.pitchClass + chromaticStep) % 12,
-          octave: octave,
-        );
-        final octaveOffset = octave - minOctave;
-        final intervalFromRoot = chromaticStep + (octaveOffset * 12);
-        map[note.midi] = ColorUtils.colorForDegree(intervalFromRoot);
+        final interval = pitchClasses[i];
+        final noteMidi = octaveRootMidi + interval;
+        
+        // Only include notes within the musical octave (root to root+12)
+        if (interval >= 0 && interval <= 12) {
+          map[noteMidi] = ColorUtils.colorForDegree(interval);
+        }
       }
+      
+      // Always include the octave (root + 12)
+      map[octaveRootMidi + 12] = ColorUtils.colorForDegree(12);
     }
 
     return map;

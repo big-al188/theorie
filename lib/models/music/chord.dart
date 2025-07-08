@@ -69,7 +69,7 @@ class Chord {
   }
 
   /// Build chord voicing with proper inversion
-  /// FEATURE REWORK: Inversions now build from same octave upward
+  /// FIXED: Inversions now build correctly from the specified octave
   List<int> buildVoicing({
     required Note root,
     required ChordInversion inversion,
@@ -78,29 +78,31 @@ class Chord {
     final voicing = <int>[];
 
     if (inversion == ChordInversion.root) {
-      // Root position - build normally
+      // Root position - build normally from the root
       for (final interval in intervals) {
         voicing.add(rootMidi + interval);
       }
     } else {
-      // Inversions - start from the inverted note in the same octave
+      // For inversions, we need to move lower notes up an octave
       final inversionIndex = inversion.index;
+      
       if (inversionIndex >= intervals.length) {
         // Fallback to root position if invalid inversion
         for (final interval in intervals) {
           voicing.add(rootMidi + interval);
         }
       } else {
-        // Build the inversion starting from the same octave
-        // Get the interval of the bass note
-        final bassInterval = intervals[inversionIndex];
-
-        // Start building from this note
+        // Build the inversion by moving the bottom notes up an octave
+        // For first inversion: 3rd, 5th, Root+12
+        // For second inversion: 5th, Root+12, 3rd+12
+        // etc.
+        
+        // Add the notes that stay in the original octave
         for (int i = inversionIndex; i < intervals.length; i++) {
           voicing.add(rootMidi + intervals[i]);
         }
-
-        // Add the remaining notes in the next octave
+        
+        // Add the notes that move up an octave
         for (int i = 0; i < inversionIndex; i++) {
           voicing.add(rootMidi + intervals[i] + 12);
         }

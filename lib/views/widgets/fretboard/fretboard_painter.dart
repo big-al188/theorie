@@ -1,4 +1,4 @@
-// lib/views/widgets/fretboard/fretboard_painter.dart (updated _drawNoteMarker method)
+// lib/views/widgets/fretboard/fretboard_painter.dart
 import 'package:flutter/material.dart';
 import '../../../models/fretboard/fretboard_config.dart';
 import '../../../models/music/chord.dart';
@@ -276,7 +276,6 @@ class FretboardPainter extends CustomPainter {
     }
   }
 
-  // lib/views/widgets/fretboard/fretboard_painter.dart - Updated _drawNoteMarker method
   void _drawNoteMarker(
     Canvas canvas,
     double cx,
@@ -374,7 +373,7 @@ class FretboardPainter extends CustomPainter {
           displayText = FretboardController.getIntervalLabel(intervalFromRoot);
         }
       } else if (config.isScaleMode) {
-        // For scale mode, we need to calculate the actual interval in the scale
+        // For scale mode, calculate interval within the musical octave
         final scale = Scale.get(config.scale);
         if (scale != null) {
           // Get the effective root considering the mode
@@ -382,25 +381,30 @@ class FretboardPainter extends CustomPainter {
               config.root, config.scale, config.modeIndex);
           final effectiveRootNote = Note.fromString('${effectiveRoot}0');
           
-          // Find which octave this note belongs to
+          // Find the root note in the same or lower octave as the current note
           final note = Note.fromMidi(midi);
           final noteOctave = note.octave;
           
-          // Find the corresponding root in that octave
-          final octaveRoot = Note.fromString('${effectiveRoot}$noteOctave');
+          // Start with the root in the note's octave
+          var octaveRoot = Note.fromString('${effectiveRoot}$noteOctave');
           
-          // Calculate the interval from the octave root
-          var interval = midi - octaveRoot.midi;
-          
-          // If the interval is negative, it means the note is from the previous octave
-          // In this case, add 12 to get the correct interval
-          if (interval < 0) {
-            final prevOctaveRoot = Note.fromString('${effectiveRoot}${noteOctave - 1}');
-            interval = midi - prevOctaveRoot.midi;
+          // If the note's pitch class is lower than the root's pitch class,
+          // it belongs to the previous octave's scale
+          if (note.pitchClass < effectiveRootNote.pitchClass) {
+            octaveRoot = Note.fromString('${effectiveRoot}${noteOctave - 1}');
           }
           
-          isRoot = interval == 0 || interval == 12;
-          displayText = FretboardController.getIntervalLabel(interval);
+          // Calculate the interval from the musical octave root
+          final interval = midi - octaveRoot.midi;
+          
+          // Only show notes within the musical octave (0-12 semitones from root)
+          if (interval >= 0 && interval <= 12) {
+            isRoot = interval == 0 || interval == 12;
+            displayText = FretboardController.getIntervalLabel(interval);
+          } else {
+            // This note is outside the musical octave, don't draw it
+            return; // Skip drawing this marker
+          }
         } else {
           // Fallback if scale not found
           final notePc = midi % 12;

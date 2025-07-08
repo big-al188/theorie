@@ -41,16 +41,18 @@ class ScaleStrip extends StatelessWidget {
 
         // Find min and max octaves in voicing
         if (voicingMidiNotes.isNotEmpty) {
-          final minMidi = voicingMidiNotes.reduce(math.min);
-          final maxMidi = voicingMidiNotes.reduce(math.max);
-          final minOctave = (minMidi ~/ 12) - 1;
-          final maxOctave = (maxMidi ~/ 12) - 1;
-
+          // Convert MIDI notes back to octaves using the same formula as Note.fromMidi
+          final minNote = Note.fromMidi(voicingMidiNotes.reduce(math.min));
+          final maxNote = Note.fromMidi(voicingMidiNotes.reduce(math.max));
+          
           displayOctaves = {};
-          for (int i = minOctave; i <= maxOctave; i++) {
+          for (int i = minNote.octave; i <= maxNote.octave; i++) {
             displayOctaves.add(i);
           }
           actualOctaveCount = displayOctaves.length;
+          
+          debugPrint('Chord mode: root=${config.root}, baseOctave=$baseOctave, voicing=$voicingMidiNotes');
+          debugPrint('Chord mode octaves: min=${minNote.octave}, max=${maxNote.octave}, display=$displayOctaves');
         } else {
           displayOctaves = {baseOctave};
           actualOctaveCount = 1;
@@ -210,59 +212,57 @@ class ScaleStripPainter extends CustomPainter {
   ) {
     final noteWidth = size.width / 13.0;
 
-    // For scale mode, build the scale from the root in this octave
-    Set<int> scaleNoteMidis = {};
-    Map<int, int> midiToInterval = {};
-    
-    if (!isChordMode && config.isScaleMode) {
-      final scale = Scale.get(config.scale);
-      if (scale != null) {
-        final intervals = scale.getModeIntervals(config.modeIndex);
-        final extendedIntervals = [...intervals];
-        
-        // Always include the octave
-        if (!extendedIntervals.contains(12)) {
-          extendedIntervals.add(12);
-        }
-        
-        // Get the effective root for this octave
-        final effectiveRoot = MusicController.getModeRoot(
-            config.root, config.scale, config.modeIndex);
-        final octaveRoot = Note.fromString('$effectiveRoot$octave');
-        
-        // Build the scale notes for this octave
-        for (final interval in extendedIntervals) {
-          final note = octaveRoot.transpose(interval);
-          scaleNoteMidis.add(note.midi);
-          midiToInterval[note.midi] = interval;
-        }
-      }
-    }
-
     for (int pc = 0; pc < 13; pc++) {
       final cx = pc * noteWidth + noteWidth / 2;
       if (cx < 0 || cx > size.width) continue;
 
       final actualPc = (rootPc + (pc % 12)) % 12;
+      
+      // Calculate octave correctly
       final noteOctave = octave + ((rootPc + pc) ~/ 12);
-      final midi = (noteOctave + 1) * 12 + actualPc;
+      
+      // Create the note and get its MIDI value
+      final note = Note(pitchClass: actualPc, octave: noteOctave);
+      final midi = note.midi;
 
       // Determine if highlighted
       bool isHighlighted = false;
       Color noteColor = Colors.grey.shade300;
       int intervalForColor = pc % 12;
       
-      if (config.isScaleMode && scaleNoteMidis.contains(midi)) {
-        isHighlighted = true;
-        // Use the actual interval from the scale for correct coloring
-        intervalForColor = midiToInterval[midi] ?? (pc % 12);
-        noteColor = ColorUtils.colorForDegree(intervalForColor % 12);
-      } else if (highlightMap.containsKey(midi)) {
+      // Check highlight map for all modes
+      if (highlightMap.containsKey(midi)) {
         isHighlighted = true;
         noteColor = highlightMap[midi]!;
-        // For non-scale modes, get interval from highlight map
-        if (!config.isScaleMode) {
-          intervalForColor = _getIntervalFromHighlightMap(midi, rootPc, octave);
+        
+        if (config.isScaleMode) {
+          // Calculate the interval within the musical octave
+          final effectiveRoot = MusicController.getModeRoot(
+              config.root, config.scale, config.modeIndex);
+          final octaveRoot = Note.fromString('$effectiveRoot$octave');
+          
+          // If note is below root in pitch class, it belongs to previous octave
+          if (actualPc < rootPc && pc < 12) {
+            final prevOctaveRoot = Note.fromString('$effectiveRoot${octave - 1}');
+            intervalForColor = midi - prevOctaveRoot.midi;
+          } else {
+            intervalForColor = midi - octaveRoot.midi;
+          }
+          
+          // Clamp to 0-12 range
+          if (intervalForColor > 12) intervalForColor = 12;
+          if (intervalForColor < 0) intervalForColor = 0;
+        } else if (config.isChordMode) {
+          // Get interval from the chord root
+          final baseOctave = config.selectedChordOctave;
+          final chordRootNote = Note.fromString('${config.root}$baseOctave');
+          final extendedInterval = midi - chordRootNote.midi;
+          intervalForColor = extendedInterval % 12;
+        } else if (config.isIntervalMode) {
+          // Get interval from reference octave
+          final minOctave = displayOctaves.reduce((a, b) => a < b ? a : b);
+          final rootNote = Note.fromString('${config.root}$minOctave');
+          intervalForColor = (midi - rootNote.midi) % 12;
         }
       }
 
@@ -278,8 +278,9 @@ class ScaleStripPainter extends CustomPainter {
         rootPc,
         octave,
         isHighlighted,
-        isChordMode,
+        config.isChordMode,
         intervalForColor,
+        midi,
       );
 
       // Draw note name
@@ -333,48 +334,33 @@ class ScaleStripPainter extends CustomPainter {
     bool isHighlighted,
     bool isChordMode,
     int intervalForScale,
+    int midi,
   ) {
     String intervalLabel;
 
-    if (config.isScaleMode) {
-      // For scale mode, use the actual scale interval
-      intervalLabel = FretboardController.getIntervalLabel(intervalForScale);
-    } else if (config.isChordMode) {
-      // For chord mode, check actual chord intervals
-      final chord = Chord.get(config.chordType);
-      if (chord != null) {
+    if (isHighlighted) {
+      if (config.isScaleMode) {
+        // For scale mode, use the calculated interval
+        intervalLabel = FretboardController.getIntervalLabel(intervalForScale);
+      } else if (config.isChordMode) {
+        // For chord mode, calculate from chord root
         final baseOctave = config.selectedChordOctave;
-        final rootNote = Note.fromString('${config.root}$baseOctave');
-        final voicingMidiNotes = chord.buildVoicing(
-          root: rootNote,
-          inversion: config.chordInversion,
-        );
-
-        // Calculate MIDI for current position
-        final currentMidi = (octave + 1) * 12 + notePc;
-
-        // Find if this is in the voicing
-        if (voicingMidiNotes.contains(currentMidi)) {
-          final extendedInterval = currentMidi - rootNote.midi;
-          intervalLabel = FretboardController.getIntervalLabel(extendedInterval);
-        } else {
-          // Not in chord, show simple interval
-          final interval = (notePc - rootPc + 12) % 12;
-          intervalLabel = FretboardController.getIntervalLabel(interval);
-        }
+        final chordRootNote = Note.fromString('${config.root}$baseOctave');
+        final extendedInterval = midi - chordRootNote.midi;
+        intervalLabel = FretboardController.getIntervalLabel(extendedInterval);
+      } else if (config.isIntervalMode) {
+        // Extended interval for interval mode
+        final minOctave = displayOctaves.reduce((a, b) => a < b ? a : b);
+        final rootNote = Note.fromString('${config.root}$minOctave');
+        final extendedInterval = midi - rootNote.midi;
+        intervalLabel = FretboardController.getIntervalLabel(extendedInterval);
       } else {
+        // Default to simple interval
         final interval = (notePc - rootPc + 12) % 12;
         intervalLabel = FretboardController.getIntervalLabel(interval);
       }
-    } else if (config.isIntervalMode) {
-      // Extended interval for interval mode
-      final minOctave = displayOctaves.reduce((a, b) => a < b ? a : b);
-      final octaveOffset = octave - minOctave;
-      final extendedInterval =
-          ((notePc - rootPc + 12) % 12) + (octaveOffset * 12);
-      intervalLabel = FretboardController.getIntervalLabel(extendedInterval);
     } else {
-      // Simple interval for scale modes
+      // Not highlighted - show simple interval
       final interval = (notePc - rootPc + 12) % 12;
       intervalLabel = FretboardController.getIntervalLabel(interval);
     }

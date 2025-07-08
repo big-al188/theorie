@@ -19,16 +19,29 @@ class RootSelector extends StatelessWidget {
     final state = context.watch<AppState>();
     final currentValue = value ?? state.root;
     
-    // Ensure we have a valid value from the list
-    final validValue = MusicConstants.commonRoots.contains(currentValue) 
-        ? currentValue 
-        : MusicConstants.commonRoots.first;
+    // Create a list that includes the current value if it's not in commonRoots
+    final rootOptions = MusicConstants.commonRoots.contains(currentValue)
+        ? MusicConstants.commonRoots
+        : [...MusicConstants.commonRoots, currentValue];
+    
+    // Sort the list to maintain consistent order
+    final sortedRoots = List<String>.from(rootOptions)
+      ..sort((a, b) {
+        // Sort by circle of fifths order if possible
+        final aIndex = MusicConstants.circleOfFifths.indexOf(a);
+        final bIndex = MusicConstants.circleOfFifths.indexOf(b);
+        if (aIndex != -1 && bIndex != -1) {
+          return aIndex.compareTo(bIndex);
+        }
+        // Otherwise alphabetical
+        return a.compareTo(b);
+      });
 
     return DropdownButton<String>(
-      value: validValue,
+      value: currentValue,
       isExpanded: true,
       underline: const SizedBox(),
-      items: MusicConstants.commonRoots
+      items: sortedRoots
           .map((root) => DropdownMenuItem(
                 value: root,
                 child: Text(root),

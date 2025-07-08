@@ -45,6 +45,7 @@ class FretboardControls extends StatelessWidget {
                     RootSelector(
                       value: instance.root,
                       onChanged: (root) {
+                        debugPrint('FretboardControls: Root changed to $root');
                         final newIntervals =
                             instance.viewMode == ViewMode.intervals
                                 ? {0}
@@ -213,6 +214,8 @@ class FretboardControls extends StatelessWidget {
                             : instance.selectedOctaves.reduce((a, b) => a < b ? a : b);
                         final rootNote = Note.fromString('${instance.root}$referenceOctave');
                         final newRootNote = rootNote.transpose(intervals.first);
+                        
+                        debugPrint('FretboardControls: Single interval selected, changing root to ${newRootNote.name}');
                         
                         onUpdate(instance.copyWith(
                           root: newRootNote.name,

@@ -64,11 +64,28 @@ class _FretboardPageState extends State<FretboardPage> {
     }
   }
 
+  // Add method to sync root changes back to AppState
+  void _syncRootToAppState(String newRoot) {
+    final appState = context.read<AppState>();
+    if (appState.viewMode == ViewMode.intervals && appState.root != newRoot) {
+      appState.setRoot(newRoot);
+    }
+  }
+
   void _updateFretboard(String id, FretboardInstance updated) {
     setState(() {
       final index = _fretboards.indexWhere((f) => f.id == id);
       if (index != -1) {
+        // Check if root changed in interval mode
+        final oldInstance = _fretboards[index];
+        final rootChanged = oldInstance.root != updated.root;
+        
         _fretboards[index] = updated;
+        
+        // Sync root changes to AppState in interval mode
+        if (updated.viewMode == ViewMode.intervals && rootChanged) {
+          _syncRootToAppState(updated.root);
+        }
       }
     });
   }
