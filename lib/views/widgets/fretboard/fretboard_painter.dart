@@ -4,6 +4,7 @@ import '../../../models/fretboard/fretboard_config.dart';
 import '../../../models/music/chord.dart';
 import '../../../models/music/note.dart';
 import '../../../constants/ui_constants.dart';
+import '../../../models/music/scale.dart';  
 import '../../../constants/music_constants.dart';
 import '../../../controllers/fretboard_controller.dart';
 import '../../../controllers/music_controller.dart';
@@ -275,6 +276,7 @@ class FretboardPainter extends CustomPainter {
     }
   }
 
+  // lib/views/widgets/fretboard/fretboard_painter.dart - Updated _drawNoteMarker method
   void _drawNoteMarker(
     Canvas canvas,
     double cx,
@@ -371,8 +373,43 @@ class FretboardPainter extends CustomPainter {
           isRoot = intervalFromRoot == 0;
           displayText = FretboardController.getIntervalLabel(intervalFromRoot);
         }
+      } else if (config.isScaleMode) {
+        // For scale mode, we need to calculate the actual interval in the scale
+        final scale = Scale.get(config.scale);
+        if (scale != null) {
+          // Get the effective root considering the mode
+          final effectiveRoot = MusicController.getModeRoot(
+              config.root, config.scale, config.modeIndex);
+          final effectiveRootNote = Note.fromString('${effectiveRoot}0');
+          
+          // Find which octave this note belongs to
+          final note = Note.fromMidi(midi);
+          final noteOctave = note.octave;
+          
+          // Find the corresponding root in that octave
+          final octaveRoot = Note.fromString('${effectiveRoot}$noteOctave');
+          
+          // Calculate the interval from the octave root
+          var interval = midi - octaveRoot.midi;
+          
+          // If the interval is negative, it means the note is from the previous octave
+          // In this case, add 12 to get the correct interval
+          if (interval < 0) {
+            final prevOctaveRoot = Note.fromString('${effectiveRoot}${noteOctave - 1}');
+            interval = midi - prevOctaveRoot.midi;
+          }
+          
+          isRoot = interval == 0 || interval == 12;
+          displayText = FretboardController.getIntervalLabel(interval);
+        } else {
+          // Fallback if scale not found
+          final notePc = midi % 12;
+          final intervalFromRoot = (notePc - rootPc + 12) % 12;
+          isRoot = intervalFromRoot == 0;
+          displayText = FretboardController.getIntervalLabel(intervalFromRoot);
+        }
       } else {
-        // For scale mode, use simple interval
+        // For other modes, use simple interval
         final notePc = midi % 12;
         final intervalFromRoot = (notePc - rootPc + 12) % 12;
         isRoot = intervalFromRoot == 0;

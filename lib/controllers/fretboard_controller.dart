@@ -21,21 +21,27 @@ class FretboardController {
 
     final rootNote = Note.fromString('${effectiveRoot}0');
     final pitchClasses = scale.getModeIntervals(config.modeIndex);
+    
+    // Always include the octave in scales
+    final extendedPitchClasses = [...pitchClasses];
+    if (!extendedPitchClasses.contains(12)) {
+      extendedPitchClasses.add(12);
+    }
+    
     final map = <int, Color>{};
-    final octaves =
-        config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
-    final minOctave = config.minSelectedOctave;
+    final octaves = config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
 
     for (final octave in octaves) {
-      for (int i = 0; i < pitchClasses.length; i++) {
-        final chromaticStep = pitchClasses[i];
-        final note = Note(
-          pitchClass: (rootNote.pitchClass + chromaticStep) % 12,
-          octave: octave,
-        );
-        final octaveOffset = octave - minOctave;
-        final intervalFromRoot = chromaticStep + (octaveOffset * 12);
-        map[note.midi] = ColorUtils.colorForDegree(intervalFromRoot);
+      // Build the scale starting from the root in this octave
+      final octaveRootNote = Note.fromString('${effectiveRoot}$octave');
+      
+      for (int i = 0; i < extendedPitchClasses.length; i++) {
+        final interval = extendedPitchClasses[i];
+        final note = octaveRootNote.transpose(interval);
+        
+        // Use the base interval (0-12) for coloring to maintain consistent colors
+        final colorInterval = interval % 12;
+        map[note.midi] = ColorUtils.colorForDegree(colorInterval);
       }
     }
 
@@ -45,8 +51,7 @@ class FretboardController {
   /// Generate highlight map for interval mode
   static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
     final map = <int, Color>{};
-    final octaves =
-        config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+    final octaves = config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
     final referenceOctave = config.minSelectedOctave;
     final rootNote = Note.fromString('${config.root}$referenceOctave');
 
@@ -88,7 +93,7 @@ class FretboardController {
       final notePc = midi % 12;
       final intervalFromRoot = (notePc - rootNote.pitchClass + 12) % 12;
 
-      // FIX: Calculate extended interval for proper labeling
+      // Calculate extended interval for proper labeling
       final octaveDiff = (midi - rootNote.midi) ~/ 12;
       final extendedInterval = intervalFromRoot + (octaveDiff * 12);
 
@@ -189,6 +194,9 @@ class FretboardController {
       '7' // 11
     ];
 
+    // Handle octave interval specially
+    if (interval == 12) return 'R8';
+    
     // Defensive check for negative intervals
     if (interval < 0) {
       debugPrint(
@@ -207,7 +215,8 @@ class FretboardController {
     }
 
     if (octave == 0) return baseIntervals[step];
-    if (step == 0) return 'O$octave'; // Octave markers
+    if (step == 0 && octave == 1) return 'R8'; // Octave
+    if (step == 0) return 'O$octave'; // Higher octave markers
 
     final raw = baseIntervals[step];
     final match = RegExp(r'([♭]?)(\d+)').firstMatch(raw);

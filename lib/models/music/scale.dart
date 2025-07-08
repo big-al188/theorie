@@ -38,9 +38,9 @@ class Scale {
     return intervals.contains(interval);
   }
 
-  /// Get all notes in the scale for a given root
+  /// Get all notes in the scale for a given root, including octave
   List<Note> getNotesForRoot(Note root) {
-    return intervals.map((interval) {
+    final notes = intervals.map((interval) {
       final pc = (root.pitchClass + interval) % 12;
       final octaveAdjust = (root.pitchClass + interval) ~/ 12;
       return Note(
@@ -49,20 +49,41 @@ class Scale {
         preferFlats: root.preferFlats,
       );
     }).toList();
+    
+    // Add the octave if not already included
+    final octaveNote = root.transpose(12);
+    if (!notes.any((n) => n.midi == octaveNote.midi)) {
+      notes.add(octaveNote);
+    }
+    
+    return notes;
   }
 
-  /// Get pitch classes for a mode of this scale
+  /// Get pitch classes for a mode of this scale, including octave
   List<int> getModeIntervals(int modeIndex) {
-    if (modeIndex == 0) return intervals;
+    if (modeIndex == 0) {
+      // For root mode, ensure octave is included
+      final baseIntervals = [...intervals];
+      if (!baseIntervals.contains(12)) {
+        baseIntervals.add(12);
+      }
+      return baseIntervals;
+    }
 
     final mode = modeIndex % length;
     final offset = intervals[mode];
 
-    return List.generate(length, (i) {
+    final modeIntervals = List.generate(length, (i) {
       final interval = (intervals[(i + mode) % length] - offset + 12) % 12;
       return interval;
-    })
-      ..sort();
+    })..sort();
+    
+    // Add octave if not present
+    if (!modeIntervals.contains(12)) {
+      modeIntervals.add(12);
+    }
+    
+    return modeIntervals;
   }
 
   /// Get the mode name

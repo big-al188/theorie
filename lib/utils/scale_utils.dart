@@ -127,11 +127,20 @@ class ScaleUtils {
     final notes = <Note>[];
     final effectiveRoot = getModeRoot(root, scaleName, modeIndex);
     final intervals = scale.getModeIntervals(modeIndex);
+    
+    // Add the octave to the intervals if not already present
+    final extendedIntervals = [...intervals];
+    if (!extendedIntervals.contains(12)) {
+      extendedIntervals.add(12);
+    }
 
     for (final octave in octaves) {
       final rootNote = Note.fromString('$effectiveRoot$octave');
-      for (final interval in intervals) {
-        notes.add(rootNote.transpose(interval));
+      
+      // Build the scale from root to octave
+      for (final interval in extendedIntervals) {
+        final note = rootNote.transpose(interval);
+        notes.add(note);
       }
     }
 
