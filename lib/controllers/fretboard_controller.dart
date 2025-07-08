@@ -1,4 +1,4 @@
-// lib/controllers/fretboard_controller.dart
+// lib/controllers/fretboard_controller.dart - Updated with willIntervalBecomeRoot
 import 'package:flutter/material.dart';
 import '../models/music/note.dart';
 import '../models/music/scale.dart';
@@ -21,57 +21,46 @@ class FretboardController {
 
     final rootNote = Note.fromString('${effectiveRoot}0');
     final pitchClasses = scale.getModeIntervals(config.modeIndex);
-    
-    // Always include the octave in scales
-    final extendedPitchClasses = [...pitchClasses];
-    if (!extendedPitchClasses.contains(12)) {
-      extendedPitchClasses.add(12);
-    }
-    
     final map = <int, Color>{};
-    final octaves = config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+    final octaves =
+        config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+    final minOctave = config.minSelectedOctave;
 
     for (final octave in octaves) {
-      // Build the scale starting from the root in this octave
-      final octaveRootNote = Note.fromString('${effectiveRoot}$octave');
-      
-      for (int i = 0; i < extendedPitchClasses.length; i++) {
-        final interval = extendedPitchClasses[i];
-        final note = octaveRootNote.transpose(interval);
-        
-        // Use the base interval (0-12) for coloring to maintain consistent colors
-        final colorInterval = interval % 12;
-        map[note.midi] = ColorUtils.colorForDegree(colorInterval);
+      for (int i = 0; i < pitchClasses.length; i++) {
+        final chromaticStep = pitchClasses[i];
+        final note = Note(
+          pitchClass: (rootNote.pitchClass + chromaticStep) % 12,
+          octave: octave,
+        );
+        final octaveOffset = octave - minOctave;
+        final intervalFromRoot = chromaticStep + (octaveOffset * 12);
+        map[note.midi] = ColorUtils.colorForDegree(intervalFromRoot);
       }
     }
 
     return map;
   }
 
-/// Generate highlight map for interval mode
-static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
-  final map = <int, Color>{};
-  
-  // Handle empty intervals (no root scenario)
-  if (config.selectedIntervals.isEmpty) {
+  /// Generate highlight map for interval mode
+  static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
+    final map = <int, Color>{};
+    final octaves =
+        config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+    final referenceOctave = config.minSelectedOctave;
+    final rootNote = Note.fromString('${config.root}$referenceOctave');
+
+    for (final extendedInterval in config.selectedIntervals) {
+      final specificMidi = rootNote.midi + extendedInterval;
+      final noteOctave = Note.fromMidi(specificMidi).octave;
+
+      if (octaves.contains(noteOctave)) {
+        map[specificMidi] = ColorUtils.colorForDegree(extendedInterval);
+      }
+    }
+
     return map;
   }
-  
-  final octaves = config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
-  final referenceOctave = config.minSelectedOctave;
-  final rootNote = Note.fromString('${config.root}$referenceOctave');
-
-  // For each selected interval, calculate the exact position
-  for (final extendedInterval in config.selectedIntervals) {
-    // Calculate the exact MIDI note for this interval
-    final targetMidi = rootNote.midi + extendedInterval;
-    
-    // Only highlight this specific note
-    map[targetMidi] = ColorUtils.colorForDegree(extendedInterval);
-  }
-
-  return map;
-}
 
   /// Generate highlight map for chord mode with extended interval support
   static Map<int, Color> getChordHighlightMap(FretboardConfig config) {
@@ -99,7 +88,7 @@ static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
       final notePc = midi % 12;
       final intervalFromRoot = (notePc - rootNote.pitchClass + 12) % 12;
 
-      // Calculate extended interval for proper labeling
+      // FIX: Calculate extended interval for proper labeling
       final octaveDiff = (midi - rootNote.midi) ~/ 12;
       final extendedInterval = intervalFromRoot + (octaveDiff * 12);
 
@@ -132,6 +121,7 @@ static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
     int stringIndex,
     int fretIndex,
     Function(Set<int>) onIntervalsChanged,
+    {Function(String, Set<int>)? onRootChanged}
   ) {
     final openStringNote = Note.fromString(config.tuning[stringIndex]);
     final tappedNote = openStringNote.transpose(fretIndex);
@@ -154,7 +144,16 @@ static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
         newIntervals.add(extendedInterval);
       }
 
-      onIntervalsChanged(newIntervals);
+      // Check if we should change root
+      if (newIntervals.length == 1 && !newIntervals.contains(0) && onRootChanged != null) {
+        final selectedInterval = newIntervals.first;
+        final newRootNote = rootNote.transpose(selectedInterval);
+        onRootChanged(newRootNote.name, {newRootNote.octave});
+        // Return {0} as the new intervals since we're changing the root
+        onIntervalsChanged({0});
+      } else {
+        onIntervalsChanged(newIntervals);
+      }
     }
   }
 
@@ -200,9 +199,6 @@ static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
       '7' // 11
     ];
 
-    // Handle octave interval specially
-    if (interval == 12) return 'R8';
-    
     // Defensive check for negative intervals
     if (interval < 0) {
       debugPrint(
@@ -221,8 +217,7 @@ static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
     }
 
     if (octave == 0) return baseIntervals[step];
-    if (step == 0 && octave == 1) return 'R8'; // Octave
-    if (step == 0) return 'O$octave'; // Higher octave markers
+    if (step == 0) return 'O$octave'; // Octave markers
 
     final raw = baseIntervals[step];
     final match = RegExp(r'([♭]?)(\d+)').firstMatch(raw);
@@ -243,5 +238,21 @@ static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
       debugPrint('WARNING: Invalid interval $interval in context: $context');
     }
     return getIntervalLabel(interval);
+  }
+
+  /// Check if single interval will become root
+  static bool willIntervalBecomeRoot(FretboardConfig config, int midiNote) {
+    if (!config.isIntervalMode || 
+        config.selectedIntervals.length != 1 || 
+        config.selectedIntervals.contains(0)) {
+      return false;
+    }
+    
+    final sortedOctaves = config.selectedOctaves.toList()..sort();
+    final referenceOctave = sortedOctaves.isNotEmpty ? sortedOctaves.first : 3;
+    final rootNote = Note.fromString('${config.root}$referenceOctave');
+    final noteInterval = midiNote - rootNote.midi;
+    
+    return config.selectedIntervals.contains(noteInterval);
   }
 }

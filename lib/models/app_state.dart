@@ -4,6 +4,7 @@ import '../constants/app_constants.dart';
 import '../../controllers/music_controller.dart';
 import '../constants/music_constants.dart';
 import 'fretboard/fretboard_config.dart';
+import 'music/note.dart';
 
 /// Central application state management
 class AppState extends ChangeNotifier {
@@ -53,12 +54,10 @@ class AppState extends ChangeNotifier {
   bool get isIntervalMode => _viewMode == ViewMode.intervals;
   bool get isChordMode => _viewMode == ViewMode.chords;
 
-  // ADD THIS GETTER:
   String get effectiveRoot => isScaleMode
       ? MusicController.getModeRoot(_root, _scale, _modeIndex)
       : _root;
 
-  // Also add these supporting getters if they're missing:
   List<String> get availableModes => MusicController.getAvailableModes(_scale);
 
   String get currentModeName => availableModes.isNotEmpty
@@ -148,7 +147,13 @@ class AppState extends ChangeNotifier {
     } else {
       _selectedIntervals.add(extendedInterval);
     }
-    notifyListeners();
+    
+    // Check if only one interval is selected and it's not the root
+    if (_selectedIntervals.length == 1 && !_selectedIntervals.contains(0)) {
+      _handleSingleIntervalAsNewRoot();
+    } else {
+      notifyListeners();
+    }
   }
 
   void setSelectedIntervals(Set<int> extendedIntervals) {
@@ -157,6 +162,42 @@ class AppState extends ChangeNotifier {
       newIntervals.add(0);
     }
     _selectedIntervals = newIntervals;
+    
+    // Check if only one interval is selected and it's not the root
+    if (_selectedIntervals.length == 1 && !_selectedIntervals.contains(0)) {
+      _handleSingleIntervalAsNewRoot();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  // Handle single interval becoming new root
+  void _handleSingleIntervalAsNewRoot() {
+    if (_selectedIntervals.isEmpty || _selectedIntervals.contains(0)) {
+      notifyListeners();
+      return;
+    }
+    
+    final selectedInterval = _selectedIntervals.first;
+    
+    // Calculate the new root based on the selected interval
+    final referenceOctave = _selectedOctaves.isEmpty ? 3 : _selectedOctaves.reduce((a, b) => a < b ? a : b);
+    final currentRootNote = Note.fromString('$_root$referenceOctave');
+    final newRootNote = currentRootNote.transpose(selectedInterval);
+    
+    // Update the root
+    _root = newRootNote.name;
+    
+    // Reset intervals to just the root
+    _selectedIntervals = {0};
+    
+    // Adjust octaves if needed
+    final newOctave = newRootNote.octave;
+    if (!_selectedOctaves.contains(newOctave)) {
+      _selectedOctaves = {newOctave};
+    }
+    
+    debugPrint('Changed root to ${newRootNote.name} octave $newOctave');
     notifyListeners();
   }
 

@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/fretboard/fretboard_instance.dart';
 import '../../../models/fretboard/fretboard_config.dart';
 import '../../../models/music/chord.dart';
-// import '../../../models/music/tuning.dart';
-// import '../../../constants/music_constants.dart';
+import '../../../models/music/note.dart';
 import 'root_selector.dart';
 import 'view_mode_selector.dart';
 import 'scale_selector.dart';
@@ -207,11 +206,48 @@ class FretboardControls extends StatelessWidget {
                     selectedIntervals: instance.selectedIntervals,
                     selectedOctaves: instance.selectedOctaves,
                     onChanged: (intervals) {
-                      onUpdate(instance.copyWith(selectedIntervals: intervals));
+                      // Check if we should change root
+                      if (intervals.length == 1 && !intervals.contains(0)) {
+                        final referenceOctave = instance.selectedOctaves.isEmpty
+                            ? 3
+                            : instance.selectedOctaves.reduce((a, b) => a < b ? a : b);
+                        final rootNote = Note.fromString('${instance.root}$referenceOctave');
+                        final newRootNote = rootNote.transpose(intervals.first);
+                        
+                        onUpdate(instance.copyWith(
+                          root: newRootNote.name,
+                          selectedOctaves: {newRootNote.octave},
+                          selectedIntervals: {0},
+                        ));
+                      } else {
+                        onUpdate(instance.copyWith(selectedIntervals: intervals));
+                      }
                     },
                   ),
                 ),
               ],
+            ),
+            // Add helper text
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Tip: When only one interval is selected, it becomes the new root note.',
+                      style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
 

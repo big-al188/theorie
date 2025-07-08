@@ -31,6 +31,16 @@ class _IntervalSelectorState extends State<IntervalSelector> {
           children: [
             const Text('Selected Intervals',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            // Add current root display
+            if (widget.selectedIntervals.length == 1 && !widget.selectedIntervals.contains(0))
+              Text(
+                '(Will become new root)',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).primaryColor,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             if (_hasExtendedIntervals())
               IconButton(
                 icon: Icon(_showExtendedIntervals
@@ -119,6 +129,10 @@ class _IntervalSelectorState extends State<IntervalSelector> {
 
   Widget _buildIntervalChip(int interval, String label, BuildContext context) {
     final isSelected = widget.selectedIntervals.contains(interval);
+    final willBecomeRoot = widget.selectedIntervals.length == 1 && 
+                          isSelected && 
+                          interval != 0;
+    
     return InkWell(
       onTap: () => _toggleInterval(interval),
       child: Container(
@@ -128,7 +142,12 @@ class _IntervalSelectorState extends State<IntervalSelector> {
               ? Theme.of(context).primaryColor.withOpacity(0.2)
               : Colors.transparent,
           border: Border.all(
-            color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
+            color: willBecomeRoot
+                ? Theme.of(context).primaryColor
+                : isSelected 
+                    ? Theme.of(context).primaryColor 
+                    : Colors.grey,
+            width: willBecomeRoot ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(4),
         ),

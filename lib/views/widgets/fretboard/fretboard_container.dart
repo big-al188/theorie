@@ -116,6 +116,21 @@ class _FretboardContainerState extends State<FretboardContainer> {
           if (appState.viewMode == ViewMode.intervals) {
             appState.setRoot(newRoot);
           }
+        } else if (newIntervals.length == 1 && !newIntervals.contains(0)) {
+          // SINGLE INTERVAL BECOMES ROOT LOGIC
+          final singleInterval = newIntervals.first;
+          final newRootMidi = rootNote.midi + singleInterval;
+          final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+          newRoot = newRootNote.name;
+          newOctaves = {newRootNote.octave};
+          newIntervals = {0};
+          
+          debugPrint('Single interval becomes new root: $newRoot');
+          
+          // Update global root
+          if (appState.viewMode == ViewMode.intervals) {
+            appState.setRoot(newRoot);
+          }
         }
       } else {
         // Adding a new interval
@@ -195,6 +210,24 @@ class _FretboardContainerState extends State<FretboardContainer> {
           if (!newOctaves.contains(tappedNote.octave)) {
             newOctaves.add(tappedNote.octave);
           }
+        }
+      }
+      
+      // Always check after state change if we have single interval
+      if (newIntervals.length == 1 && !newIntervals.contains(0)) {
+        // Single non-root interval should become root
+        final singleInterval = newIntervals.first;
+        final newRootMidi = rootNote.midi + singleInterval;
+        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+        newRoot = newRootNote.name;
+        newOctaves = {newRootNote.octave};
+        newIntervals = {0};
+        
+        debugPrint('After state change: single interval becomes new root: $newRoot');
+        
+        // Update global root
+        if (appState.viewMode == ViewMode.intervals) {
+          appState.setRoot(newRoot);
         }
       }
       
@@ -279,6 +312,21 @@ class _FretboardContainerState extends State<FretboardContainer> {
           if (appState.viewMode == ViewMode.intervals) {
             appState.setRoot(newRoot);
           }
+        } else if (newIntervals.length == 1 && !newIntervals.contains(0)) {
+          // SINGLE INTERVAL BECOMES ROOT LOGIC
+          final singleInterval = newIntervals.first;
+          final newRootMidi = rootNote.midi + singleInterval;
+          final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+          newRoot = newRootNote.name;
+          newOctaves = {newRootNote.octave};
+          newIntervals = {0};
+          
+          debugPrint('Single interval from scale strip becomes new root: $newRoot');
+          
+          // Update global root
+          if (appState.viewMode == ViewMode.intervals) {
+            appState.setRoot(newRoot);
+          }
         }
       } else {
         // Adding new interval
@@ -354,6 +402,24 @@ class _FretboardContainerState extends State<FretboardContainer> {
           if (!newOctaves.contains(clickedNote.octave)) {
             newOctaves.add(clickedNote.octave);
           }
+        }
+      }
+
+      // Always check after state change if we have single interval
+      if (newIntervals.length == 1 && !newIntervals.contains(0)) {
+        // Single non-root interval should become root
+        final singleInterval = newIntervals.first;
+        final newRootMidi = rootNote.midi + singleInterval;
+        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+        newRoot = newRootNote.name;
+        newOctaves = {newRootNote.octave};
+        newIntervals = {0};
+        
+        debugPrint('After scale strip state change: single interval becomes new root: $newRoot');
+        
+        // Update global root
+        if (appState.viewMode == ViewMode.intervals) {
+          appState.setRoot(newRoot);
         }
       }
 

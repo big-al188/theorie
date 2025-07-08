@@ -344,6 +344,16 @@ class _FretboardCard extends StatelessWidget {
           newIntervals = adjustedIntervals;
           
           debugPrint('Root removed - new root: $newRoot');
+        } else if (newIntervals.length == 1 && !newIntervals.contains(0)) {
+          // SINGLE INTERVAL BECOMES ROOT LOGIC
+          final singleInterval = newIntervals.first;
+          final newRootMidi = rootNote.midi + singleInterval;
+          final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+          newRoot = newRootNote.name;
+          newOctaves = {newRootNote.octave};
+          newIntervals = {0};
+          
+          debugPrint('Single interval becomes new root: $newRoot');
         }
       } else {
         // Adding a new interval
@@ -450,6 +460,16 @@ class _FretboardCard extends StatelessWidget {
             newOctaves.add(noteOctave);
           }
           newIntervals = adjustedIntervals;
+        } else if (newIntervals.length == 1 && !newIntervals.contains(0)) {
+          // SINGLE INTERVAL BECOMES ROOT LOGIC  
+          final singleInterval = newIntervals.first;
+          final newRootMidi = rootNote.midi + singleInterval;
+          final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+          newRoot = newRootNote.name;
+          newOctaves = {newRootNote.octave};
+          newIntervals = {0};
+          
+          debugPrint('Single interval from scale strip becomes new root: $newRoot');
         }
       } else {
         // Adding new interval
