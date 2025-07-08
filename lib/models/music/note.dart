@@ -14,10 +14,27 @@ class Note {
     this.preferFlats = false,
   });
 
-  /// Create a Note from a string like "C4" or "Bb3"
+  /// Create a Note from a string like "C4" or "Bb3" or just "C#"
   factory Note.fromString(String noteString) {
-    final match =
-        RegExp(r'^([A-G](?:#|b|♯|♭)?)(\d+)$').firstMatch(noteString.trim());
+    // Clean the input
+    final cleaned = noteString.trim();
+    
+    // Check if it has an octave number
+    final hasOctave = RegExp(r'\d$').hasMatch(cleaned);
+    
+    if (!hasOctave) {
+      // Just a note name without octave - parse it and assume octave 3
+      final pitchClass = _pitchClassFromName(cleaned);
+      final preferFlats = MusicConstants.flatRoots.contains(cleaned);
+      return Note(
+        pitchClass: pitchClass,
+        octave: 3, // Default octave
+        preferFlats: preferFlats,
+      );
+    }
+    
+    // Has octave - parse normally
+    final match = RegExp(r'^([A-G](?:#|b|♯|♭)?)(\d+)$').firstMatch(cleaned);
 
     if (match == null) {
       throw FormatException('Invalid note format: $noteString');
@@ -107,7 +124,16 @@ class Note {
 
   /// Convert note name to pitch class
   static int _pitchClassFromName(String noteName) {
-    var normalized = noteName.trim().replaceAll('♭', 'b').replaceAll('♯', '#');
+    // Normalize the input
+    var normalized = noteName.trim();
+    
+    // Replace unicode sharp/flat symbols with standard ones
+    normalized = normalized.replaceAll('♭', 'b').replaceAll('♯', '#');
+    
+    // Ensure first letter is uppercase
+    if (normalized.isNotEmpty) {
+      normalized = normalized[0].toUpperCase() + normalized.substring(1);
+    }
 
     const noteMap = {
       'C': 0,
@@ -135,7 +161,7 @@ class Note {
 
     final pc = noteMap[normalized];
     if (pc == null) {
-      throw FormatException('Invalid note name: $noteName');
+      throw FormatException('Invalid note name: $noteName (normalized: $normalized)');
     }
 
     return pc;

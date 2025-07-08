@@ -284,16 +284,125 @@ class _FretboardCard extends StatelessWidget {
   void _handleFretTap(int stringIndex, int fretIndex) {
     // Handle fret taps for interval mode
     if (fretboard.viewMode == ViewMode.intervals) {
-      debugPrint(
-          'Tapped ${fretboard.id}: string $stringIndex, fret $fretIndex');
+      debugPrint('Fretboard tap: string $stringIndex, fret $fretIndex');
+      
+      // Calculate the tapped note
+      final openStringNote = Note.fromString(fretboard.tuning[stringIndex]);
+      final tappedNote = openStringNote.transpose(fretIndex);
+      final tappedMidi = tappedNote.midi;
+      
+      // Get reference octave from selected octaves
+      final sortedOctaves = fretboard.selectedOctaves.toList()..sort();
+      final referenceOctave = sortedOctaves.isNotEmpty ? sortedOctaves.first : 3;
+      final rootNote = Note.fromString('${fretboard.root}$referenceOctave');
+      
+      // Calculate extended interval
+      final extendedInterval = tappedMidi - rootNote.midi;
+      
+      debugPrint('Tapped note: ${tappedNote.fullName}, interval: $extendedInterval');
+      
+      var newIntervals = Set<int>.from(fretboard.selectedIntervals);
+      var newOctaves = Set<int>.from(fretboard.selectedOctaves);
+      var newRoot = fretboard.root;
+      
+      // Handle based on current state
+      if (newIntervals.isEmpty) {
+        // No notes selected - this becomes the new root
+        newRoot = tappedNote.name;
+        newIntervals = {0}; // Just the root
+        newOctaves = {tappedNote.octave}; // Reset octaves to just this one
+        
+        debugPrint('Setting new root: $newRoot');
+      } else if (newIntervals.contains(extendedInterval)) {
+        // Removing an existing interval
+        newIntervals.remove(extendedInterval);
+        
+        if (newIntervals.isEmpty) {
+          // Just removed the last note - empty state
+          debugPrint('All intervals removed - empty state');
+        } else if (extendedInterval == 0) {
+          // Removed the root - find new root
+          final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
+          final newRootMidi = rootNote.midi + lowestInterval;
+          final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+          newRoot = newRootNote.name;
+          
+          // Reset octaves for new root
+          newOctaves = {newRootNote.octave};
+          
+          // Adjust all intervals relative to new root
+          final adjustedIntervals = <int>{};
+          for (final interval in newIntervals) {
+            final adjustedInterval = interval - lowestInterval;
+            adjustedIntervals.add(adjustedInterval);
+            
+            // Collect octaves for all intervals
+            final noteMidi = newRootMidi + adjustedInterval;
+            final noteOctave = Note.fromMidi(noteMidi).octave;
+            newOctaves.add(noteOctave);
+          }
+          newIntervals = adjustedIntervals;
+          
+          debugPrint('Root removed - new root: $newRoot');
+        }
+      } else {
+        // Adding a new interval
+        if (extendedInterval < 0) {
+          // Note is below current root - extend octaves downward
+          final octavesDown = ((-extendedInterval - 1) ~/ 12) + 1;
+          final newReferenceOctave = referenceOctave - octavesDown;
+          
+          // Add the lower octaves
+          for (int i = 0; i < octavesDown; i++) {
+            newOctaves.add(referenceOctave - i - 1);
+          }
+          
+          // Recalculate ALL intervals from the new lower reference
+          final newRootNote = Note.fromString('${fretboard.root}$newReferenceOctave');
+          
+          // Convert existing intervals to new reference
+          final adjustedIntervals = <int>{};
+          for (final interval in newIntervals) {
+            // Shift existing intervals up by the octave difference
+            adjustedIntervals.add(interval + (octavesDown * 12));
+          }
+          
+          // Add the new interval
+          final adjustedNewInterval = tappedMidi - newRootNote.midi;
+          adjustedIntervals.add(adjustedNewInterval);
+          
+          newIntervals = adjustedIntervals;
+          
+          debugPrint('Added note below root - extended octaves downward, original root now at interval ${octavesDown * 12}');
+        } else {
+          // Normal case - just add the interval
+          newIntervals.add(extendedInterval);
+          
+          // Add octave if needed
+          if (!newOctaves.contains(tappedNote.octave)) {
+            newOctaves.add(tappedNote.octave);
+          }
+          
+          debugPrint('Added interval: $extendedInterval');
+        }
+      }
+      
+      // Update the fretboard instance
+      onUpdate(fretboard.copyWith(
+        root: newRoot,
+        selectedIntervals: newIntervals,
+        selectedOctaves: newOctaves,
+      ));
     }
   }
 
   void _handleScaleNoteTap(int midiNote) {
-    // FIX: Handle scale note taps for interval mode
     if (fretboard.viewMode == ViewMode.intervals) {
       debugPrint('Scale note tapped with MIDI: $midiNote');
 
+      // Get clicked note details
+      final clickedNote = Note.fromMidi(midiNote);
+      
       // Calculate the extended interval from the tapped note
       final referenceOctave = fretboard.selectedOctaves.isEmpty
           ? 3
@@ -301,18 +410,88 @@ class _FretboardCard extends StatelessWidget {
       final rootNote = Note.fromString('${fretboard.root}$referenceOctave');
       final extendedInterval = midiNote - rootNote.midi;
 
-      if (extendedInterval >= 0 && extendedInterval < 48) {
-        final newIntervals = Set<int>.from(fretboard.selectedIntervals);
-        if (newIntervals.contains(extendedInterval)) {
-          if (newIntervals.length > 1 || extendedInterval != 0) {
-            newIntervals.remove(extendedInterval);
+      var newIntervals = Set<int>.from(fretboard.selectedIntervals);
+      var newOctaves = Set<int>.from(fretboard.selectedOctaves);
+      var newRoot = fretboard.root;
+      
+      // Handle based on current state
+      if (newIntervals.isEmpty) {
+        // No notes selected - this becomes the new root
+        newRoot = clickedNote.name;
+        newIntervals = {0};
+        newOctaves = {clickedNote.octave};
+        
+        debugPrint('Setting new root from scale strip: $newRoot');
+      } else if (newIntervals.contains(extendedInterval)) {
+        // Removing an interval
+        newIntervals.remove(extendedInterval);
+        
+        if (newIntervals.isEmpty) {
+          // Empty state
+          debugPrint('All intervals removed from scale strip');
+        } else if (extendedInterval == 0) {
+          // Root removal - find new root
+          final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
+          final newRootMidi = rootNote.midi + lowestInterval;
+          final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+          newRoot = newRootNote.name;
+          
+          // Reset octaves
+          newOctaves = {newRootNote.octave};
+          
+          // Adjust intervals and collect octaves
+          final adjustedIntervals = <int>{};
+          for (final interval in newIntervals) {
+            final adjustedInterval = interval - lowestInterval;
+            adjustedIntervals.add(adjustedInterval);
+            
+            final noteMidi = newRootMidi + adjustedInterval;
+            final noteOctave = Note.fromMidi(noteMidi).octave;
+            newOctaves.add(noteOctave);
           }
-        } else {
-          newIntervals.add(extendedInterval);
+          newIntervals = adjustedIntervals;
         }
-
-        onUpdate(fretboard.copyWith(selectedIntervals: newIntervals));
+      } else {
+        // Adding new interval
+        if (extendedInterval < 0) {
+          // Below root - extend octaves
+          final octavesDown = ((-extendedInterval - 1) ~/ 12) + 1;
+          final newReferenceOctave = referenceOctave - octavesDown;
+          
+          for (int i = 0; i < octavesDown; i++) {
+            newOctaves.add(referenceOctave - i - 1);
+          }
+          
+          // Recalculate all intervals
+          final newRootNote = Note.fromString('${fretboard.root}$newReferenceOctave');
+          
+          // Adjust existing intervals
+          final adjustedIntervals = <int>{};
+          for (final interval in newIntervals) {
+            adjustedIntervals.add(interval + (octavesDown * 12));
+          }
+          
+          // Add new interval
+          final adjustedNewInterval = midiNote - newRootNote.midi;
+          adjustedIntervals.add(adjustedNewInterval);
+          
+          newIntervals = adjustedIntervals;
+        } else {
+          // Normal addition
+          newIntervals.add(extendedInterval);
+          
+          if (!newOctaves.contains(clickedNote.octave)) {
+            newOctaves.add(clickedNote.octave);
+          }
+        }
       }
+
+      // Update the fretboard instance
+      onUpdate(fretboard.copyWith(
+        root: newRoot,
+        selectedIntervals: newIntervals,
+        selectedOctaves: newOctaves,
+      ));
     }
   }
 }

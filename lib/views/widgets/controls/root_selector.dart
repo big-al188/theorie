@@ -18,9 +18,14 @@ class RootSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final currentValue = value ?? state.root;
+    
+    // Ensure we have a valid value from the list
+    final validValue = MusicConstants.commonRoots.contains(currentValue) 
+        ? currentValue 
+        : MusicConstants.commonRoots.first;
 
     return DropdownButton<String>(
-      value: currentValue,
+      value: validValue,
       isExpanded: true,
       underline: const SizedBox(),
       items: MusicConstants.commonRoots
@@ -31,6 +36,7 @@ class RootSelector extends StatelessWidget {
           .toList(),
       onChanged: (root) {
         if (root != null) {
+          debugPrint('RootSelector: Selected root = $root');
           if (onChanged != null) {
             onChanged!(root);
           } else {

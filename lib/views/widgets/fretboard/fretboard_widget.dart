@@ -257,12 +257,12 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     // Account for chord name height if shown
     final chordNameHeight =
         (widget.config.showChordName && widget.config.isChordMode) ? 30.0 : 0.0;
-    var adjustedY = position.dy - chordNameHeight;
+    var adjustedY = position.dy - chordNameHeight - 20; // Also account for top padding
 
-    if (widget.config.isLeftHanded) {
-      // Handle left-handed transformation
-      // Implementation depends on how left-handed is rendered
-    }
+    // Handle left-handed transformation
+    final adjustedX = widget.config.isLeftHanded 
+        ? context.size!.width - position.dx 
+        : position.dx;
 
     final renderBox = context.findRenderObject() as RenderBox;
     final width = renderBox.size.width;
@@ -273,20 +273,51 @@ class _FretboardWidgetState extends State<FretboardWidget> {
         FretboardController.getCorrectedFretCount(widget.config);
     final fretWidth = availableWidth / correctedFretCount;
 
-    final localDy =
-        widget.config.isBassTop ? adjustedY : boardHeight - adjustedY;
+    // Determine which string was clicked
+    // Each string occupies a vertical band from halfway to previous string to halfway to next string
+    final stringHeight = UIConstants.stringHeight;
+    final clickedStringIndex = (adjustedY / stringHeight).round();
+    
+    // Validate string index
+    if (clickedStringIndex < 0 || clickedStringIndex >= widget.config.stringCount) {
+      return; // Click outside valid string range
+    }
+    
+    // Adjust for bass top/bottom
+    final actualStringIndex = widget.config.isBassTop 
+        ? clickedStringIndex 
+        : widget.config.stringCount - 1 - clickedStringIndex;
 
-    final stringIndex = _hitTestString(localDy, widget.config.stringCount);
-    if (stringIndex == null) return;
+    // Determine which fret was clicked with precise boundaries
+    int fretIndex;
+    
+    if (widget.config.visibleFretStart == 0) {
+      // With headstock visible
+      if (adjustedX < headWidth) {
+        // Clicked on headstock - open string (fret 0)
+        fretIndex = 0;
+      } else {
+        // Calculate fret from the nut
+        // Each fret occupies space from its left edge to the next fret's left edge
+        final fretPositionFromNut = (adjustedX - headWidth) / fretWidth;
+        fretIndex = fretPositionFromNut.floor() + 1;
+        
+        // Clamp to valid range
+        fretIndex = fretIndex.clamp(1, widget.config.visibleFretEnd);
+      }
+    } else {
+      // No headstock - calculate from visible start
+      final fretPositionInView = adjustedX / fretWidth;
+      fretIndex = widget.config.visibleFretStart + fretPositionInView.floor();
+      
+      // Clamp to valid range
+      fretIndex = fretIndex.clamp(
+          widget.config.visibleFretStart, 
+          widget.config.visibleFretEnd
+      );
+    }
 
-    // Calculate fret index
-    double startX = widget.config.visibleFretStart == 0 ? headWidth : 0;
-    final fretIndex = ((position.dx - startX) / fretWidth)
-        .floor()
-        .clamp(0, correctedFretCount - 1);
-    final actualFret = widget.config.visibleFretStart + fretIndex;
-
-    widget.onFretTap!(stringIndex, actualFret);
+    widget.onFretTap!(actualStringIndex, fretIndex);
   }
 
   int? _hitTestString(double dy, int stringCount) {

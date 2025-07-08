@@ -48,24 +48,30 @@ class FretboardController {
     return map;
   }
 
-  /// Generate highlight map for interval mode
-  static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
-    final map = <int, Color>{};
-    final octaves = config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
-    final referenceOctave = config.minSelectedOctave;
-    final rootNote = Note.fromString('${config.root}$referenceOctave');
-
-    for (final extendedInterval in config.selectedIntervals) {
-      final specificMidi = rootNote.midi + extendedInterval;
-      final noteOctave = Note.fromMidi(specificMidi).octave;
-
-      if (octaves.contains(noteOctave)) {
-        map[specificMidi] = ColorUtils.colorForDegree(extendedInterval);
-      }
-    }
-
+/// Generate highlight map for interval mode
+static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
+  final map = <int, Color>{};
+  
+  // Handle empty intervals (no root scenario)
+  if (config.selectedIntervals.isEmpty) {
     return map;
   }
+  
+  final octaves = config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+  final referenceOctave = config.minSelectedOctave;
+  final rootNote = Note.fromString('${config.root}$referenceOctave');
+
+  // For each selected interval, calculate the exact position
+  for (final extendedInterval in config.selectedIntervals) {
+    // Calculate the exact MIDI note for this interval
+    final targetMidi = rootNote.midi + extendedInterval;
+    
+    // Only highlight this specific note
+    map[targetMidi] = ColorUtils.colorForDegree(extendedInterval);
+  }
+
+  return map;
+}
 
   /// Generate highlight map for chord mode with extended interval support
   static Map<int, Color> getChordHighlightMap(FretboardConfig config) {

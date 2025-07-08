@@ -120,8 +120,15 @@ class ScaleStrip extends StatelessWidget {
       if (config.isIntervalMode) {
         // Interval mode logic
         final referenceOctave = sortedOctaves.first;
-        final extendedInterval =
-            ((clickedOctave - referenceOctave) * 12) + (noteIndex % 12);
+        
+        // Calculate the extended interval based on the click position
+        int extendedInterval;
+        if (noteIndex == 12) {
+          // Special handling for the 13th position (octave)
+          extendedInterval = ((clickedOctave - referenceOctave + 1) * 12);
+        } else {
+          extendedInterval = ((clickedOctave - referenceOctave) * 12) + (noteIndex % 12);
+        }
 
         final rootNote = Note.fromString('${config.root}$referenceOctave');
         final clickedMidi = rootNote.midi + extendedInterval;
