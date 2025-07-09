@@ -1,4 +1,4 @@
-// lib/views/widgets/fretboard/scale_strip.dart - Dark theme fixes
+// lib/views/widgets/fretboard/scale_strip.dart - Complete fixed version
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../../models/fretboard/fretboard_config.dart';
@@ -320,8 +320,9 @@ class ScaleStripPainter extends CustomPainter {
     final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
     final verticalOffset =
         deviceType == DeviceType.mobile ? 35.0 : 45.0; // Reduced for mobile
-    final intervalOffset =
-        deviceType == DeviceType.mobile ? 12.0 : 15.0; // Reduced for mobile
+    final intervalOffset = deviceType == DeviceType.mobile
+        ? 8.0
+        : 10.0; // Moved up more to prevent overlap
 
     for (int pc = 0; pc < 13; pc++) {
       final cx = pc * noteWidth + noteWidth / 2;
@@ -338,7 +339,7 @@ class ScaleStripPainter extends CustomPainter {
 
       // Determine if highlighted
       bool isHighlighted = false;
-      Color noteColor = _getUnhighlightedColor(); // FIXED: Less bright color
+      Color noteColor = _getUnhighlightedColor(); // FIXED: Theme-aware color
       int intervalForColor = pc % 12;
 
       // Check highlight map for all modes
@@ -413,11 +414,14 @@ class ScaleStripPainter extends CustomPainter {
     }
   }
 
-  // FIXED: Less bright color for unhighlighted notes in dark theme
+  // FIXED: Theme-aware color for unhighlighted notes
   Color _getUnhighlightedColor() {
-    // Use a more muted color instead of bright white
-    return Colors
-        .grey.shade600; // Much less bright than the original grey.shade300
+    // Use theme-appropriate colors: white for light theme, gray for dark theme
+    final brightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final isDarkMode = brightness == Brightness.dark;
+
+    return isDarkMode ? Colors.grey.shade600 : Colors.white;
   }
 
   void _drawNoteCircle(Canvas canvas, double cx, double cy, Color color,
@@ -435,22 +439,39 @@ class ScaleStripPainter extends CustomPainter {
       Paint()..color = color,
     );
 
-    final strokeWidth =
-        (finalRadius / UIConstants.baseScaleStripNoteRadius).clamp(1.0, 2.0);
+    // Draw borders based on highlight state and theme
+    final brightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final isDarkMode = brightness == Brightness.dark;
 
-    // FIXED: Better stroke color for dark theme
-    final strokeColor = isHighlighted
-        ? Colors.black
-        : Colors.grey.shade400; // Less harsh than the original
+    if (isHighlighted) {
+      // Subtle border for highlighted notes
+      final strokeWidth =
+          (finalRadius / UIConstants.baseScaleStripNoteRadius).clamp(1.0, 2.0);
 
-    canvas.drawCircle(
-      Offset(safeCx, cy),
-      finalRadius,
-      Paint()
-        ..color = strokeColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth,
-    );
+      canvas.drawCircle(
+        Offset(safeCx, cy),
+        finalRadius,
+        Paint()
+          ..color = Colors.black.withOpacity(0.3)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth,
+      );
+    } else if (!isDarkMode) {
+      // Light theme: add subtle border for unhighlighted white notes for visibility
+      final strokeWidth =
+          (finalRadius / UIConstants.baseScaleStripNoteRadius).clamp(0.5, 1.0);
+
+      canvas.drawCircle(
+        Offset(safeCx, cy),
+        finalRadius,
+        Paint()
+          ..color = Colors.grey.shade300
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth,
+      );
+    }
+    // Dark theme unhighlighted notes: no border (indistinguishable from background)
   }
 
   void _drawIntervalLabel(
@@ -498,10 +519,14 @@ class ScaleStripPainter extends CustomPainter {
 
     final fontSize = _calculateIntervalLabelFontSize(noteWidth, canvasWidth);
 
-    // FIXED: Better text colors for dark theme
+    // FIXED: Theme-aware text colors
+    final brightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final isDarkMode = brightness == Brightness.dark;
+
     final textColor = isHighlighted
         ? Colors.black
-        : Colors.grey.shade400; // Less harsh for unselected
+        : (isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600);
 
     final intervalPainter = TextPainter(
       text: TextSpan(
@@ -515,11 +540,18 @@ class ScaleStripPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
 
+    // FIXED: Adjust vertical positioning for flat symbols
+    double adjustedCy = cy;
+    if (intervalLabel.contains('♭')) {
+      // Flat symbols have different baseline characteristics, adjust upward more
+      adjustedCy = cy - 4.0;
+    }
+
     // Ensure text doesn't extend beyond canvas bounds
     final textWidth = intervalPainter.width;
     final safeX =
         (cx - textWidth / 2).clamp(0, canvasWidth - textWidth).toDouble();
-    final intervalOffset = Offset(safeX, cy);
+    final intervalOffset = Offset(safeX, adjustedCy);
 
     // FIXED: Improved background for highlighted intervals - less harsh in dark theme
     if (isHighlighted) {

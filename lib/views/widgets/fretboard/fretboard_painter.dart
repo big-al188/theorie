@@ -558,9 +558,12 @@ class FretboardPainter extends CustomPainter {
       final textX = cx - textWidth / 2;
       final textY = cy - textHeight / 2;
 
+      // FIXED: Adjust vertical positioning for flat symbols
+      final adjustedTextY = displayText.contains('♭') ? textY - 0.5 : textY;
+
       // Ensure text doesn't go outside canvas bounds
       final safeTextX = textX.clamp(0, canvasWidth - textWidth).toDouble();
-      final safeTextY = math.max(textY, 0).toDouble();
+      final safeTextY = math.max(adjustedTextY, 0).toDouble();
 
       textPainter.paint(canvas, Offset(safeTextX, safeTextY));
     } else {
@@ -583,10 +586,13 @@ class FretboardPainter extends CustomPainter {
       final textX = cx - smallerTextWidth / 2;
       final textY = cy - smallerTextHeight / 2;
 
+      // FIXED: Adjust vertical positioning for flat symbols in abbreviated text too
+      final adjustedTextY = shortenedText.contains('♭') ? textY - 0.5 : textY;
+
       // Ensure text doesn't go outside canvas bounds
       final safeTextX =
           textX.clamp(0, canvasWidth - smallerTextWidth).toDouble();
-      final safeTextY = math.max(textY, 0).toDouble();
+      final safeTextY = math.max(adjustedTextY, 0).toDouble();
 
       smallerTextPainter.paint(canvas, Offset(safeTextX, safeTextY));
     }
