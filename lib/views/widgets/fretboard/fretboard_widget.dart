@@ -30,26 +30,30 @@ class FretboardWidget extends StatefulWidget {
 class _FretboardWidgetState extends State<FretboardWidget> {
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Use responsive string height
+    final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
     final boardHeight = widget.config.showFretboard
-        ? (widget.config.stringCount + 1) * UIConstants.stringHeight
+        ? (widget.config.stringCount + 1) * stringHeight
         : 0.0;
 
     // Add space for chord name if needed
     final chordNameHeight =
         (widget.config.showChordName && widget.config.isChordMode) ? 30.0 : 0.0;
 
-    // Calculate scale strip height
+    // Calculate scale strip height using responsive values
     final octaveCount = widget.config.selectedOctaves.isEmpty
         ? 1
         : widget.config.selectedOctaves.length;
     final scaleStripHeight = widget.config.showScaleStrip
-        ? _calculateScaleStripHeight(octaveCount)
+        ? _calculateScaleStripHeight(octaveCount, screenWidth)
         : 0.0;
 
-    // Spacing between fretboard and scale strip
+    // Use responsive spacing between fretboard and scale strip
     final spacingHeight =
         (widget.config.showFretboard && widget.config.showScaleStrip)
-            ? 24.0
+            ? ResponsiveConstants.getFretboardScaleStripSpacing(screenWidth)
             : 0.0;
 
     final totalHeight =
@@ -64,14 +68,20 @@ class _FretboardWidgetState extends State<FretboardWidget> {
         boardHeight + chordNameHeight,
         scaleStripHeight,
         spacingHeight,
+        screenWidth,
       ),
     );
   }
 
-  double _calculateScaleStripHeight(int octaveCount) {
+  // Updated to use responsive values
+  double _calculateScaleStripHeight(int octaveCount, double screenWidth) {
+    final noteRowHeight = ResponsiveConstants.getNoteRowHeight(screenWidth);
+    final paddingPerOctave =
+        ResponsiveConstants.getScaleStripPaddingPerOctave(screenWidth);
+
     return UIConstants.scaleStripLabelSpace +
-        (octaveCount * UIConstants.noteRowHeight) +
-        (octaveCount * UIConstants.scaleStripPaddingPerOctave);
+        (octaveCount * noteRowHeight) +
+        (octaveCount * paddingPerOctave);
   }
 
   Widget _buildContent(
@@ -79,12 +89,13 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     double boardHeight,
     double scaleStripHeight,
     double spacingHeight,
+    double screenWidth,
   ) {
     if (widget.config.showFretboard && widget.config.showScaleStrip) {
       return _buildWithScaleStrip(
-          context, boardHeight, scaleStripHeight, spacingHeight);
+          context, boardHeight, scaleStripHeight, spacingHeight, screenWidth);
     } else if (widget.config.showFretboard && !widget.config.showScaleStrip) {
-      return _buildFretboardOnly(context, boardHeight);
+      return _buildFretboardOnly(context, boardHeight, screenWidth);
     } else if (!widget.config.showFretboard && widget.config.showScaleStrip) {
       return _buildScaleStripOnly(context, scaleStripHeight);
     } else {
@@ -92,23 +103,28 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     }
   }
 
-  Widget _buildFretboardOnly(BuildContext context, double boardHeight) {
+  Widget _buildFretboardOnly(
+      BuildContext context, double boardHeight, double screenWidth) {
+    // Use responsive top padding for fret labels
+    final topPadding = ResponsiveConstants.getFretLabelPadding(screenWidth);
+
     return Listener(
       onPointerSignal: _handlePointerSignal,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: (details) =>
-            _handleFretboardTap(context, details, boardHeight),
+            _handleFretboardTap(context, details, boardHeight, screenWidth),
         onPanUpdate: _handlePan,
         child: Container(
           width: double.infinity,
           height: boardHeight,
-          padding: const EdgeInsets.only(top: 20), // Space for fret labels
+          padding: EdgeInsets.only(top: topPadding), // Responsive top padding
           child: CustomPaint(
             size: Size(double.infinity, boardHeight),
             painter: FretboardPainter(
               config: widget.config,
               highlightMap: FretboardController.getHighlightMap(widget.config),
+              screenWidth: screenWidth, // Pass screen width to painter
             ),
           ),
         ),
@@ -132,20 +148,24 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     double boardHeight,
     double scaleStripHeight,
     double spacingHeight,
+    double screenWidth,
   ) {
+    // Use responsive top padding for fret labels
+    final topPadding = ResponsiveConstants.getFretLabelPadding(screenWidth);
+
     return Column(
       children: [
         // Fretboard
         Container(
           height: boardHeight,
           width: double.infinity,
-          padding: const EdgeInsets.only(top: 20), // Space for fret labels
+          padding: EdgeInsets.only(top: topPadding), // Responsive top padding
           child: Listener(
             onPointerSignal: _handlePointerSignal,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTapDown: (details) =>
-                  _handleFretboardTap(context, details, boardHeight),
+              onTapDown: (details) => _handleFretboardTap(
+                  context, details, boardHeight, screenWidth),
               onPanUpdate: _handlePan,
               child: CustomPaint(
                 size: Size(double.infinity, boardHeight),
@@ -153,13 +173,14 @@ class _FretboardWidgetState extends State<FretboardWidget> {
                   config: widget.config,
                   highlightMap:
                       FretboardController.getHighlightMap(widget.config),
+                  screenWidth: screenWidth, // Pass screen width to painter
                 ),
               ),
             ),
           ),
         ),
 
-        // Spacing
+        // Responsive spacing
         if (spacingHeight > 0) SizedBox(height: spacingHeight),
 
         // Scale strip
@@ -248,8 +269,8 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     }
   }
 
-  void _handleFretboardTap(
-      BuildContext context, TapDownDetails details, double boardHeight) {
+  void _handleFretboardTap(BuildContext context, TapDownDetails details,
+      double boardHeight, double screenWidth) {
     if (widget.onFretTap == null) return;
 
     final position = details.localPosition;
@@ -257,11 +278,14 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     // Account for chord name height if shown
     final chordNameHeight =
         (widget.config.showChordName && widget.config.isChordMode) ? 30.0 : 0.0;
-    var adjustedY = position.dy - chordNameHeight - 20; // Also account for top padding
+
+    // Use responsive top padding
+    final topPadding = ResponsiveConstants.getFretLabelPadding(screenWidth);
+    var adjustedY = position.dy - chordNameHeight - topPadding;
 
     // Handle left-handed transformation
-    final adjustedX = widget.config.isLeftHanded 
-        ? context.size!.width - position.dx 
+    final adjustedX = widget.config.isLeftHanded
+        ? context.size!.width - position.dx
         : position.dx;
 
     final renderBox = context.findRenderObject() as RenderBox;
@@ -273,24 +297,26 @@ class _FretboardWidgetState extends State<FretboardWidget> {
         FretboardController.getCorrectedFretCount(widget.config);
     final fretWidth = availableWidth / correctedFretCount;
 
+    // Use responsive string height for calculations
+    final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
+
     // Determine which string was clicked
-    // Each string occupies a vertical band from halfway to previous string to halfway to next string
-    final stringHeight = UIConstants.stringHeight;
     final clickedStringIndex = (adjustedY / stringHeight).round();
-    
-    // Validate string index
-    if (clickedStringIndex < 0 || clickedStringIndex >= widget.config.stringCount) {
+
+    // Validate string index with bounds checking
+    if (clickedStringIndex < 0 ||
+        clickedStringIndex >= widget.config.stringCount) {
       return; // Click outside valid string range
     }
-    
+
     // Adjust for bass top/bottom
-    final actualStringIndex = widget.config.isBassTop 
-        ? clickedStringIndex 
+    final actualStringIndex = widget.config.isBassTop
+        ? clickedStringIndex
         : widget.config.stringCount - 1 - clickedStringIndex;
 
     // Determine which fret was clicked with precise boundaries
     int fretIndex;
-    
+
     if (widget.config.visibleFretStart == 0) {
       // With headstock visible
       if (adjustedX < headWidth) {
@@ -298,10 +324,9 @@ class _FretboardWidgetState extends State<FretboardWidget> {
         fretIndex = 0;
       } else {
         // Calculate fret from the nut
-        // Each fret occupies space from its left edge to the next fret's left edge
         final fretPositionFromNut = (adjustedX - headWidth) / fretWidth;
         fretIndex = fretPositionFromNut.floor() + 1;
-        
+
         // Clamp to valid range
         fretIndex = fretIndex.clamp(1, widget.config.visibleFretEnd);
       }
@@ -309,21 +334,21 @@ class _FretboardWidgetState extends State<FretboardWidget> {
       // No headstock - calculate from visible start
       final fretPositionInView = adjustedX / fretWidth;
       fretIndex = widget.config.visibleFretStart + fretPositionInView.floor();
-      
+
       // Clamp to valid range
       fretIndex = fretIndex.clamp(
-          widget.config.visibleFretStart, 
-          widget.config.visibleFretEnd
-      );
+          widget.config.visibleFretStart, widget.config.visibleFretEnd);
     }
 
     widget.onFretTap!(actualStringIndex, fretIndex);
   }
 
-  int? _hitTestString(double dy, int stringCount) {
+  int? _hitTestString(double dy, int stringCount, double screenWidth) {
+    final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
+
     for (int i = 0; i < stringCount; i++) {
-      final stringY = (i + 1) * UIConstants.stringHeight;
-      if ((dy - stringY).abs() <= UIConstants.stringHeight / 2) {
+      final stringY = (i + 1) * stringHeight;
+      if ((dy - stringY).abs() <= stringHeight / 2) {
         return i;
       }
     }
