@@ -1,4 +1,4 @@
-// lib/models/fretboard/fretboard_config.dart
+// lib/models/fretboard/fretboard_config.dart - Fixed octave calculation
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../constants/app_constants.dart';
@@ -78,39 +78,10 @@ class FretboardConfig {
   bool get isIntervalMode => viewMode == ViewMode.intervals;
   bool get isChordMode => viewMode == ViewMode.chords;
 
-  // FIX: Calculate octave count properly for all modes
+  // FIXED: Octave count calculation now respects user's selection
   int get octaveCount {
-    if (isChordMode) {
-      // For chord mode with inversions, check the actual voicing span
-      final chord = Chord.get(chordType);
-      if (chord != null) {
-        final rootNote = Note.fromString('${root}${selectedChordOctave}');
-        final voicingMidiNotes = chord.buildVoicing(
-          root: rootNote,
-          inversion: chordInversion,
-        );
-
-        if (voicingMidiNotes.isNotEmpty) {
-          final minMidi = voicingMidiNotes.reduce(math.min);
-          final maxMidi = voicingMidiNotes.reduce(math.max);
-          final minOctave = (minMidi ~/ 12) - 1;
-          final maxOctave = (maxMidi ~/ 12) - 1;
-          return (maxOctave - minOctave + 1).clamp(1, 9);
-        }
-      }
-      return 1;
-    } else if (isIntervalMode) {
-      // FIX: For interval mode, check selected intervals for extended ones
-      if (selectedIntervals.isNotEmpty) {
-        final maxInterval = selectedIntervals.reduce((a, b) => a > b ? a : b);
-        final octavesNeeded = (maxInterval ~/ 12) + 1;
-        // Return the greater of selected octaves count or needed octaves
-        return octavesNeeded > selectedOctaves.length
-            ? octavesNeeded
-            : selectedOctaves.length;
-      }
-    }
-    // For scale mode and default cases
+    // Always return the actual count of selected octaves
+    // Don't override based on chord voicing calculations
     return selectedOctaves.isEmpty ? 1 : selectedOctaves.length;
   }
 

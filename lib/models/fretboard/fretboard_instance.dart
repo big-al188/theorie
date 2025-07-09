@@ -1,4 +1,4 @@
-// lib/models/fretboard/fretboard_instance.dart
+// lib/models/fretboard/fretboard_instance.dart - Fixed octave calculation
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
@@ -64,11 +64,12 @@ class FretboardInstance {
   }
 
   /// Convert to FretboardConfig
+  /// FIXED: Now respects user's octave selection for all modes
   FretboardConfig toConfig({
     required FretboardLayout layout,
     required int globalFretCount,
   }) {
-    // FIX: Calculate the actual octaves needed for display
+    // FIXED: Always respect the user's selected octaves
     Set<int> octavesToUse = Set.from(selectedOctaves);
 
     if (octavesToUse.isEmpty) {
@@ -77,28 +78,53 @@ class FretboardInstance {
       octavesToUse = {3};
     }
 
-    // For chord mode with extended intervals, ensure we have enough octaves
+    // FIXED: For chord mode, we still respect user selection but may add adjacent octaves
+    // if the chord voicing naturally extends beyond the selected range
     if (viewMode == ViewMode.chords) {
       final chord = Chord.get(chordType);
       if (chord != null) {
-        // Get the actual voicing to determine octave span
-        final rootNote = Note.fromString('$root${octavesToUse.first}');
+        // Get the user's primary octave selection
+        final userOctave = octavesToUse.first;
+        final rootNote = Note.fromString('$root$userOctave');
+
+        // Build the voicing with the new fixed algorithm
         final voicingMidiNotes = chord.buildVoicing(
           root: rootNote,
           inversion: chordInversion,
         );
 
         if (voicingMidiNotes.isNotEmpty) {
+          // Calculate the actual octave span of the voicing
           final minMidi = voicingMidiNotes.reduce(math.min);
           final maxMidi = voicingMidiNotes.reduce(math.max);
           final minOctave = (minMidi ~/ 12) - 1;
           final maxOctave = (maxMidi ~/ 12) - 1;
 
-          // Generate all octaves needed for the voicing
-          octavesToUse.clear();
+          // FIXED: Only add additional octaves if the voicing actually extends beyond
+          // the user's selection, and only add the necessary adjacent octaves
+          final voicingOctaves = <int>{};
           for (int i = minOctave; i <= maxOctave; i++) {
-            octavesToUse.add(i);
+            voicingOctaves.add(i);
           }
+
+          // If the voicing fits within or close to the user's selection, respect it
+          // Otherwise, include the minimal span needed for the chord
+          if (voicingOctaves.length <= 2 &&
+              voicingOctaves.any((oct) => (oct - userOctave).abs() <= 1)) {
+            // Voicing is reasonable - use user's octave plus any necessary adjacent ones
+            octavesToUse = {userOctave};
+            for (final oct in voicingOctaves) {
+              if ((oct - userOctave).abs() <= 1) {
+                octavesToUse.add(oct);
+              }
+            }
+          } else {
+            // Voicing spans too far - use the calculated span but centered around user's choice
+            octavesToUse = voicingOctaves;
+          }
+
+          debugPrint(
+              'Chord mode: user selected octave $userOctave, voicing spans $voicingOctaves, using $octavesToUse');
         }
       }
     }

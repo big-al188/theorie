@@ -1,4 +1,4 @@
-// lib/controllers/fretboard_controller.dart
+// lib/controllers/fretboard_controller.dart - Fixed chord highlighting
 import 'package:flutter/material.dart';
 import '../models/music/note.dart';
 import '../models/music/scale.dart';
@@ -29,19 +29,19 @@ class FretboardController {
       // Create the root note for this octave
       final octaveRootNote = Note.fromString('$effectiveRoot$octave');
       final octaveRootMidi = octaveRootNote.midi;
-      
+
       // For scale mode, we want to show notes from root to root+octave
       // This means we include all scale notes from the root up to (but not including) the next root
       for (int i = 0; i < pitchClasses.length; i++) {
         final interval = pitchClasses[i];
         final noteMidi = octaveRootMidi + interval;
-        
+
         // Only include notes within the musical octave (root to root+12)
         if (interval >= 0 && interval <= 12) {
           map[noteMidi] = ColorUtils.colorForDegree(interval);
         }
       }
-      
+
       // Always include the octave (root + 12)
       map[octaveRootMidi + 12] = ColorUtils.colorForDegree(12);
     }
@@ -69,44 +69,46 @@ class FretboardController {
     return map;
   }
 
-  /// Generate highlight map for chord mode with extended interval support
+  /// Generate highlight map for chord mode with FIXED close voicing support
   static Map<int, Color> getChordHighlightMap(FretboardConfig config) {
     final map = <int, Color>{};
     final chord = Chord.get(config.chordType);
     if (chord == null) return {};
 
+    // FIXED: Use the user's selected octave, not calculated octave
     final octave = config.selectedChordOctave;
     final rootNote = Note.fromString('${config.root}$octave');
 
-    debugPrint('=== Building Chord Voicing Highlight Map ===');
+    debugPrint('=== Building FIXED Chord Voicing Highlight Map ===');
     debugPrint(
-        'Root: ${config.root}, Octave: $octave, Chord: ${config.chordType}, Inversion: ${config.chordInversion.displayName}');
+        'Root: ${config.root}, User Selected Octave: $octave, Chord: ${config.chordType}, Inversion: ${config.chordInversion.displayName}');
 
-    // Build chord voicing
+    // Build chord voicing using the FIXED algorithm
     final voicingMidiNotes = chord.buildVoicing(
       root: rootNote,
       inversion: config.chordInversion,
     );
 
-    debugPrint('Voicing MIDI notes: $voicingMidiNotes');
+    debugPrint('FIXED Voicing MIDI notes: $voicingMidiNotes');
 
-    // Color each note based on its interval from root
+    // Color each note based on its interval from the USER'S selected root
     for (final midi in voicingMidiNotes) {
-      final notePc = midi % 12;
-      final intervalFromRoot = (notePc - rootNote.pitchClass + 12) % 12;
+      // FIXED: Calculate interval from user's selected root, not chord's calculated root
+      final extendedInterval = midi - rootNote.midi;
 
-      // FIX: Calculate extended interval for proper labeling
-      final octaveDiff = (midi - rootNote.midi) ~/ 12;
-      final extendedInterval = intervalFromRoot + (octaveDiff * 12);
-
+      // Use the extended interval for coloring to distinguish octave positions
       map[midi] = ColorUtils.colorForDegree(extendedInterval);
 
       final note = Note.fromMidi(midi, preferFlats: rootNote.preferFlats);
       debugPrint(
-          '  Added to map: MIDI $midi (${note.fullName}) - extended interval $extendedInterval');
+          '  FIXED: Added to map: MIDI $midi (${note.fullName}) - extended interval $extendedInterval from user root ${rootNote.fullName}');
     }
 
-    debugPrint('=== Highlight Map Complete: ${map.length} notes ===');
+    debugPrint('=== FIXED Highlight Map Complete: ${map.length} notes ===');
+    debugPrint('User selected octaves: ${config.selectedOctaves}');
+    debugPrint(
+        'Chord spans octaves: ${voicingMidiNotes.map((m) => Note.fromMidi(m).octave).toSet()}');
+
     return map;
   }
 
@@ -123,13 +125,9 @@ class FretboardController {
   }
 
   /// Handle fretboard tap in interval mode
-  static void handleIntervalModeTap(
-    FretboardConfig config,
-    int stringIndex,
-    int fretIndex,
-    Function(Set<int>) onIntervalsChanged,
-    {Function(String, Set<int>)? onRootChanged}
-  ) {
+  static void handleIntervalModeTap(FretboardConfig config, int stringIndex,
+      int fretIndex, Function(Set<int>) onIntervalsChanged,
+      {Function(String, Set<int>)? onRootChanged}) {
     final openStringNote = Note.fromString(config.tuning[stringIndex]);
     final tappedNote = openStringNote.transpose(fretIndex);
 
@@ -152,7 +150,9 @@ class FretboardController {
       }
 
       // Check if we should change root
-      if (newIntervals.length == 1 && !newIntervals.contains(0) && onRootChanged != null) {
+      if (newIntervals.length == 1 &&
+          !newIntervals.contains(0) &&
+          onRootChanged != null) {
         final selectedInterval = newIntervals.first;
         final newRootNote = rootNote.transpose(selectedInterval);
         onRootChanged(newRootNote.name, {newRootNote.octave});
@@ -249,17 +249,17 @@ class FretboardController {
 
   /// Check if single interval will become root
   static bool willIntervalBecomeRoot(FretboardConfig config, int midiNote) {
-    if (!config.isIntervalMode || 
-        config.selectedIntervals.length != 1 || 
+    if (!config.isIntervalMode ||
+        config.selectedIntervals.length != 1 ||
         config.selectedIntervals.contains(0)) {
       return false;
     }
-    
+
     final sortedOctaves = config.selectedOctaves.toList()..sort();
     final referenceOctave = sortedOctaves.isNotEmpty ? sortedOctaves.first : 3;
     final rootNote = Note.fromString('${config.root}$referenceOctave');
     final noteInterval = midiNote - rootNote.midi;
-    
+
     return config.selectedIntervals.contains(noteInterval);
   }
 }

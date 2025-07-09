@@ -1,4 +1,4 @@
-// lib/views/widgets/fretboard/scale_strip.dart
+// lib/views/widgets/fretboard/scale_strip.dart - Fixed to respect user octave selection
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../../models/fretboard/fretboard_config.dart';
@@ -23,51 +23,59 @@ class ScaleStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Calculate display octaves for all modes properly
-    Set<int> displayOctaves;
-    int actualOctaveCount;
+    // FIXED: Always use the user's selected octaves, don't override with chord voicing calculation
+    Set<int> displayOctaves =
+        config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+    int actualOctaveCount = displayOctaves.length;
 
+    // FIXED: For chord mode, we still respect the user's octave selection
+    // but may show additional context if the chord naturally extends
     if (config.isChordMode) {
-      // For chord mode with inversions, calculate needed octaves
       final chord = Chord.get(config.chordType);
-      if (chord != null) {
-        // Get the chord voicing to determine actual octave span
-        final baseOctave = config.selectedChordOctave;
-        final rootNote = Note.fromString('${config.root}$baseOctave');
+      if (chord != null && displayOctaves.isNotEmpty) {
+        // Use the user's selected octave as the primary display
+        final userOctave = displayOctaves.first;
+        final rootNote = Note.fromString('${config.root}$userOctave');
         final voicingMidiNotes = chord.buildVoicing(
           root: rootNote,
           inversion: config.chordInversion,
         );
 
-        // Find min and max octaves in voicing
         if (voicingMidiNotes.isNotEmpty) {
-          // Convert MIDI notes back to octaves using the same formula as Note.fromMidi
+          // Check if the chord voicing extends beyond the user's selection
           final minNote = Note.fromMidi(voicingMidiNotes.reduce(math.min));
           final maxNote = Note.fromMidi(voicingMidiNotes.reduce(math.max));
-          
-          displayOctaves = {};
+
+          // Only add adjacent octaves if necessary and reasonable
+          final voicingOctaves = <int>{};
           for (int i = minNote.octave; i <= maxNote.octave; i++) {
-            displayOctaves.add(i);
+            voicingOctaves.add(i);
           }
-          actualOctaveCount = displayOctaves.length;
-          
-          debugPrint('Chord mode: root=${config.root}, baseOctave=$baseOctave, voicing=$voicingMidiNotes');
-          debugPrint('Chord mode octaves: min=${minNote.octave}, max=${maxNote.octave}, display=$displayOctaves');
-        } else {
-          displayOctaves = {baseOctave};
-          actualOctaveCount = 1;
+
+          // If the voicing only extends one octave beyond user selection, include it
+          // Otherwise, stick with user selection
+          if (voicingOctaves.length <= 3) {
+            final combinedOctaves = Set<int>.from(displayOctaves);
+            for (final oct in voicingOctaves) {
+              if (displayOctaves.any((userOct) => (oct - userOct).abs() <= 1)) {
+                combinedOctaves.add(oct);
+              }
+            }
+            displayOctaves = combinedOctaves;
+            actualOctaveCount = displayOctaves.length;
+
+            debugPrint(
+                'Chord mode scale strip: user octaves=${config.selectedOctaves}, voicing spans=${voicingOctaves}, displaying=$displayOctaves');
+          } else {
+            debugPrint(
+                'Chord mode scale strip: voicing too wide, using user selection only: $displayOctaves');
+          }
         }
-      } else {
-        displayOctaves =
-            config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
-        actualOctaveCount = 1;
       }
-    } else {
-      // For interval and scale modes, use all selected octaves
-      displayOctaves =
-          config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
-      actualOctaveCount = displayOctaves.length;
     }
+
+    debugPrint(
+        'Scale strip: final display octaves=$displayOctaves, count=$actualOctaveCount');
 
     final totalHeight = UIConstants.scaleStripLabelSpace +
         (actualOctaveCount * UIConstants.noteRowHeight) +
@@ -122,14 +130,15 @@ class ScaleStrip extends StatelessWidget {
       if (config.isIntervalMode) {
         // Interval mode logic
         final referenceOctave = sortedOctaves.first;
-        
+
         // Calculate the extended interval based on the click position
         int extendedInterval;
         if (noteIndex == 12) {
           // Special handling for the 13th position (octave)
           extendedInterval = ((clickedOctave - referenceOctave + 1) * 12);
         } else {
-          extendedInterval = ((clickedOctave - referenceOctave) * 12) + (noteIndex % 12);
+          extendedInterval =
+              ((clickedOctave - referenceOctave) * 12) + (noteIndex % 12);
         }
 
         final rootNote = Note.fromString('${config.root}$referenceOctave');
@@ -137,9 +146,11 @@ class ScaleStrip extends StatelessWidget {
 
         onNoteTap!(clickedMidi);
       } else {
-        // Scale mode logic
-        final effectiveRoot = MusicController.getModeRoot(
-            config.root, config.scale, config.modeIndex);
+        // Scale and chord mode logic
+        final effectiveRoot = config.isChordMode
+            ? config.root
+            : MusicController.getModeRoot(
+                config.root, config.scale, config.modeIndex);
         final rootNote = Note.fromString('$effectiveRoot$clickedOctave');
         final clickedMidi = rootNote.midi + (noteIndex % 12);
 
@@ -173,11 +184,10 @@ class ScaleStripPainter extends CustomPainter {
     final chromaticSequence = NoteUtils.chromaticSequence(rootForDisplay);
 
     final sortedOctaves = displayOctaves.toList()..sort();
-    final octavesToShow = sortedOctaves;
 
     // Draw each octave row
-    for (int i = 0; i < octavesToShow.length; i++) {
-      final octave = octavesToShow[i];
+    for (int i = 0; i < sortedOctaves.length; i++) {
+      final octave = sortedOctaves[i];
       final rowY =
           UIConstants.scaleStripLabelSpace + (i * UIConstants.noteRowHeight);
 
@@ -192,8 +202,9 @@ class ScaleStripPainter extends CustomPainter {
           config.isChordMode,
         );
 
-        // Draw octave label
-        _drawOctaveLabel(canvas, octave, rowY, config.isChordMode, i);
+        // FIXED: Draw more appropriate octave labels
+        _drawOctaveLabel(
+            canvas, octave, rowY, config.isChordMode, i, sortedOctaves.length);
       } catch (e) {
         // Silently handle any drawing errors to prevent crash
         debugPrint('Error drawing octave $octave: $e');
@@ -217,10 +228,10 @@ class ScaleStripPainter extends CustomPainter {
       if (cx < 0 || cx > size.width) continue;
 
       final actualPc = (rootPc + (pc % 12)) % 12;
-      
+
       // Calculate octave correctly
       final noteOctave = octave + ((rootPc + pc) ~/ 12);
-      
+
       // Create the note and get its MIDI value
       final note = Note(pitchClass: actualPc, octave: noteOctave);
       final midi = note.midi;
@@ -229,33 +240,34 @@ class ScaleStripPainter extends CustomPainter {
       bool isHighlighted = false;
       Color noteColor = Colors.grey.shade300;
       int intervalForColor = pc % 12;
-      
+
       // Check highlight map for all modes
       if (highlightMap.containsKey(midi)) {
         isHighlighted = true;
         noteColor = highlightMap[midi]!;
-        
+
         if (config.isScaleMode) {
           // Calculate the interval within the musical octave
           final effectiveRoot = MusicController.getModeRoot(
               config.root, config.scale, config.modeIndex);
           final octaveRoot = Note.fromString('$effectiveRoot$octave');
-          
+
           // If note is below root in pitch class, it belongs to previous octave
           if (actualPc < rootPc && pc < 12) {
-            final prevOctaveRoot = Note.fromString('$effectiveRoot${octave - 1}');
+            final prevOctaveRoot =
+                Note.fromString('$effectiveRoot${octave - 1}');
             intervalForColor = midi - prevOctaveRoot.midi;
           } else {
             intervalForColor = midi - octaveRoot.midi;
           }
-          
+
           // Clamp to 0-12 range
           if (intervalForColor > 12) intervalForColor = 12;
           if (intervalForColor < 0) intervalForColor = 0;
         } else if (config.isChordMode) {
-          // Get interval from the chord root
-          final baseOctave = config.selectedChordOctave;
-          final chordRootNote = Note.fromString('${config.root}$baseOctave');
+          // FIXED: Get interval from the user's selected octave, not calculated octave
+          final userOctave = config.selectedOctaves.first;
+          final chordRootNote = Note.fromString('${config.root}$userOctave');
           final extendedInterval = midi - chordRootNote.midi;
           intervalForColor = extendedInterval % 12;
         } else if (config.isIntervalMode) {
@@ -296,16 +308,6 @@ class ScaleStripPainter extends CustomPainter {
     }
   }
 
-  int _getIntervalFromHighlightMap(int midi, int rootPc, int octave) {
-    // This is a helper to determine the interval for coloring purposes
-    if (config.isIntervalMode) {
-      final minOctave = displayOctaves.reduce((a, b) => a < b ? a : b);
-      final rootNote = Note.fromString('${config.root}$minOctave');
-      return midi - rootNote.midi;
-    }
-    return (midi % 12 - rootPc + 12) % 12;
-  }
-
   void _drawNoteCircle(
       Canvas canvas, double cx, double cy, Color color, bool isHighlighted) {
     canvas.drawCircle(
@@ -343,9 +345,9 @@ class ScaleStripPainter extends CustomPainter {
         // For scale mode, use the calculated interval
         intervalLabel = FretboardController.getIntervalLabel(intervalForScale);
       } else if (config.isChordMode) {
-        // For chord mode, calculate from chord root
-        final baseOctave = config.selectedChordOctave;
-        final chordRootNote = Note.fromString('${config.root}$baseOctave');
+        // FIXED: For chord mode, calculate from user's selected octave
+        final userOctave = config.selectedOctaves.first;
+        final chordRootNote = Note.fromString('${config.root}$userOctave');
         final extendedInterval = midi - chordRootNote.midi;
         intervalLabel = FretboardController.getIntervalLabel(extendedInterval);
       } else if (config.isIntervalMode) {
@@ -426,16 +428,12 @@ class ScaleStripPainter extends CustomPainter {
     );
   }
 
-  void _drawOctaveLabel(
-      Canvas canvas, int octave, double rowY, bool isChordMode, int rowIndex) {
+  void _drawOctaveLabel(Canvas canvas, int octave, double rowY,
+      bool isChordMode, int rowIndex, int totalRows) {
     String rowLabel;
     if (isChordMode) {
-      // For chord mode with extended intervals, label appropriately
-      if (rowIndex == 0) {
-        rowLabel = 'Chord';
-      } else {
-        rowLabel = 'Ext.'; // Extended intervals
-      }
+      // FIXED: Show actual octave numbers in chord mode too
+      rowLabel = 'Oct $octave';
     } else {
       rowLabel = 'Oct $octave';
     }
@@ -452,7 +450,6 @@ class ScaleStripPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
 
-    // Keep the label at positive offset as the fix
     octaveLabelPainter.paint(
       canvas,
       Offset(10, rowY + 40),

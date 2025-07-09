@@ -1,4 +1,4 @@
-// lib/models/music/chord.dart
+// lib/models/music/chord.dart - Fixed buildVoicing method
 import 'note.dart';
 import '../../constants/app_constants.dart';
 
@@ -68,8 +68,8 @@ class Chord {
     return ChordInversion.values.take(count).toList();
   }
 
-  /// Build chord voicing with proper inversion
-  /// FIXED: Inversions now build correctly from the specified octave
+  /// Build chord voicing with proper voice leading and octave respect
+  /// FIXED: Now implements close voicing principles and respects user's octave selection
   List<int> buildVoicing({
     required Note root,
     required ChordInversion inversion,
@@ -78,38 +78,143 @@ class Chord {
     final voicing = <int>[];
 
     if (inversion == ChordInversion.root) {
-      // Root position - build normally from the root
+      // Root position - build normally from the root, staying close to selected octave
       for (final interval in intervals) {
         voicing.add(rootMidi + interval);
       }
     } else {
-      // For inversions, we need to move lower notes up an octave
+      // For inversions, implement proper voice leading principles
       final inversionIndex = inversion.index;
-      
+
       if (inversionIndex >= intervals.length) {
         // Fallback to root position if invalid inversion
         for (final interval in intervals) {
           voicing.add(rootMidi + interval);
         }
-      } else {
-        // Build the inversion by moving the bottom notes up an octave
-        // For first inversion: 3rd, 5th, Root+12
-        // For second inversion: 5th, Root+12, 3rd+12
-        // etc.
-        
-        // Add the notes that stay in the original octave
-        for (int i = inversionIndex; i < intervals.length; i++) {
-          voicing.add(rootMidi + intervals[i]);
+        return voicing;
+      }
+
+      // FIXED: Implement close voicing with proper bass note placement
+
+      // 1. Determine the bass note (the note that should be lowest)
+      final bassInterval = intervals[inversionIndex];
+      final bassMidi = rootMidi + bassInterval;
+
+      // 2. Start building voicing with bass note
+      voicing.add(bassMidi);
+
+      // 3. Add remaining chord tones in close voicing above the bass
+      final remainingIntervals = <int>[];
+
+      // Add intervals that come after the bass note
+      for (int i = inversionIndex + 1; i < intervals.length; i++) {
+        remainingIntervals.add(intervals[i]);
+      }
+
+      // Add intervals that come before the bass note (these may need octave adjustment)
+      for (int i = 0; i < inversionIndex; i++) {
+        remainingIntervals.add(intervals[i]);
+      }
+
+      // 4. Place remaining notes using close voicing principles
+      int currentPosition = bassMidi;
+
+      for (final interval in remainingIntervals) {
+        int candidateMidi = rootMidi + interval;
+
+        // If this note would be below the bass, move it up octaves until it's above
+        while (candidateMidi <= currentPosition) {
+          candidateMidi += 12;
         }
-        
-        // Add the notes that move up an octave
-        for (int i = 0; i < inversionIndex; i++) {
-          voicing.add(rootMidi + intervals[i] + 12);
+
+        // Try to keep it as close as possible to the current position
+        // but ensure it's above the bass and doesn't create large gaps
+        if (candidateMidi - currentPosition > 12) {
+          // If there's a large gap, try to fill it more efficiently
+          final octaveBelow = candidateMidi - 12;
+          if (octaveBelow > currentPosition) {
+            candidateMidi = octaveBelow;
+          }
+        }
+
+        voicing.add(candidateMidi);
+        currentPosition = candidateMidi;
+      }
+
+      // 5. Sort the voicing to ensure proper order (bass to treble)
+      voicing.sort();
+
+      // 6. Optional: Optimize for staying close to original octave
+      // If the entire voicing has jumped too high, try to bring it down
+      final originalOctaveRange = rootMidi + 12; // Allow one octave above root
+      final highestNote = voicing.last;
+
+      if (voicing.length > 1 && highestNote > originalOctaveRange + 12) {
+        // Try to compact the voicing by moving some notes down an octave
+        // while maintaining the inversion structure
+        final optimizedVoicing =
+            _optimizeVoicingForOctave(voicing, rootMidi, bassInterval);
+        if (optimizedVoicing.isNotEmpty) {
+          voicing.clear();
+          voicing.addAll(optimizedVoicing);
         }
       }
     }
 
     return voicing;
+  }
+
+  /// Helper method to optimize voicing to stay closer to the selected octave
+  List<int> _optimizeVoicingForOctave(
+      List<int> voicing, int rootMidi, int bassInterval) {
+    if (voicing.isEmpty) return voicing;
+
+    // Keep the bass note as anchor
+    final bassMidi = voicing.first;
+    final optimized = <int>[bassMidi];
+
+    // For remaining notes, try to place them efficiently
+    for (int i = 1; i < voicing.length; i++) {
+      int note = voicing[i];
+
+      // Try placing this note in different octaves
+      final candidates = <int>[];
+
+      // Try current octave and one octave below
+      candidates.add(note);
+      if (note - 12 > bassMidi) {
+        candidates.add(note - 12);
+      }
+
+      // Choose the candidate that stays closest to the root octave
+      // but doesn't go below the bass
+      int bestCandidate = note;
+      int bestDistance = (note - rootMidi).abs();
+
+      for (final candidate in candidates) {
+        if (candidate > bassMidi) {
+          // Must be above bass
+          final distance = (candidate - rootMidi).abs();
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestCandidate = candidate;
+          }
+        }
+      }
+
+      optimized.add(bestCandidate);
+    }
+
+    // Ensure no duplicate MIDI notes
+    final uniqueOptimized = optimized.toSet().toList();
+    uniqueOptimized.sort();
+
+    // Only return optimized version if it's valid and has the same number of notes
+    if (uniqueOptimized.length == voicing.length) {
+      return uniqueOptimized;
+    }
+
+    return voicing; // Return original if optimization failed
   }
 
   @override
