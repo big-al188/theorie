@@ -300,19 +300,20 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     // Use responsive string height for calculations
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
 
-    // Determine which string was clicked
-    final clickedStringIndex = (adjustedY / stringHeight).round();
+    // Determine which string was clicked with proper centering
+    // Strings are drawn at positions: stringHeight, 2*stringHeight, 3*stringHeight, etc.
+    // Click regions should be centered around these positions
+    final visualRow = (adjustedY / stringHeight).floor();
 
     // Validate string index with bounds checking
-    if (clickedStringIndex < 0 ||
-        clickedStringIndex >= widget.config.stringCount) {
+    if (visualRow < 0 || visualRow >= widget.config.stringCount) {
       return; // Click outside valid string range
     }
 
     // Adjust for bass top/bottom
     final actualStringIndex = widget.config.isBassTop
-        ? clickedStringIndex
-        : widget.config.stringCount - 1 - clickedStringIndex;
+        ? visualRow
+        : widget.config.stringCount - 1 - visualRow;
 
     // Determine which fret was clicked with precise boundaries
     int fretIndex;
@@ -341,17 +342,5 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     }
 
     widget.onFretTap!(actualStringIndex, fretIndex);
-  }
-
-  int? _hitTestString(double dy, int stringCount, double screenWidth) {
-    final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
-
-    for (int i = 0; i < stringCount; i++) {
-      final stringY = (i + 1) * stringHeight;
-      if ((dy - stringY).abs() <= stringHeight / 2) {
-        return i;
-      }
-    }
-    return null;
   }
 }
