@@ -4,7 +4,7 @@ import '../../../models/fretboard/fretboard_config.dart';
 import '../../../models/music/chord.dart';
 import '../../../models/music/note.dart';
 import '../../../constants/ui_constants.dart';
-import '../../../models/music/scale.dart';  
+import '../../../models/music/scale.dart';
 import '../../../constants/music_constants.dart';
 import '../../../controllers/fretboard_controller.dart';
 import '../../../controllers/music_controller.dart';
@@ -34,7 +34,8 @@ class FretboardPainter extends CustomPainter {
     // Draw chord name at top if enabled
     double topOffset = 0;
     if (config.showChordName && config.isChordMode) {
-      topOffset = _drawChordName(canvas, size);
+      topOffset =
+          _drawChordName(canvas, size, headWidth, config.visibleFretStart == 0);
     }
 
     // Apply transformations
@@ -57,7 +58,8 @@ class FretboardPainter extends CustomPainter {
     canvas.restore();
   }
 
-  double _drawChordName(Canvas canvas, Size size) {
+  double _drawChordName(
+      Canvas canvas, Size size, double headWidth, bool hasHeadstock) {
     final chordName = MusicController.getChordDisplayName(
       config.root,
       config.chordType,
@@ -76,7 +78,11 @@ class FretboardPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
 
-    final chordNameX = (size.width - chordPainter.width) / 2;
+    // Position chord name over headstock if visible, otherwise center over fretboard
+    final chordNameX = hasHeadstock
+        ? (headWidth - chordPainter.width) / 2 // Center over headstock
+        : (size.width - chordPainter.width) / 2; // Center over entire width
+
     const chordNameY = 5.0;
     chordPainter.paint(canvas, Offset(chordNameX, chordNameY));
 
@@ -380,23 +386,23 @@ class FretboardPainter extends CustomPainter {
           final effectiveRoot = MusicController.getModeRoot(
               config.root, config.scale, config.modeIndex);
           final effectiveRootNote = Note.fromString('${effectiveRoot}0');
-          
+
           // Find the root note in the same or lower octave as the current note
           final note = Note.fromMidi(midi);
           final noteOctave = note.octave;
-          
+
           // Start with the root in the note's octave
           var octaveRoot = Note.fromString('${effectiveRoot}$noteOctave');
-          
+
           // If the note's pitch class is lower than the root's pitch class,
           // it belongs to the previous octave's scale
           if (note.pitchClass < effectiveRootNote.pitchClass) {
             octaveRoot = Note.fromString('${effectiveRoot}${noteOctave - 1}');
           }
-          
+
           // Calculate the interval from the musical octave root
           final interval = midi - octaveRoot.midi;
-          
+
           // Only show notes within the musical octave (0-12 semitones from root)
           if (interval >= 0 && interval <= 12) {
             isRoot = interval == 0 || interval == 12;
