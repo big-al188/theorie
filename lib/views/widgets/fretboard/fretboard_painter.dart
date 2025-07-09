@@ -1,4 +1,4 @@
-// lib/views/widgets/fretboard/fretboard_painter.dart
+// lib/views/widgets/fretboard/fretboard_painter.dart - Dark theme fixes
 import 'package:flutter/material.dart';
 import '../../../models/fretboard/fretboard_config.dart';
 import '../../../models/music/chord.dart';
@@ -277,7 +277,11 @@ class FretboardPainter extends CustomPainter {
         final textPainter = TextPainter(
           text: TextSpan(
             text: tuningLabel,
-            style: TextStyle(fontSize: fontSize, color: Colors.black),
+            style: TextStyle(
+              fontSize: fontSize,
+              color:
+                  Colors.white, // FIXED: Always white for dark theme legibility
+            ),
           ),
           textDirection: TextDirection.ltr,
         )..layout();

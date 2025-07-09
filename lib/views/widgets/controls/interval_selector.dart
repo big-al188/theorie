@@ -1,4 +1,4 @@
-// lib/views/widgets/controls/interval_selector.dart
+// lib/views/widgets/controls/interval_selector.dart - Dark theme fixes
 import 'package:flutter/material.dart';
 import '../../../utils/chord_utils.dart';
 
@@ -32,7 +32,8 @@ class _IntervalSelectorState extends State<IntervalSelector> {
             const Text('Selected Intervals',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
             // Add current root display
-            if (widget.selectedIntervals.length == 1 && !widget.selectedIntervals.contains(0))
+            if (widget.selectedIntervals.length == 1 &&
+                !widget.selectedIntervals.contains(0))
               Text(
                 '(Will become new root)',
                 style: TextStyle(
@@ -129,24 +130,58 @@ class _IntervalSelectorState extends State<IntervalSelector> {
 
   Widget _buildIntervalChip(int interval, String label, BuildContext context) {
     final isSelected = widget.selectedIntervals.contains(interval);
-    final willBecomeRoot = widget.selectedIntervals.length == 1 && 
-                          isSelected && 
-                          interval != 0;
-    
+    final willBecomeRoot =
+        widget.selectedIntervals.length == 1 && isSelected && interval != 0;
+
+    // FIXED: Better colors for dark theme
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    Color backgroundColor;
+    Color borderColor;
+    Color textColor;
+
+    if (isSelected) {
+      if (isDarkMode) {
+        // Bluish white for selected intervals in dark mode
+        backgroundColor = Colors.blue.shade100.withOpacity(0.3);
+        borderColor = Colors.blue.shade300;
+        textColor = Colors.blue.shade200;
+      } else {
+        // Original light theme colors
+        backgroundColor = Theme.of(context).primaryColor.withOpacity(0.2);
+        borderColor = Theme.of(context).primaryColor;
+        textColor = Theme.of(context).primaryColor;
+      }
+    } else {
+      if (isDarkMode) {
+        // Grayish white for unselected intervals in dark mode
+        backgroundColor = Colors.transparent;
+        borderColor = Colors.grey.shade500;
+        textColor = Colors.grey.shade400;
+      } else {
+        // Original light theme colors
+        backgroundColor = Colors.transparent;
+        borderColor = Colors.grey;
+        textColor = Colors.grey.shade700;
+      }
+    }
+
+    // Special styling for intervals that will become root
+    if (willBecomeRoot) {
+      borderColor =
+          isDarkMode ? Colors.blue.shade200 : Theme.of(context).primaryColor;
+      textColor =
+          isDarkMode ? Colors.blue.shade100 : Theme.of(context).primaryColor;
+    }
+
     return InkWell(
       onTap: () => _toggleInterval(interval),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: isSelected
-              ? Theme.of(context).primaryColor.withOpacity(0.2)
-              : Colors.transparent,
+          color: backgroundColor,
           border: Border.all(
-            color: willBecomeRoot
-                ? Theme.of(context).primaryColor
-                : isSelected 
-                    ? Theme.of(context).primaryColor 
-                    : Colors.grey,
+            color: borderColor,
             width: willBecomeRoot ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(4),
@@ -156,9 +191,7 @@ class _IntervalSelectorState extends State<IntervalSelector> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected
-                ? Theme.of(context).primaryColor
-                : Colors.grey.shade700,
+            color: textColor,
           ),
         ),
       ),
