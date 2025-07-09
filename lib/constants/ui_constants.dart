@@ -34,6 +34,11 @@ class UIConstants {
   static const double settingsDialogHeight = 650.0;
   static const double dialogPadding = 24.0;
 
+  // App bar heights
+  static const double mobileAppBarHeight = 48.0;
+  static const double tabletAppBarHeight = 52.0;
+  static const double desktopAppBarHeight = 56.0;
+
   // Responsive breakpoints
   static const double mobileBreakpoint = 600.0;
   static const double tabletBreakpoint = 900.0;
@@ -91,7 +96,7 @@ class UIConstants {
     color: Colors.grey,
   );
 
-  // Color schemes
+  // Color schemes (legacy - now handled by Material 3 themes)
   static const Map<String, Map<String, Color>> colorSchemes = {
     'default': {
       'background': Colors.white,

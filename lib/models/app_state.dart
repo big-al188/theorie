@@ -1,40 +1,72 @@
 // lib/models/app_state.dart
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../../controllers/music_controller.dart';
 import '../constants/music_constants.dart';
 import 'fretboard/fretboard_config.dart';
+import 'fretboard/fretboard_instance.dart';
+import 'music/chord.dart';
 import 'music/note.dart';
 
 /// Central application state management
 class AppState extends ChangeNotifier {
-  // Fretboard configuration
-  int _stringCount = AppConstants.defaultStringCount;
-  int _fretCount = AppConstants.defaultFretCount;
-  List<String> _tuning =
+  // ===== FRETBOARD DEFAULTS =====
+  // Default fretboard configuration that will be used for new fretboards
+  int _defaultStringCount = AppConstants.defaultStringCount;
+  int _defaultFretCount = AppConstants.defaultFretCount;
+  List<String> _defaultTuning =
       List.from(MusicConstants.standardTunings['Guitar (6-string)']!);
-  FretboardLayout _layout = FretboardLayout.rightHandedBassTop;
+  FretboardLayout _defaultLayout = FretboardLayout.rightHandedBassTop;
 
-  // Music theory settings
+  // Default music theory settings
+  String _defaultRoot = AppConstants.defaultRoot;
+  ViewMode _defaultViewMode = ViewMode.intervals;
+  String _defaultScale = AppConstants.defaultScale;
+  int _defaultModeIndex = 0;
+  Set<int> _defaultSelectedOctaves = {AppConstants.defaultOctave};
+  Set<int> _defaultSelectedIntervals = {0}; // Start with root selected
+
+  // ===== APP PREFERENCES =====
+  ThemeMode _themeMode = ThemeMode.light;
+
+  // ===== CURRENT SESSION STATE =====
+  // These represent the current working state (used by single fretboard views)
   String _root = AppConstants.defaultRoot;
   ViewMode _viewMode = ViewMode.intervals;
   String _scale = AppConstants.defaultScale;
   int _modeIndex = 0;
-
-  // Selected octaves and intervals
   Set<int> _selectedOctaves = {AppConstants.defaultOctave};
   Set<int> _selectedIntervals = {0}; // Start with root selected
 
-  // Getters
-  int get stringCount => _stringCount;
-  int get fretCount => _fretCount;
-  List<String> get tuning => List.unmodifiable(_tuning);
-  FretboardLayout get layout => _layout;
+  // ===== FRETBOARD DEFAULTS GETTERS =====
+  int get defaultStringCount => _defaultStringCount;
+  int get defaultFretCount => _defaultFretCount;
+  List<String> get defaultTuning => List.unmodifiable(_defaultTuning);
+  FretboardLayout get defaultLayout => _defaultLayout;
+  String get defaultRoot => _defaultRoot;
+  ViewMode get defaultViewMode => _defaultViewMode;
+  String get defaultScale => _defaultScale;
+  int get defaultModeIndex => _defaultModeIndex;
+  Set<int> get defaultSelectedOctaves =>
+      Set.unmodifiable(_defaultSelectedOctaves);
+  Set<int> get defaultSelectedIntervals =>
+      Set.unmodifiable(_defaultSelectedIntervals);
+
+  // ===== APP PREFERENCES GETTERS =====
+  ThemeMode get themeMode => _themeMode;
+  bool get isDarkMode => _themeMode == ThemeMode.dark;
+  bool get isLightMode => _themeMode == ThemeMode.light;
+
+  // ===== CURRENT SESSION GETTERS (for backward compatibility) =====
+  int get stringCount => _defaultStringCount; // Use defaults for global state
+  int get fretCount => _defaultFretCount; // Use defaults for global state
+  List<String> get tuning => List.unmodifiable(_defaultTuning); // Use defaults
+  FretboardLayout get layout => _defaultLayout; // Use defaults
   String get root => _root;
   ViewMode get viewMode => _viewMode;
   String get scale => _scale;
   int get modeIndex => _modeIndex;
-
   Set<int> get selectedOctaves => Set.unmodifiable(_selectedOctaves);
   int get octaveCount => _selectedOctaves.length;
   int get maxSelectedOctave => _selectedOctaves.isEmpty
@@ -43,13 +75,12 @@ class AppState extends ChangeNotifier {
   int get minSelectedOctave => _selectedOctaves.isEmpty
       ? 0
       : _selectedOctaves.reduce((a, b) => a < b ? a : b);
-
   Set<int> get selectedIntervals => Set.unmodifiable(_selectedIntervals);
   bool get hasSelectedIntervals => _selectedIntervals.isNotEmpty;
 
   // Derived getters
-  bool get isLeftHanded => _layout.isLeftHanded;
-  bool get isBassTop => _layout.isBassTop;
+  bool get isLeftHanded => _defaultLayout.isLeftHanded;
+  bool get isBassTop => _defaultLayout.isBassTop;
   bool get isScaleMode => _viewMode == ViewMode.scales;
   bool get isIntervalMode => _viewMode == ViewMode.intervals;
   bool get isChordMode => _viewMode == ViewMode.chords;
@@ -64,47 +95,116 @@ class AppState extends ChangeNotifier {
       ? availableModes[_modeIndex % availableModes.length]
       : 'Mode ${_modeIndex + 1}';
 
-  // Setters with validation
-  void setStringCount(int count) {
+  // ===== FRETBOARD DEFAULTS SETTERS =====
+  void setDefaultStringCount(int count) {
     if (count < AppConstants.minStrings || count > AppConstants.maxStrings)
       return;
-
-    _stringCount = count;
-    _adjustTuningLength();
+    _defaultStringCount = count;
+    _adjustDefaultTuningLength();
     notifyListeners();
   }
 
-  void setFretCount(int count) {
+  void setDefaultFretCount(int count) {
     if (count < AppConstants.minFrets || count > AppConstants.maxFrets) return;
-    _fretCount = count;
+    _defaultFretCount = count;
     notifyListeners();
   }
 
-  void setTuning(List<String> newTuning) {
-    _tuning = List.from(newTuning);
-    _adjustTuningLength();
+  void setDefaultTuning(List<String> newTuning) {
+    _defaultTuning = List.from(newTuning);
+    _adjustDefaultTuningLength();
     notifyListeners();
   }
 
-  void setTuningNote(int stringIndex, String note, int octave) {
-    if (stringIndex >= 0 && stringIndex < _tuning.length) {
-      _tuning[stringIndex] = '$note$octave';
+  void setDefaultTuningNote(int stringIndex, String note, int octave) {
+    if (stringIndex >= 0 && stringIndex < _defaultTuning.length) {
+      _defaultTuning[stringIndex] = '$note$octave';
       notifyListeners();
     }
   }
 
-  void setLayout(FretboardLayout layout) {
-    _layout = layout;
+  void setDefaultLayout(FretboardLayout layout) {
+    _defaultLayout = layout;
     notifyListeners();
   }
 
-  void applyStandardTuning(String tuningName) {
-    final tuning = MusicConstants.standardTunings[tuningName];
-    if (tuning != null) {
-      setStringCount(tuning.length);
-      setTuning(tuning);
+  void setDefaultRoot(String root) {
+    _defaultRoot = root;
+    notifyListeners();
+  }
+
+  void setDefaultViewMode(ViewMode mode) {
+    _defaultViewMode = mode;
+    if (mode == ViewMode.intervals) {
+      _defaultSelectedIntervals = {0};
+    } else if (mode == ViewMode.chords) {
+      _ensureSingleOctaveForDefaults();
+    }
+    notifyListeners();
+  }
+
+  void setDefaultScale(String scale) {
+    _defaultScale = scale;
+    _defaultModeIndex = 0;
+    notifyListeners();
+  }
+
+  void setDefaultModeIndex(int index) {
+    _defaultModeIndex = index;
+    notifyListeners();
+  }
+
+  void setDefaultSelectedOctaves(Set<int> octaves) {
+    final validOctaves =
+        octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
+    if (validOctaves.isNotEmpty) {
+      if (_defaultViewMode == ViewMode.chords && validOctaves.length > 1) {
+        _defaultSelectedOctaves = {validOctaves.first};
+      } else {
+        _defaultSelectedOctaves = validOctaves;
+      }
+      notifyListeners();
     }
   }
+
+  void setDefaultSelectedIntervals(Set<int> intervals) {
+    final newIntervals = Set<int>.from(intervals);
+    if (newIntervals.isEmpty) {
+      newIntervals.add(0);
+    }
+    _defaultSelectedIntervals = newIntervals;
+    notifyListeners();
+  }
+
+  void applyStandardTuningAsDefault(String tuningName) {
+    final tuning = MusicConstants.standardTunings[tuningName];
+    if (tuning != null) {
+      setDefaultStringCount(tuning.length);
+      setDefaultTuning(tuning);
+    }
+  }
+
+  // ===== APP PREFERENCES SETTERS =====
+  void setThemeMode(ThemeMode mode) {
+    _themeMode = mode;
+    notifyListeners();
+  }
+
+  void toggleTheme() {
+    _themeMode =
+        _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    notifyListeners();
+  }
+
+  // ===== CURRENT SESSION SETTERS (for backward compatibility) =====
+  void setStringCount(int count) => setDefaultStringCount(count);
+  void setFretCount(int count) => setDefaultFretCount(count);
+  void setTuning(List<String> newTuning) => setDefaultTuning(newTuning);
+  void setTuningNote(int stringIndex, String note, int octave) =>
+      setDefaultTuningNote(stringIndex, note, octave);
+  void setLayout(FretboardLayout layout) => setDefaultLayout(layout);
+  void applyStandardTuning(String tuningName) =>
+      applyStandardTuningAsDefault(tuningName);
 
   void setRoot(String root) {
     _root = root;
@@ -119,7 +219,7 @@ class AppState extends ChangeNotifier {
     if (mode == ViewMode.intervals) {
       _selectedIntervals = {0};
     } else if (mode == ViewMode.chords) {
-      _ensureSingleOctaveForChords();
+      _ensureSingleOctaveForCurrent();
     }
     notifyListeners();
   }
@@ -135,7 +235,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Interval management
+  // Interval management (current session)
   void toggleInterval(int extendedInterval) {
     debugPrint(
         'AppState toggleInterval: $extendedInterval, current intervals: $_selectedIntervals');
@@ -147,8 +247,7 @@ class AppState extends ChangeNotifier {
     } else {
       _selectedIntervals.add(extendedInterval);
     }
-    
-    // Check if only one interval is selected and it's not the root
+
     if (_selectedIntervals.length == 1 && !_selectedIntervals.contains(0)) {
       _handleSingleIntervalAsNewRoot();
     } else {
@@ -162,8 +261,7 @@ class AppState extends ChangeNotifier {
       newIntervals.add(0);
     }
     _selectedIntervals = newIntervals;
-    
-    // Check if only one interval is selected and it's not the root
+
     if (_selectedIntervals.length == 1 && !_selectedIntervals.contains(0)) {
       _handleSingleIntervalAsNewRoot();
     } else {
@@ -171,37 +269,32 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // Handle single interval becoming new root
   void _handleSingleIntervalAsNewRoot() {
     if (_selectedIntervals.isEmpty || _selectedIntervals.contains(0)) {
       notifyListeners();
       return;
     }
-    
+
     final selectedInterval = _selectedIntervals.first;
-    
-    // Calculate the new root based on the selected interval
-    final referenceOctave = _selectedOctaves.isEmpty ? 3 : _selectedOctaves.reduce((a, b) => a < b ? a : b);
+    final referenceOctave = _selectedOctaves.isEmpty
+        ? 3
+        : _selectedOctaves.reduce((a, b) => a < b ? a : b);
     final currentRootNote = Note.fromString('$_root$referenceOctave');
     final newRootNote = currentRootNote.transpose(selectedInterval);
-    
-    // Update the root
+
     _root = newRootNote.name;
-    
-    // Reset intervals to just the root
     _selectedIntervals = {0};
-    
-    // Adjust octaves if needed
+
     final newOctave = newRootNote.octave;
     if (!_selectedOctaves.contains(newOctave)) {
       _selectedOctaves = {newOctave};
     }
-    
+
     debugPrint('Changed root to ${newRootNote.name} octave $newOctave');
     notifyListeners();
   }
 
-  // Octave management
+  // Octave management (current session)
   void setSelectedOctaves(Set<int> octaves) {
     final validOctaves =
         octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
@@ -252,7 +345,6 @@ class AppState extends ChangeNotifier {
 
   void selectAllOctaves() {
     if (isChordMode) return;
-
     _selectedOctaves =
         List.generate(AppConstants.maxOctaves + 1, (i) => i).toSet();
     notifyListeners();
@@ -263,32 +355,80 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Reset to defaults
+  // ===== UTILITY METHODS =====
+  /// Create a new fretboard instance with current defaults
+  FretboardInstance createFretboardWithDefaults(String id) {
+    return FretboardInstance(
+      id: id,
+      root: _defaultRoot,
+      viewMode: _defaultViewMode,
+      scale: _defaultScale,
+      modeIndex: _defaultModeIndex,
+      chordType: 'major',
+      chordInversion: ChordInversion.root,
+      selectedOctaves: Set.from(_defaultSelectedOctaves),
+      selectedIntervals: Set.from(_defaultSelectedIntervals),
+      tuning: List.from(_defaultTuning),
+      stringCount: _defaultStringCount,
+      visibleFretEnd: _defaultFretCount,
+      showScaleStrip: true,
+      showNoteNames: false,
+    );
+  }
+
+  // Reset methods
+  void resetDefaultsToFactorySettings() {
+    _defaultStringCount = AppConstants.defaultStringCount;
+    _defaultFretCount = AppConstants.defaultFretCount;
+    _defaultTuning =
+        List.from(MusicConstants.standardTunings['Guitar (6-string)']!);
+    _defaultLayout = FretboardLayout.rightHandedBassTop;
+    _defaultRoot = AppConstants.defaultRoot;
+    _defaultViewMode = ViewMode.intervals;
+    _defaultScale = AppConstants.defaultScale;
+    _defaultModeIndex = 0;
+    _defaultSelectedOctaves = {AppConstants.defaultOctave};
+    _defaultSelectedIntervals = {0};
+    notifyListeners();
+  }
+
   void resetToDefaults() {
-    _stringCount = AppConstants.defaultStringCount;
-    _fretCount = AppConstants.defaultFretCount;
-    _tuning = List.from(MusicConstants.standardTunings['Guitar (6-string)']!);
-    _layout = FretboardLayout.rightHandedBassTop;
-    _root = AppConstants.defaultRoot;
-    _viewMode = ViewMode.intervals;
-    _scale = AppConstants.defaultScale;
-    _modeIndex = 0;
-    _selectedOctaves = {AppConstants.defaultOctave};
-    _selectedIntervals = {0};
+    // Reset current session to defaults
+    _root = _defaultRoot;
+    _viewMode = _defaultViewMode;
+    _scale = _defaultScale;
+    _modeIndex = _defaultModeIndex;
+    _selectedOctaves = Set.from(_defaultSelectedOctaves);
+    _selectedIntervals = Set.from(_defaultSelectedIntervals);
+    notifyListeners();
+  }
+
+  void resetAllToFactorySettings() {
+    resetDefaultsToFactorySettings();
+    resetToDefaults();
+    _themeMode = ThemeMode.light;
     notifyListeners();
   }
 
   // Private helpers
-  void _adjustTuningLength() {
-    while (_tuning.length < _stringCount) {
-      _tuning.add('C3');
+  void _adjustDefaultTuningLength() {
+    while (_defaultTuning.length < _defaultStringCount) {
+      _defaultTuning.add('C3');
     }
-    if (_tuning.length > _stringCount) {
-      _tuning = _tuning.sublist(0, _stringCount);
+    if (_defaultTuning.length > _defaultStringCount) {
+      _defaultTuning = _defaultTuning.sublist(0, _defaultStringCount);
     }
   }
 
-  void _ensureSingleOctaveForChords() {
+  void _ensureSingleOctaveForDefaults() {
+    if (_defaultSelectedOctaves.length > 1) {
+      _defaultSelectedOctaves = {_defaultSelectedOctaves.first};
+    } else if (_defaultSelectedOctaves.isEmpty) {
+      _defaultSelectedOctaves = {AppConstants.defaultOctave};
+    }
+  }
+
+  void _ensureSingleOctaveForCurrent() {
     if (_selectedOctaves.length > 1) {
       _selectedOctaves = {_selectedOctaves.first};
     } else if (_selectedOctaves.isEmpty) {

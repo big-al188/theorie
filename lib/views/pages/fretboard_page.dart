@@ -44,18 +44,24 @@ class _FretboardPageState extends State<FretboardPage> {
     setState(() {
       var newFretboard = FretboardInstance(
         id: 'fretboard_${_nextId++}',
-        root: appState.root, // Use current root from AppState
-        viewMode: appState.viewMode, // Use current view mode from AppState
-        scale: appState.scale, // Use current scale from AppState
-        modeIndex: appState.modeIndex,
+
+        // Use CURRENT SESSION STATE for music settings (preserves current workflow)
+        root: appState.root, // Current working root
+        viewMode: appState.viewMode, // Current working view mode
+        scale: appState.scale, // Current working scale
+        modeIndex: appState.modeIndex, // Current working mode
+        selectedOctaves: Set.from(appState.selectedOctaves), // Current octaves
+        selectedIntervals:
+            Set.from(appState.selectedIntervals), // Current intervals
+
+        // Use DEFAULT SETTINGS for fretboard physical configuration
+        tuning: List.from(appState.defaultTuning), // Use default tuning
+        stringCount: appState.defaultStringCount, // Use default string count
+        visibleFretEnd: appState.defaultFretCount, // Use default fret count
+
+        // Standard new fretboard settings
         chordType: 'major',
         chordInversion: ChordInversion.root,
-        selectedOctaves: Set.from(appState.selectedOctaves), // Copy octaves
-        selectedIntervals:
-            Set.from(appState.selectedIntervals), // Copy intervals
-        tuning: List.from(appState.tuning), // Copy tuning
-        stringCount: appState.stringCount,
-        visibleFretEnd: appState.fretCount,
         showScaleStrip: true,
         showNoteNames: false,
         isCompact: false,
