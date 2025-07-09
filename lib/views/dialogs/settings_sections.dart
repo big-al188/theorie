@@ -18,7 +18,7 @@ class FretboardDefaultsSection extends StatelessWidget {
     return ExpansionTile(
       title: Text('Fretboard Defaults', style: UIConstants.subheadingStyle),
       subtitle: const Text('Default settings for new fretboards'),
-      initiallyExpanded: true,
+      initiallyExpanded: false,
       children: const [
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.0),
@@ -54,7 +54,7 @@ class AppPreferencesSection extends StatelessWidget {
     return ExpansionTile(
       title: Text('App Preferences', style: UIConstants.subheadingStyle),
       subtitle: const Text('Application-wide settings'),
-      initiallyExpanded: true,
+      initiallyExpanded: false,
       children: const [
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.0),

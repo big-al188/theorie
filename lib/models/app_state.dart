@@ -17,7 +17,7 @@ class AppState extends ChangeNotifier {
   int _defaultFretCount = AppConstants.defaultFretCount;
   List<String> _defaultTuning =
       List.from(MusicConstants.standardTunings['Guitar (6-string)']!);
-  FretboardLayout _defaultLayout = FretboardLayout.rightHandedBassTop;
+  FretboardLayout _defaultLayout = FretboardLayout.rightHandedBassBottom;
 
   // Default music theory settings
   String _defaultRoot = AppConstants.defaultRoot;
