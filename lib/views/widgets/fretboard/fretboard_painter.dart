@@ -9,6 +9,7 @@ import '../../../constants/music_constants.dart';
 import '../../../controllers/fretboard_controller.dart';
 import '../../../controllers/music_controller.dart';
 import '../../../utils/color_utils.dart';
+import 'dart:math' as math;
 
 class FretboardPainter extends CustomPainter {
   final FretboardConfig config;
@@ -56,6 +57,70 @@ class FretboardPainter extends CustomPainter {
         boardHeight, correctedFretCount);
 
     canvas.restore();
+  }
+
+  /// Calculate responsive font size for note labels based on available space
+  double _calculateNoteLabelFontSize(double fretWidth, double canvasWidth) {
+    // Base font size from constants
+    const baseFontSize = UIConstants.intervalLabelFontSize;
+
+    // Consider both fret width and overall canvas width for responsiveness
+    // Desktop threshold - above this width, use full size
+    const desktopThreshold = 800.0;
+
+    if (canvasWidth >= desktopThreshold) {
+      // Desktop: use full size
+      return baseFontSize;
+    }
+
+    // Mobile/tablet: scale based on available space
+    // Minimum comfortable fret width for full-size labels
+    const comfortableFretWidth =
+        50.0; // Reduced threshold for more generous scaling
+
+    if (fretWidth >= comfortableFretWidth) {
+      return baseFontSize;
+    }
+
+    // Scale down font size when frets get cramped
+    // Minimum font size to maintain readability
+    const minFontSize = 12.0; // Increased minimum size
+
+    // Calculate scale factor based on fret width - more generous range
+    final scaleFactor = (fretWidth / comfortableFretWidth).clamp(0.7, 1.0);
+
+    // Also consider overall canvas width - more generous
+    final widthFactor = (canvasWidth / desktopThreshold).clamp(0.8, 1.0);
+
+    // Use the more restrictive factor
+    final finalFactor = math.min(scaleFactor, widthFactor);
+
+    return (baseFontSize * finalFactor).clamp(minFontSize, baseFontSize);
+  }
+
+  /// Calculate responsive note marker radius based on available space
+  double _calculateNoteMarkerRadius(double fretWidth, double canvasWidth) {
+    const baseRadius = UIConstants.noteMarkerRadius;
+    const desktopThreshold = 800.0;
+
+    if (canvasWidth >= desktopThreshold) {
+      return baseRadius;
+    }
+
+    const comfortableFretWidth = 50.0; // More generous threshold
+    const minRadius = 10.0; // Larger minimum radius
+
+    if (fretWidth >= comfortableFretWidth) {
+      return baseRadius;
+    }
+
+    final scaleFactor = (fretWidth / comfortableFretWidth)
+        .clamp(0.7, 1.0); // More generous scaling
+    final widthFactor = (canvasWidth / desktopThreshold)
+        .clamp(0.8, 1.0); // More generous width factor
+    final finalFactor = math.min(scaleFactor, widthFactor);
+
+    return (baseRadius * finalFactor).clamp(minRadius, baseRadius);
   }
 
   double _drawChordName(
@@ -129,7 +194,7 @@ class FretboardPainter extends CustomPainter {
         canvas.drawLine(Offset(x, 0), Offset(x, boardHeight), fretPaint);
 
         // Draw fret number
-        _drawFretNumber(canvas, f, startX + (f - 0.5) * fretWidth);
+        _drawFretNumber(canvas, f, startX + (f - 0.5) * fretWidth, canvasWidth);
       }
     } else {
       // No headstock - draw all fret lines
@@ -142,17 +207,29 @@ class FretboardPainter extends CustomPainter {
       for (int f = 0; f < correctedFretCount; f++) {
         final actualFret = config.visibleFretStart + f;
         if (actualFret <= config.visibleFretEnd) {
-          _drawFretNumber(canvas, actualFret, startX + (f + 0.5) * fretWidth);
+          _drawFretNumber(
+              canvas, actualFret, startX + (f + 0.5) * fretWidth, canvasWidth);
         }
       }
     }
   }
 
-  void _drawFretNumber(Canvas canvas, int fretNumber, double centerX) {
+  void _drawFretNumber(
+      Canvas canvas, int fretNumber, double centerX, double canvasWidth) {
+    // Scale fret number font size for mobile
+    double fontSize = 12.0;
+    const desktopThreshold = 800.0;
+
+    if (canvasWidth < desktopThreshold) {
+      final scaleFactor = (canvasWidth / desktopThreshold)
+          .clamp(0.8, 1.0); // More generous scaling
+      fontSize = (fontSize * scaleFactor).clamp(10.0, 12.0); // Higher minimum
+    }
+
     final textPainter = TextPainter(
       text: TextSpan(
         text: '$fretNumber',
-        style: const TextStyle(fontSize: 12, color: Colors.black),
+        style: TextStyle(fontSize: fontSize, color: Colors.black),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -189,10 +266,22 @@ class FretboardPainter extends CustomPainter {
       // Draw tuning labels if headstock is visible
       if (config.visibleFretStart == 0) {
         final tuningLabel = config.tuning[stringIndex];
+
+        // Scale tuning label font size for mobile
+        double fontSize = 14.0;
+        const desktopThreshold = 800.0;
+
+        if (canvasWidth < desktopThreshold) {
+          final scaleFactor = (canvasWidth / desktopThreshold)
+              .clamp(0.8, 1.0); // More generous scaling
+          fontSize =
+              (fontSize * scaleFactor).clamp(11.0, 14.0); // Higher minimum
+        }
+
         final textPainter = TextPainter(
           text: TextSpan(
             text: tuningLabel,
-            style: const TextStyle(fontSize: 14, color: Colors.black),
+            style: TextStyle(fontSize: fontSize, color: Colors.black),
           ),
           textDirection: TextDirection.ltr,
         )..layout();
@@ -242,6 +331,8 @@ class FretboardPainter extends CustomPainter {
             highlightMap[openNote.midi]!,
             rootNote.pitchClass,
             useFlats,
+            fretWidth,
+            canvasWidth,
           );
         }
 
@@ -257,6 +348,8 @@ class FretboardPainter extends CustomPainter {
               highlightMap[frettedNote.midi]!,
               rootNote.pitchClass,
               useFlats,
+              fretWidth,
+              canvasWidth,
             );
           }
         }
@@ -275,6 +368,8 @@ class FretboardPainter extends CustomPainter {
               highlightMap[frettedNote.midi]!,
               rootNote.pitchClass,
               useFlats,
+              fretWidth,
+              canvasWidth,
             );
           }
         }
@@ -290,22 +385,32 @@ class FretboardPainter extends CustomPainter {
     Color markerColor,
     int rootPc,
     bool useFlats,
+    double fretWidth,
+    double canvasWidth,
   ) {
+    // Calculate responsive sizes
+    final markerRadius = _calculateNoteMarkerRadius(fretWidth, canvasWidth);
+    final fontSize = _calculateNoteLabelFontSize(fretWidth, canvasWidth);
+
     // Draw colored circle
     canvas.drawCircle(
       Offset(cx, cy),
-      UIConstants.noteMarkerRadius,
+      markerRadius,
       Paint()..color = markerColor,
     );
 
-    // Draw border
+    // Draw border with responsive stroke width
+    final strokeWidth = (UIConstants.noteMarkerStrokeWidth *
+            (markerRadius / UIConstants.noteMarkerRadius))
+        .clamp(1.0, 3.0);
+
     canvas.drawCircle(
       Offset(cx, cy),
-      UIConstants.noteMarkerRadius,
+      markerRadius,
       Paint()
         ..color = Colors.black
         ..style = PaintingStyle.stroke
-        ..strokeWidth = UIConstants.noteMarkerStrokeWidth,
+        ..strokeWidth = strokeWidth,
     );
 
     // Determine what to display based on showNoteNames
@@ -428,7 +533,7 @@ class FretboardPainter extends CustomPainter {
     }
 
     final textStyle = TextStyle(
-      fontSize: UIConstants.intervalLabelFontSize,
+      fontSize: fontSize,
       fontWeight: isRoot ? FontWeight.w800 : FontWeight.w600,
       color: ColorUtils.getContrastingTextColor(markerColor),
     );

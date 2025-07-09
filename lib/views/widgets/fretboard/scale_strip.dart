@@ -77,8 +77,8 @@ class ScaleStrip extends StatelessWidget {
     debugPrint(
         'Scale strip: final display octaves=$displayOctaves, count=$actualOctaveCount');
 
-    final totalHeight = UIConstants.scaleStripLabelSpace +
-        (actualOctaveCount * UIConstants.noteRowHeight) +
+    // REMOVED: octave label space calculation - no longer needed
+    final totalHeight = (actualOctaveCount * UIConstants.noteRowHeight) +
         (actualOctaveCount * UIConstants.scaleStripPaddingPerOctave);
 
     return LayoutBuilder(
@@ -118,7 +118,8 @@ class ScaleStrip extends StatelessWidget {
     final noteIndex =
         (details.localPosition.dx / noteWidth).clamp(0, 12).floor();
 
-    final clickY = details.localPosition.dy - UIConstants.scaleStripLabelSpace;
+    // UPDATED: Remove octave label space from calculation
+    final clickY = details.localPosition.dy;
     final rowHeight = UIConstants.noteRowHeight;
     final octaveRowIndex = (clickY / rowHeight).floor();
 
@@ -171,6 +172,83 @@ class ScaleStripPainter extends CustomPainter {
     required this.highlightMap,
   });
 
+  /// Calculate responsive font size for scale strip notes
+  double _calculateScaleStripFontSize(double noteWidth, double canvasWidth) {
+    const baseFontSize = 11.0; // Base font size for notes
+    const desktopThreshold = 800.0;
+
+    if (canvasWidth >= desktopThreshold) {
+      return baseFontSize;
+    }
+
+    // On mobile, scale based on available note width
+    const comfortableNoteWidth = 45.0; // More generous threshold
+
+    if (noteWidth >= comfortableNoteWidth) {
+      return baseFontSize;
+    }
+
+    // Scale down when notes get cramped
+    const minFontSize = 9.0; // Larger minimum
+    final scaleFactor = (noteWidth / comfortableNoteWidth)
+        .clamp(0.75, 1.0); // More generous scaling
+    final widthFactor = (canvasWidth / desktopThreshold)
+        .clamp(0.8, 1.0); // More generous width factor
+    final finalFactor = math.min(scaleFactor, widthFactor);
+
+    return (baseFontSize * finalFactor).clamp(minFontSize, baseFontSize);
+  }
+
+  /// Calculate responsive interval label font size
+  double _calculateIntervalLabelFontSize(double noteWidth, double canvasWidth) {
+    const baseFontSize = 11.0; // Base font size for interval labels
+    const desktopThreshold = 800.0;
+
+    if (canvasWidth >= desktopThreshold) {
+      return baseFontSize;
+    }
+
+    const comfortableNoteWidth = 45.0; // More generous threshold
+
+    if (noteWidth >= comfortableNoteWidth) {
+      return baseFontSize;
+    }
+
+    const minFontSize = 8.0; // Larger minimum
+    final scaleFactor = (noteWidth / comfortableNoteWidth)
+        .clamp(0.75, 1.0); // More generous scaling
+    final widthFactor = (canvasWidth / desktopThreshold)
+        .clamp(0.8, 1.0); // More generous width factor
+    final finalFactor = math.min(scaleFactor, widthFactor);
+
+    return (baseFontSize * finalFactor).clamp(minFontSize, baseFontSize);
+  }
+
+  /// Calculate responsive note circle radius
+  double _calculateNoteRadius(double noteWidth, double canvasWidth) {
+    const baseRadius = UIConstants.scaleStripNoteRadius;
+    const desktopThreshold = 800.0;
+
+    if (canvasWidth >= desktopThreshold) {
+      return baseRadius;
+    }
+
+    const comfortableNoteWidth = 45.0; // More generous threshold
+    const minRadius = 12.0; // Larger minimum radius
+
+    if (noteWidth >= comfortableNoteWidth) {
+      return baseRadius;
+    }
+
+    final scaleFactor = (noteWidth / comfortableNoteWidth)
+        .clamp(0.75, 1.0); // More generous scaling
+    final widthFactor = (canvasWidth / desktopThreshold)
+        .clamp(0.8, 1.0); // More generous width factor
+    final finalFactor = math.min(scaleFactor, widthFactor);
+
+    return (baseRadius * finalFactor).clamp(minRadius, baseRadius);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final rootForDisplay = config.isChordMode
@@ -184,12 +262,13 @@ class ScaleStripPainter extends CustomPainter {
     final chromaticSequence = NoteUtils.chromaticSequence(rootForDisplay);
 
     final sortedOctaves = displayOctaves.toList()..sort();
+    final noteWidth = size.width / 13.0;
 
     // Draw each octave row
     for (int i = 0; i < sortedOctaves.length; i++) {
       final octave = sortedOctaves[i];
-      final rowY =
-          UIConstants.scaleStripLabelSpace + (i * UIConstants.noteRowHeight);
+      // UPDATED: Remove octave label space offset
+      final rowY = i * UIConstants.noteRowHeight;
 
       try {
         _drawOctaveRow(
@@ -200,11 +279,11 @@ class ScaleStripPainter extends CustomPainter {
           chromaticSequence,
           rootNote.pitchClass,
           config.isChordMode,
+          noteWidth,
         );
 
-        // FIXED: Draw more appropriate octave labels
-        _drawOctaveLabel(
-            canvas, octave, rowY, config.isChordMode, i, sortedOctaves.length);
+        // REMOVED: Octave label drawing - no longer needed since note names include octave
+        // _drawOctaveLabel(canvas, octave, rowY, config.isChordMode, i, sortedOctaves.length);
       } catch (e) {
         // Silently handle any drawing errors to prevent crash
         debugPrint('Error drawing octave $octave: $e');
@@ -220,9 +299,8 @@ class ScaleStripPainter extends CustomPainter {
     List<String> chromaticSequence,
     int rootPc,
     bool isChordMode,
+    double noteWidth,
   ) {
-    final noteWidth = size.width / 13.0;
-
     for (int pc = 0; pc < 13; pc++) {
       final cx = pc * noteWidth + noteWidth / 2;
       if (cx < 0 || cx > size.width) continue;
@@ -278,10 +356,11 @@ class ScaleStripPainter extends CustomPainter {
         }
       }
 
-      // Draw note circle
-      _drawNoteCircle(canvas, cx, rowY + 50, noteColor, isHighlighted);
+      // Draw note circle with responsive sizing
+      _drawNoteCircle(canvas, cx, rowY + 50, noteColor, isHighlighted,
+          noteWidth, size.width);
 
-      // Draw interval label
+      // Draw interval label with responsive sizing
       _drawIntervalLabel(
         canvas,
         cx,
@@ -293,9 +372,11 @@ class ScaleStripPainter extends CustomPainter {
         config.isChordMode,
         intervalForColor,
         midi,
+        noteWidth,
+        size.width,
       );
 
-      // Draw note name
+      // Draw note name with responsive sizing
       _drawNoteName(
         canvas,
         cx,
@@ -304,25 +385,32 @@ class ScaleStripPainter extends CustomPainter {
         noteOctave,
         noteColor,
         isHighlighted,
+        noteWidth,
+        size.width,
       );
     }
   }
 
-  void _drawNoteCircle(
-      Canvas canvas, double cx, double cy, Color color, bool isHighlighted) {
-    canvas.drawCircle(
-      Offset(cx, cy),
-      UIConstants.scaleStripNoteRadius,
-      Paint()..color = color,
-    );
+  void _drawNoteCircle(Canvas canvas, double cx, double cy, Color color,
+      bool isHighlighted, double noteWidth, double canvasWidth) {
+    final radius = _calculateNoteRadius(noteWidth, canvasWidth);
 
     canvas.drawCircle(
       Offset(cx, cy),
-      UIConstants.scaleStripNoteRadius,
+      radius,
+      Paint()..color = color,
+    );
+
+    final strokeWidth =
+        (radius / UIConstants.scaleStripNoteRadius).clamp(1.0, 2.0);
+
+    canvas.drawCircle(
+      Offset(cx, cy),
+      radius,
       Paint()
         ..color = isHighlighted ? Colors.black : Colors.grey.shade600
         ..style = PaintingStyle.stroke
-        ..strokeWidth = isHighlighted ? 2 : 1,
+        ..strokeWidth = strokeWidth,
     );
   }
 
@@ -337,6 +425,8 @@ class ScaleStripPainter extends CustomPainter {
     bool isChordMode,
     int intervalForScale,
     int midi,
+    double noteWidth,
+    double canvasWidth,
   ) {
     String intervalLabel;
 
@@ -367,11 +457,13 @@ class ScaleStripPainter extends CustomPainter {
       intervalLabel = FretboardController.getIntervalLabel(interval);
     }
 
+    final fontSize = _calculateIntervalLabelFontSize(noteWidth, canvasWidth);
+
     final intervalPainter = TextPainter(
       text: TextSpan(
         text: intervalLabel,
         style: TextStyle(
-          fontSize: isHighlighted ? 11 : 9,
+          fontSize: fontSize,
           color: isHighlighted ? Colors.black : Colors.grey.shade600,
           fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
         ),
@@ -385,12 +477,12 @@ class ScaleStripPainter extends CustomPainter {
     if (isHighlighted) {
       final bgRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(
-          intervalOffset.dx - 3,
+          intervalOffset.dx - 2,
           intervalOffset.dy - 1,
-          intervalPainter.width + 6,
+          intervalPainter.width + 4,
           intervalPainter.height + 2,
         ),
-        const Radius.circular(3),
+        const Radius.circular(2),
       );
       canvas.drawRRect(bgRect, Paint()..color = Colors.white.withOpacity(0.85));
     }
@@ -406,15 +498,19 @@ class ScaleStripPainter extends CustomPainter {
     int octave,
     Color noteColor,
     bool isHighlighted,
+    double noteWidth,
+    double canvasWidth,
   ) {
     // Always show note name with octave number
     final noteNameWithOctave = '$noteName$octave';
+
+    final fontSize = _calculateScaleStripFontSize(noteWidth, canvasWidth);
 
     final notePainter = TextPainter(
       text: TextSpan(
         text: noteNameWithOctave,
         style: TextStyle(
-          fontSize: isHighlighted ? 11 : 9,
+          fontSize: fontSize,
           color: ColorUtils.getContrastingTextColor(noteColor),
           fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
         ),
@@ -428,33 +524,7 @@ class ScaleStripPainter extends CustomPainter {
     );
   }
 
-  void _drawOctaveLabel(Canvas canvas, int octave, double rowY,
-      bool isChordMode, int rowIndex, int totalRows) {
-    String rowLabel;
-    if (isChordMode) {
-      // FIXED: Show actual octave numbers in chord mode too
-      rowLabel = 'Oct $octave';
-    } else {
-      rowLabel = 'Oct $octave';
-    }
-
-    final octaveLabelPainter = TextPainter(
-      text: TextSpan(
-        text: rowLabel,
-        style: const TextStyle(
-          fontSize: 10,
-          color: Colors.grey,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    octaveLabelPainter.paint(
-      canvas,
-      Offset(10, rowY + 40),
-    );
-  }
+  // REMOVED: _drawOctaveLabel method entirely since octave labels are no longer needed
 
   @override
   bool shouldRepaint(covariant ScaleStripPainter oldDelegate) {
