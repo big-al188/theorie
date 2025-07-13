@@ -1,0 +1,225 @@
+// lib/views/pages/instrument_selection_page.dart
+import 'package:flutter/material.dart';
+import '../../models/learning/learning_content.dart';
+import '../../constants/ui_constants.dart';
+import 'home_page.dart'; // This will be the original home page
+
+class InstrumentSelectionPage extends StatelessWidget {
+  const InstrumentSelectionPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
+    final orientation = MediaQuery.of(context).orientation;
+    final isLandscape = orientation == Orientation.landscape;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Select Your Instrument',
+          style: TextStyle(
+            fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+          ),
+        ),
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(_getPadding(deviceType, isLandscape)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(context, deviceType),
+              SizedBox(height: deviceType == DeviceType.mobile ? 24.0 : 32.0),
+              _buildInstrumentGrid(context, deviceType, isLandscape),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  double _getPadding(DeviceType deviceType, bool isLandscape) {
+    if (isLandscape && deviceType == DeviceType.mobile) {
+      return 16.0; // Reduced padding for landscape mobile
+    }
+    return deviceType == DeviceType.mobile ? 20.0 : 32.0;
+  }
+
+  Widget _buildHeader(BuildContext context, DeviceType deviceType) {
+    final titleFontSize = deviceType == DeviceType.mobile ? 24.0 : 28.0;
+    final subtitleFontSize = deviceType == DeviceType.mobile ? 16.0 : 18.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Choose Your Instrument',
+          style: TextStyle(
+            fontSize: titleFontSize,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).primaryColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Select an instrument to explore its interactive fretboard and music theory concepts.',
+          style: TextStyle(
+            fontSize: subtitleFontSize,
+            color: Colors.grey.shade600,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInstrumentGrid(BuildContext context, DeviceType deviceType, bool isLandscape) {
+    final instruments = LearningContentRepository.getAllInstruments();
+    
+    // Responsive grid layout
+    int crossAxisCount;
+    if (deviceType == DeviceType.mobile) {
+      crossAxisCount = isLandscape ? 3 : 1; // Single column for mobile portrait
+    } else if (deviceType == DeviceType.tablet) {
+      crossAxisCount = isLandscape ? 4 : 2;
+    } else {
+      crossAxisCount = 4; // Desktop
+    }
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 16.0,
+        mainAxisSpacing: 16.0,
+        childAspectRatio: deviceType == DeviceType.mobile && !isLandscape 
+            ? 3.5 // Wide cards for mobile portrait
+            : 1.1, // Square-ish for others
+      ),
+      itemCount: instruments.length,
+      itemBuilder: (context, index) {
+        final instrument = instruments[index];
+        return _buildInstrumentCard(context, instrument, deviceType, isLandscape);
+      },
+    );
+  }
+
+  Widget _buildInstrumentCard(BuildContext context, Instrument instrument, DeviceType deviceType, bool isLandscape) {
+    final isAvailable = instrument.isAvailable;
+    final titleFontSize = deviceType == DeviceType.mobile ? 18.0 : 20.0;
+    final subtitleFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
+    final iconSize = deviceType == DeviceType.mobile 
+        ? (isLandscape ? 40.0 : 48.0)
+        : 56.0;
+
+    return Card(
+      elevation: 4,
+      child: InkWell(
+        onTap: isAvailable ? () => _navigateToInstrument(context, instrument) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: isAvailable 
+                ? null 
+                : Colors.grey.shade100,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                _getInstrumentIcon(instrument),
+                size: iconSize,
+                color: isAvailable 
+                    ? Theme.of(context).primaryColor 
+                    : Colors.grey.shade400,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                instrument.displayName,
+                style: TextStyle(
+                  fontSize: titleFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: isAvailable ? null : Colors.grey.shade500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                instrument.description,
+                style: TextStyle(
+                  fontSize: subtitleFontSize,
+                  color: isAvailable 
+                      ? Colors.grey.shade600 
+                      : Colors.grey.shade400,
+                  height: 1.3,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: deviceType == DeviceType.mobile && !isLandscape ? 2 : 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (!isAvailable) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Coming Soon',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _getInstrumentIcon(Instrument instrument) {
+    switch (instrument) {
+      case Instrument.guitar:
+        return Icons.music_note; // Closest to guitar
+      case Instrument.piano:
+        return Icons.piano;
+      case Instrument.bass:
+        return Icons.music_note;
+      case Instrument.ukulele:
+        return Icons.music_note;
+    }
+  }
+
+  void _navigateToInstrument(BuildContext context, Instrument instrument) {
+    switch (instrument) {
+      case Instrument.guitar:
+        // Navigate to the original home page (now the guitar page)
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const HomePage()),
+        );
+        break;
+      case Instrument.piano:
+      case Instrument.bass:
+      case Instrument.ukulele:
+        // Show coming soon message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${instrument.displayName} support is coming soon!'),
+            backgroundColor: Colors.orange.shade600,
+          ),
+        );
+        break;
+    }
+  }
+}

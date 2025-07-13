@@ -1,4 +1,4 @@
-// lib/models/app_state.dart
+// lib/models/app_state.dart - Updated with user management
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
@@ -8,9 +8,14 @@ import 'fretboard/fretboard_config.dart';
 import 'fretboard/fretboard_instance.dart';
 import 'music/chord.dart';
 import 'music/note.dart';
+import 'user/user.dart';
+import '../services/user_service.dart';
 
 /// Central application state management
 class AppState extends ChangeNotifier {
+  // ===== USER MANAGEMENT =====
+  User? _currentUser;
+
   // ===== FRETBOARD DEFAULTS =====
   // Default fretboard configuration that will be used for new fretboards
   int _defaultStringCount = AppConstants.defaultStringCount;
@@ -38,6 +43,10 @@ class AppState extends ChangeNotifier {
   int _modeIndex = 0;
   Set<int> _selectedOctaves = {AppConstants.defaultOctave};
   Set<int> _selectedIntervals = {0}; // Start with root selected
+
+  // ===== USER GETTERS =====
+  User? get currentUser => _currentUser;
+  bool get isLoggedIn => _currentUser != null;
 
   // ===== FRETBOARD DEFAULTS GETTERS =====
   int get defaultStringCount => _defaultStringCount;
@@ -95,41 +104,104 @@ class AppState extends ChangeNotifier {
       ? availableModes[_modeIndex % availableModes.length]
       : 'Mode ${_modeIndex + 1}';
 
+  // ===== USER MANAGEMENT METHODS =====
+  
+  /// Set current user and load their preferences
+  Future<void> setCurrentUser(User user) async {
+    _currentUser = user;
+    await loadUserPreferences(user.preferences);
+    notifyListeners();
+  }
+
+  /// Load user preferences into app state
+  Future<void> loadUserPreferences(UserPreferences preferences) async {
+    _themeMode = preferences.themeMode;
+    _defaultLayout = preferences.defaultLayout;
+    _defaultStringCount = preferences.defaultStringCount;
+    _defaultFretCount = preferences.defaultFretCount;
+    _defaultTuning = List.from(preferences.defaultTuning);
+    _defaultRoot = preferences.defaultRoot;
+    _defaultViewMode = preferences.defaultViewMode;
+    _defaultScale = preferences.defaultScale;
+    _defaultSelectedOctaves = Set.from(preferences.defaultSelectedOctaves);
+    
+    // Also update current session state to match defaults
+    _root = _defaultRoot;
+    _viewMode = _defaultViewMode;
+    _scale = _defaultScale;
+    _selectedOctaves = Set.from(_defaultSelectedOctaves);
+    
+    notifyListeners();
+  }
+
+  /// Save current preferences to user
+  Future<void> saveUserPreferences() async {
+    if (_currentUser != null) {
+      final updatedPreferences = _currentUser!.preferences.copyWith(
+        themeMode: _themeMode,
+        defaultLayout: _defaultLayout,
+        defaultStringCount: _defaultStringCount,
+        defaultFretCount: _defaultFretCount,
+        defaultTuning: _defaultTuning,
+        defaultRoot: _defaultRoot,
+        defaultViewMode: _defaultViewMode,
+        defaultScale: _defaultScale,
+        defaultSelectedOctaves: _defaultSelectedOctaves,
+      );
+      
+      await UserService.instance.updateUserPreferences(updatedPreferences);
+      _currentUser = _currentUser!.copyWith(preferences: updatedPreferences);
+    }
+  }
+
+  /// Logout current user
+  Future<void> logout() async {
+    await UserService.instance.logout();
+    _currentUser = null;
+    notifyListeners();
+  }
+
   // ===== FRETBOARD DEFAULTS SETTERS =====
   void setDefaultStringCount(int count) {
     if (count < AppConstants.minStrings || count > AppConstants.maxStrings)
       return;
     _defaultStringCount = count;
     _adjustDefaultTuningLength();
+    saveUserPreferences();
     notifyListeners();
   }
 
   void setDefaultFretCount(int count) {
     if (count < AppConstants.minFrets || count > AppConstants.maxFrets) return;
     _defaultFretCount = count;
+    saveUserPreferences();
     notifyListeners();
   }
 
   void setDefaultTuning(List<String> newTuning) {
     _defaultTuning = List.from(newTuning);
     _adjustDefaultTuningLength();
+    saveUserPreferences();
     notifyListeners();
   }
 
   void setDefaultTuningNote(int stringIndex, String note, int octave) {
     if (stringIndex >= 0 && stringIndex < _defaultTuning.length) {
       _defaultTuning[stringIndex] = '$note$octave';
+      saveUserPreferences();
       notifyListeners();
     }
   }
 
   void setDefaultLayout(FretboardLayout layout) {
     _defaultLayout = layout;
+    saveUserPreferences();
     notifyListeners();
   }
 
   void setDefaultRoot(String root) {
     _defaultRoot = root;
+    saveUserPreferences();
     notifyListeners();
   }
 
@@ -140,17 +212,20 @@ class AppState extends ChangeNotifier {
     } else if (mode == ViewMode.chords) {
       _ensureSingleOctaveForDefaults();
     }
+    saveUserPreferences();
     notifyListeners();
   }
 
   void setDefaultScale(String scale) {
     _defaultScale = scale;
     _defaultModeIndex = 0;
+    saveUserPreferences();
     notifyListeners();
   }
 
   void setDefaultModeIndex(int index) {
     _defaultModeIndex = index;
+    saveUserPreferences();
     notifyListeners();
   }
 
@@ -163,6 +238,7 @@ class AppState extends ChangeNotifier {
       } else {
         _defaultSelectedOctaves = validOctaves;
       }
+      saveUserPreferences();
       notifyListeners();
     }
   }
@@ -173,6 +249,7 @@ class AppState extends ChangeNotifier {
       newIntervals.add(0);
     }
     _defaultSelectedIntervals = newIntervals;
+    saveUserPreferences();
     notifyListeners();
   }
 
@@ -187,12 +264,14 @@ class AppState extends ChangeNotifier {
   // ===== APP PREFERENCES SETTERS =====
   void setThemeMode(ThemeMode mode) {
     _themeMode = mode;
+    saveUserPreferences();
     notifyListeners();
   }
 
   void toggleTheme() {
     _themeMode =
         _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    saveUserPreferences();
     notifyListeners();
   }
 
@@ -389,6 +468,7 @@ class AppState extends ChangeNotifier {
     _defaultModeIndex = 0;
     _defaultSelectedOctaves = {AppConstants.defaultOctave};
     _defaultSelectedIntervals = {0};
+    saveUserPreferences();
     notifyListeners();
   }
 
@@ -407,6 +487,7 @@ class AppState extends ChangeNotifier {
     resetDefaultsToFactorySettings();
     resetToDefaults();
     _themeMode = ThemeMode.light;
+    saveUserPreferences();
     notifyListeners();
   }
 

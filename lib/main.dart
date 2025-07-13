@@ -2,9 +2,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'models/app_state.dart';
-import 'views/pages/home_page.dart';
+import 'services/user_service.dart';
+import 'views/pages/login_page.dart';
+import 'views/pages/welcome_page.dart';
 
-void main() => runApp(const TheorieApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize user service
+  await UserService.instance.initialize();
+  
+  runApp(const TheorieApp());
+}
 
 class TheorieApp extends StatelessWidget {
   const TheorieApp({super.key});
@@ -24,7 +33,7 @@ class TheorieApp extends StatelessWidget {
             theme: _buildLightTheme(),
             darkTheme: _buildDarkTheme(),
 
-            home: const HomePage(),
+            home: const AuthWrapper(),
           );
         },
       ),
@@ -47,5 +56,70 @@ class TheorieApp extends StatelessWidget {
       colorSchemeSeed: Colors.indigo,
       brightness: Brightness.dark,
     );
+  }
+}
+
+/// Wrapper to handle authentication state
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _isLoading = true;
+  bool _isLoggedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    try {
+      final user = await UserService.instance.getCurrentUser();
+      if (user != null && mounted) {
+        // Load user preferences into app state
+        final appState = context.read<AppState>();
+        await appState.setCurrentUser(user);
+        
+        setState(() {
+          _isLoggedIn = true;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoggedIn = false;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoggedIn = false;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading Theorie...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _isLoggedIn ? const WelcomePage() : const LoginPage();
   }
 }
