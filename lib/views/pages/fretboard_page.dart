@@ -7,6 +7,7 @@ import '../../models/fretboard/fretboard_instance.dart';
 import '../../models/music/chord.dart';
 import '../../models/music/note.dart';
 import '../../constants/ui_constants.dart';
+import '../widgets/common/app_bar.dart';
 import '../widgets/fretboard/fretboard_widget.dart';
 import '../widgets/controls/fretboard_controls.dart';
 import '../dialogs/settings_dialog.dart';
@@ -124,33 +125,26 @@ class _FretboardPageState extends State<FretboardPage> {
     return Consumer<AppState>(
       builder: (context, state, child) {
         return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              'Multi-Fretboard View',
-              style: TextStyle(
-                fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
-              ),
-            ),
+          appBar: TheorieAppBar(
+            title: 'Multi-Fretboard View',
             actions: [
+              // Page-specific actions - these appear BEFORE common actions
               IconButton(
                 icon: Icon(
-                    _cleanViewMode ? Icons.visibility_off : Icons.visibility),
+                  _cleanViewMode ? Icons.visibility_off : Icons.visibility,
+                ),
                 tooltip: _cleanViewMode
                     ? 'Show Controls'
                     : 'Hide Controls (Clean View)',
                 onPressed: _toggleCleanView,
               ),
-              if (!_cleanViewMode) ...[
+              if (!_cleanViewMode) 
                 IconButton(
                   icon: const Icon(Icons.add),
                   tooltip: 'Add Fretboard',
                   onPressed: _addFretboard,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.settings),
-                  onPressed: () => showSettingsDialog(context),
-                ),
-              ],
+              // Theme toggle, Settings, and Logout will be added automatically
             ],
           ),
           body: _fretboards.isEmpty

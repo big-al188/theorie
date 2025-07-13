@@ -1,20 +1,27 @@
-// lib/views/widgets/common/app_bar.dart
+// Enhanced lib/views/widgets/common/app_bar.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../models/app_state.dart';
 import '../../../models/fretboard/fretboard_config.dart';
 import '../../../constants/ui_constants.dart';
 import '../../dialogs/settings_dialog.dart';
+import '../../pages/login_page.dart';
 
-/// Common app bar for the application with responsive design
+/// Common app bar for the application with responsive design and quick actions
 class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
   final bool showSettings;
+  final bool showLogout;
+  final bool showThemeToggle;
 
   const TheorieAppBar({
     super.key,
     required this.title,
     this.actions,
     this.showSettings = true,
+    this.showLogout = true,
+    this.showThemeToggle = true,
   });
 
   @override
@@ -68,29 +75,150 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
     final appBarHeight = getAppBarHeight(screenWidth);
     final iconSize = getIconSize(screenWidth);
     final titleFontSize = getTitleFontSize(screenWidth);
+    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
 
-    return PreferredSize(
-      preferredSize: Size.fromHeight(appBarHeight),
-      child: AppBar(
-        title: Text(
-          title,
-          style: TextStyle(fontSize: titleFontSize),
-        ),
-        toolbarHeight: appBarHeight,
-        actions: [
-          if (actions != null)
-            ...actions!.map(
-                (action) => _wrapActionWithResponsiveSize(action, iconSize)),
-          if (showSettings)
-            IconButton(
-              icon: const Icon(Icons.settings),
-              iconSize: iconSize,
-              tooltip: 'Settings',
-              onPressed: () => showSettingsDialog(context),
+    return Consumer<AppState>(
+      builder: (context, appState, child) {
+        return PreferredSize(
+          preferredSize: Size.fromHeight(appBarHeight),
+          child: AppBar(
+            title: Text(
+              title,
+              style: TextStyle(fontSize: titleFontSize),
             ),
+            toolbarHeight: appBarHeight,
+            actions: _buildActionsList(context, appState, iconSize, titleFontSize, deviceType),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Build the complete actions list with proper ordering and responsive sizing
+  List<Widget> _buildActionsList(
+    BuildContext context, 
+    AppState appState, 
+    double iconSize, 
+    double titleFontSize, 
+    DeviceType deviceType
+  ) {
+    final actionsList = <Widget>[];
+
+    // 1. Add custom page-specific actions first (leftmost position)
+    if (actions != null) {
+      actionsList.addAll(
+        actions!.map((action) => _wrapActionWithResponsiveSize(action, iconSize))
+      );
+    }
+
+    // 2. Add common quick access actions (middle positions)
+    
+    // Theme toggle button (quick access)
+    if (showThemeToggle) {
+      actionsList.add(
+        IconButton(
+          icon: Icon(
+            appState.isDarkMode ? Icons.light_mode : Icons.dark_mode,
+          ),
+          iconSize: iconSize,
+          tooltip: appState.isDarkMode
+              ? 'Switch to Light Theme'
+              : 'Switch to Dark Theme',
+          onPressed: () => appState.toggleTheme(),
+        ),
+      );
+    }
+    
+    // Settings button
+    if (showSettings) {
+      actionsList.add(
+        IconButton(
+          icon: const Icon(Icons.settings),
+          iconSize: iconSize,
+          tooltip: 'Settings',
+          onPressed: () => showSettingsDialog(context),
+        ),
+      );
+    }
+    
+    // 3. Add logout button (second to last position)
+    if (showLogout && appState.currentUser != null && !appState.currentUser!.isDefaultUser) {
+      actionsList.add(
+        IconButton(
+          icon: const Icon(Icons.logout),
+          iconSize: iconSize,
+          tooltip: 'Logout',
+          onPressed: () => _handleLogout(context, appState, deviceType),
+        ),
+      );
+    }
+    
+    // 4. Add user indicator for mobile (rightmost position)
+    if (deviceType == DeviceType.mobile && 
+        appState.currentUser != null && 
+        !appState.currentUser!.isDefaultUser) {
+      actionsList.add(
+        Padding(
+          padding: const EdgeInsets.only(right: 8.0),
+          child: Center(
+            child: Text(
+              appState.currentUser!.username.length > 8 
+                  ? '${appState.currentUser!.username.substring(0, 8)}...'
+                  : appState.currentUser!.username,
+              style: TextStyle(
+                fontSize: titleFontSize - 4,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return actionsList;
+  }
+  Future<void> _handleLogout(BuildContext context, AppState appState, DeviceType deviceType) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Logout',
+          style: TextStyle(
+            fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to logout?',
+          style: TextStyle(
+            fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Logout'),
+          ),
         ],
       ),
     );
+
+    if (confirmed == true && context.mounted) {
+      await appState.logout();
+      
+      if (context.mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+          (route) => false,
+        );
+      }
+    }
   }
 
   /// Wrap action widgets with responsive icon sizes if they are IconButtons
@@ -139,17 +267,13 @@ class ViewModeToggle extends StatelessWidget {
                     : Text(
                         mode.displayName,
                         style: TextStyle(
-                          fontSize:
-                              deviceType == DeviceType.mobile ? 12.0 : 14.0,
+                          fontSize: deviceType == DeviceType.mobile ? 10.0 : 12.0,
                         ),
                       ),
                 icon: Icon(
-                  _getIconForMode(mode),
-                  size: iconSize,
+                  _getIconForViewMode(mode),
+                  size: iconSize - 4,
                 ),
-                tooltip: isCompact
-                    ? mode.displayName
-                    : null, // Add tooltip for mobile
               ))
           .toList(),
       selected: {currentMode},
@@ -158,27 +282,17 @@ class ViewModeToggle extends StatelessWidget {
           onChanged(selected.first);
         }
       },
-      style: SegmentedButton.styleFrom(
-        padding: EdgeInsets.symmetric(
-          horizontal: deviceType == DeviceType.mobile ? 8.0 : 12.0,
-          vertical: deviceType == DeviceType.mobile ? 4.0 : 8.0,
-        ),
-        minimumSize: Size(
-          deviceType == DeviceType.mobile ? 32.0 : 40.0,
-          deviceType == DeviceType.mobile ? 32.0 : 40.0,
-        ),
-      ),
     );
   }
 
-  IconData _getIconForMode(ViewMode mode) {
+  IconData _getIconForViewMode(ViewMode mode) {
     switch (mode) {
-      case ViewMode.intervals:
-        return Icons.numbers;
       case ViewMode.scales:
         return Icons.music_note;
       case ViewMode.chords:
         return Icons.piano;
+      case ViewMode.intervals:
+        return Icons.straighten;
     }
   }
 }
