@@ -5,6 +5,7 @@ import '../../models/app_state.dart';
 import '../../models/learning/learning_content.dart';
 import '../../models/user/user.dart';
 import '../../constants/ui_constants.dart';
+import '../widgets/common/app_bar.dart';
 import 'learning_topics_page.dart';
 import 'quiz_placeholder_page.dart';
 
@@ -19,15 +20,11 @@ class LearningSectionsPage extends StatelessWidget {
     final isLandscape = orientation == Orientation.landscape;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Learning Sections',
-          style: TextStyle(
-            fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
-          ),
-        ),
-        backgroundColor: Theme.of(context).colorScheme.secondary,
-        foregroundColor: Colors.white,
+      appBar: const TheorieAppBar(
+        title: 'Learning Sections',
+        showSettings: true,
+        showThemeToggle: true,
+        showLogout: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/learning/learning_content.dart';
 import '../../constants/ui_constants.dart';
+import '../widgets/common/app_bar.dart';
 import 'quiz_placeholder_page.dart';
 
 class TopicDetailPage extends StatefulWidget {
@@ -55,16 +56,11 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
     final isLandscape = orientation == Orientation.landscape;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.topic.title,
-          style: TextStyle(
-            fontSize: deviceType == DeviceType.mobile ? 16.0 : 18.0,
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
-        backgroundColor: _getLevelColor(widget.section.level),
-        foregroundColor: Colors.white,
+      appBar: TheorieAppBar(
+        title: widget.topic.title,
+        showSettings: true,
+        showThemeToggle: true,
+        showLogout: true,
         actions: [
           Consumer<AppState>(
             builder: (context, appState, child) {
@@ -338,79 +334,75 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
     );
   }
 
-    // Update the _buildExamples method in topic_detail_page.dart
-    Widget _buildExamples(BuildContext context, DeviceType deviceType) {
+  Widget _buildExamples(BuildContext context, DeviceType deviceType) {
     if (widget.topic.examples.isEmpty) return const SizedBox.shrink();
 
     final titleFontSize = deviceType == DeviceType.mobile ? 18.0 : 20.0;
     final bodyFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
 
     return Container(
-        width: double.infinity,
-        padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
-        decoration: BoxDecoration(
-        // Match Key Points styling - use level color with opacity
+      width: double.infinity,
+      padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+      decoration: BoxDecoration(
         color: _getLevelColor(widget.section.level).withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _getLevelColor(widget.section.level).withOpacity(0.2)),
-        ),
-        child: Column(
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-            Row(
+          Row(
             children: [
-                Icon(
+              Icon(
                 Icons.music_note,
-                color: _getLevelColor(widget.section.level), // Use level color instead of hardcoded blue
+                color: _getLevelColor(widget.section.level),
                 size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
+              ),
+              const SizedBox(width: 8),
+              Text(
                 'Examples',
                 style: TextStyle(
-                    fontSize: titleFontSize,
-                    fontWeight: FontWeight.bold,
-                    color: _getLevelColor(widget.section.level), // Use level color instead of hardcoded blue
+                  fontSize: titleFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: _getLevelColor(widget.section.level),
                 ),
-                ),
+              ),
             ],
-            ),
-            const SizedBox(height: 12),
-            ...widget.topic.examples.map((example) => Padding(
+          ),
+          const SizedBox(height: 12),
+          ...widget.topic.examples.map((example) => Padding(
             padding: const EdgeInsets.only(bottom: 8.0),
             child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                // Replace play_arrow icon with bullet point to match Key Points
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Container(
-                    width: 6,
-                    height: 6,
-                    margin: const EdgeInsets.only(top: 8, right: 12),
-                    decoration: BoxDecoration(
-                    color: _getLevelColor(widget.section.level), // Use level color for bullet
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.only(top: 8, right: 12),
+                  decoration: BoxDecoration(
+                    color: _getLevelColor(widget.section.level),
                     borderRadius: BorderRadius.circular(3),
-                    ),
+                  ),
                 ),
                 Expanded(
-                    child: Text(
+                  child: Text(
                     example,
                     style: TextStyle(
-                        fontSize: bodyFontSize,
-                        // Theme-aware text color for both light and dark modes
-                        color: Theme.of(context).brightness == Brightness.dark 
-                            ? Colors.grey.shade300 
-                            : Colors.grey.shade800,
-                        height: 1.4,
+                      fontSize: bodyFontSize,
+                      color: Theme.of(context).brightness == Brightness.dark 
+                          ? Colors.grey.shade300 
+                          : Colors.grey.shade800,
+                      height: 1.4,
                     ),
-                    ),
+                  ),
                 ),
-                ],
+              ],
             ),
-            )),
+          )),
         ],
-        ),
+      ),
     );
-    }
+  }
 
   Widget _buildQuizButton(BuildContext context, DeviceType deviceType) {
     final buttonHeight = deviceType == DeviceType.mobile ? 48.0 : 56.0;

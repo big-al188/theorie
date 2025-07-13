@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../models/learning/learning_content.dart';
 import '../../constants/ui_constants.dart';
+import '../widgets/common/app_bar.dart';
 import 'home_page.dart'; // This will be the original home page
 
 class InstrumentSelectionPage extends StatelessWidget {
@@ -15,15 +16,11 @@ class InstrumentSelectionPage extends StatelessWidget {
     final isLandscape = orientation == Orientation.landscape;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Select Your Instrument',
-          style: TextStyle(
-            fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
-          ),
-        ),
-        backgroundColor: Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
+      appBar: const TheorieAppBar(
+        title: 'Select Your Instrument',
+        showSettings: true,
+        showThemeToggle: true,
+        showLogout: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(

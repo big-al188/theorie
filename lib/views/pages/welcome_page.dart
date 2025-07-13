@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../services/user_service.dart';
 import '../../constants/ui_constants.dart';
+import '../widgets/common/app_bar.dart';
 import '../dialogs/settings_dialog.dart';
 import 'instrument_selection_page.dart';
 import 'learning_sections_page.dart';
@@ -23,45 +24,13 @@ class WelcomePage extends StatelessWidget {
     return Consumer<AppState>(
       builder: (context, appState, child) {
         return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              'Theorie',
-              style: TextStyle(
-                fontSize: deviceType == DeviceType.mobile ? 20.0 : 24.0,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            automaticallyImplyLeading: false,
-            actions: [
-              // User info
-              if (appState.currentUser != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: Center(
-                    child: Text(
-                      'Hi, ${appState.currentUser!.username}',
-                      style: TextStyle(
-                        fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              
-              // Settings button
-              IconButton(
-                icon: const Icon(Icons.settings),
-                onPressed: () => showSettingsDialog(context),
-                tooltip: 'Settings',
-              ),
-              
-              // Logout button
-              IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: () => _handleLogout(context),
-                tooltip: 'Logout',
-              ),
-            ],
+          // ONLY CHANGE: Replace AppBar with TheoryAppBar
+          appBar: TheorieAppBar(
+            title: 'Theorie',
+            showThemeToggle: true,
+            showSettings: true,
+            showLogout: true,
+            actions: null,
           ),
           body: SafeArea(
             child: SingleChildScrollView(

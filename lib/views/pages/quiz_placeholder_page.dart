@@ -1,6 +1,7 @@
 // lib/views/pages/quiz_placeholder_page.dart
 import 'package:flutter/material.dart';
 import '../../constants/ui_constants.dart';
+import '../widgets/common/app_bar.dart';
 
 class QuizPlaceholderPage extends StatelessWidget {
   final String title;
@@ -24,15 +25,11 @@ class QuizPlaceholderPage extends StatelessWidget {
     final isLandscape = orientation == Orientation.landscape;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Quiz',
-          style: TextStyle(
-            fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
-          ),
-        ),
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
+      appBar: const TheorieAppBar(
+        title: 'Quiz',
+        showSettings: true,
+        showThemeToggle: true,
+        showLogout: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(

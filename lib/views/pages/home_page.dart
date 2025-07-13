@@ -1,4 +1,4 @@
-// lib/views/pages/home_page.dart - Fixed mobile landscape layout
+// lib/views/pages/home_page.dart - Fixed mobile landscape layout with TheorieAppBar
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
@@ -7,7 +7,7 @@ import '../../constants/ui_constants.dart';
 import '../widgets/controls/root_selector.dart';
 import '../widgets/controls/view_mode_selector.dart';
 import '../widgets/controls/scale_selector.dart';
-import '../dialogs/settings_dialog.dart';
+import '../widgets/common/app_bar.dart';
 import 'fretboard_page.dart';
 
 class HomePage extends StatelessWidget {
@@ -26,14 +26,11 @@ class HomePage extends StatelessWidget {
     final verticalPadding = _getVerticalPadding(deviceType, isLandscape);
     
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Guitar Theory'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => showSettingsDialog(context),
-          ),
-        ],
+      appBar: const TheorieAppBar(
+        title: 'Guitar Theory',
+        showSettings: true,
+        showThemeToggle: true,
+        showLogout: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -63,52 +60,21 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context, DeviceType deviceType, bool isLandscape, double screenWidth, double screenHeight) {
-    // In landscape mode on mobile, use a more compact layout
-    if (isLandscape && deviceType == DeviceType.mobile) {
-      return _buildLandscapeLayout(context, deviceType, screenWidth);
-    }
-    
-    // For portrait or larger screens, use the standard centered layout
-    return _buildPortraitLayout(context, deviceType, screenWidth, screenHeight);
-  }
-
-  Widget _buildLandscapeLayout(BuildContext context, DeviceType deviceType, double screenWidth) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.start, // Don't force centering in landscape
-      crossAxisAlignment: CrossAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min, // Use minimum space needed
       children: [
-        // Compact title section for landscape
-        _buildCompactTitleSection(context, deviceType),
+        // Title section - compact in mobile landscape mode
+        if (isLandscape && deviceType == DeviceType.mobile)
+          _buildCompactTitleSection(context, deviceType)
+        else
+          _buildTitleSection(context, deviceType),
         
-        const SizedBox(height: 16.0), // Reduced spacing
-        
-        // Settings section - more compact
-        _buildCompactSettingsSection(context, deviceType, screenWidth),
-        
-        const SizedBox(height: 16.0), // Reduced spacing
-        
-        // Action button
-        _buildActionButton(context, deviceType),
-        
-        const SizedBox(height: 16.0), // Bottom padding for scroll
-      ],
-    );
-  }
+        SizedBox(height: deviceType == DeviceType.mobile && !isLandscape ? 32.0 : 48.0),
 
-  Widget _buildPortraitLayout(BuildContext context, DeviceType deviceType, double screenWidth, double screenHeight) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min, // Key change: don't force full height
-      children: [
-        // Title section
-        _buildTitleSection(context, deviceType),
-        
-        SizedBox(height: deviceType == DeviceType.mobile ? 32.0 : 48.0),
-
-        // Settings section
-        _buildSettingsSection(context, deviceType, screenWidth),
+        // Settings section - horizontal layout in landscape mode
+        if (isLandscape && deviceType == DeviceType.mobile)
+          _buildCompactSettingsSection(context, deviceType, screenWidth)
+        else
+          _buildSettingsSection(context, deviceType, screenWidth),
         
         SizedBox(height: deviceType == DeviceType.mobile ? 24.0 : 32.0),
 
@@ -325,12 +291,7 @@ class HomePage extends StatelessWidget {
                 ],
               );
             } else if (state.isChordMode) {
-              return Column(
-                children: [
-                  _buildChordModeInfo(context, compact: false),
-                  const SizedBox(height: 16),
-                ],
-              );
+              return _buildChordModeInfo(context);
             }
             return const SizedBox.shrink();
           },
@@ -339,64 +300,33 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildSettingItem(BuildContext context, String label, Widget child) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodyLarge,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        child,
-      ],
-    );
-  }
-
-  Widget _buildChordModeInfo(BuildContext context, {required bool compact}) {
+  Widget _buildChordModeInfo(BuildContext context, {bool compact = false}) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(compact ? 8.0 : 12.0),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue.shade200),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              Icon(Icons.info_outline, 
-                   size: 16, 
-                   color: Colors.blue.shade700),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Chord Mode Information',
-                  style: TextStyle(
-                    fontSize: compact ? 12 : 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.blue.shade700,
-                  ),
-                ),
+          Icon(
+            Icons.info_outline,
+            size: compact ? 16 : 20,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'Open fretboard for chord selection',
+              style: TextStyle(
+                fontSize: compact ? 12.0 : 14.0,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Chord settings are configured per fretboard',
-            style: TextStyle(
-              fontSize: compact ? 11 : 12,
-              color: Colors.blue.shade600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Click "Open Fretboard" to select chord types and inversions',
-            style: TextStyle(
-              fontSize: compact ? 10 : 11,
-              color: Colors.blue.shade600,
+              textAlign: TextAlign.center,
             ),
           ),
         ],
@@ -404,30 +334,52 @@ class HomePage extends StatelessWidget {
     );
   }
 
+  Widget _buildSettingItem(BuildContext context, String label, Widget child) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        child,
+      ],
+    );
+  }
+
   Widget _buildActionButton(BuildContext context, DeviceType deviceType) {
-    final buttonPadding = deviceType == DeviceType.mobile 
-        ? const EdgeInsets.symmetric(horizontal: 24, vertical: 12)
-        : const EdgeInsets.symmetric(horizontal: 32, vertical: 16);
-    
-    final iconSize = deviceType == DeviceType.mobile ? 20.0 : 24.0;
-    final fontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
+    final buttonHeight = deviceType == DeviceType.mobile ? 48.0 : 56.0;
+    final fontSize = deviceType == DeviceType.mobile ? 16.0 : 18.0;
     
     return Center(
-      child: ElevatedButton.icon(
-        icon: Icon(Icons.music_note, size: iconSize),
-        label: Text(
-          'Open Fretboard',
-          style: TextStyle(fontSize: fontSize),
+      child: SizedBox(
+        width: deviceType == DeviceType.mobile ? double.infinity : 300.0,
+        height: buttonHeight,
+        child: ElevatedButton.icon(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const FretboardPage(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.music_note),
+          label: Text(
+            'Open Fretboard',
+            style: TextStyle(fontSize: fontSize),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: Colors.white,
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
         ),
-        style: ElevatedButton.styleFrom(
-          padding: buttonPadding,
-          elevation: 3,
-        ),
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const FretboardPage()),
-          );
-        },
       ),
     );
   }
@@ -445,18 +397,14 @@ class _SettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        SizedBox(
-          width: 100,
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodyLarge,
-            textAlign: TextAlign.right,
+        Text(
+          label,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(width: 16),
         child,
       ],
     );

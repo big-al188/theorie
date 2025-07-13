@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/learning/learning_content.dart';
 import '../../constants/ui_constants.dart';
+import '../widgets/common/app_bar.dart';
 import 'topic_detail_page.dart';
 
 class LearningTopicsPage extends StatelessWidget {
@@ -22,15 +23,11 @@ class LearningTopicsPage extends StatelessWidget {
     final isLandscape = orientation == Orientation.landscape;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '${section.title} Topics',
-          style: TextStyle(
-            fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
-          ),
-        ),
-        backgroundColor: _getLevelColor(section.level),
-        foregroundColor: Colors.white,
+      appBar: TheorieAppBar(
+        title: '${section.title} Topics',
+        showSettings: true,
+        showThemeToggle: true,
+        showLogout: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
