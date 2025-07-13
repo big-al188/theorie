@@ -59,7 +59,7 @@ class TheorieApp extends StatelessWidget {
   }
 }
 
-/// Wrapper to handle authentication state
+/// Wrapper to handle authentication state with improved guest user handling
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -79,7 +79,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   Future<void> _checkAuthStatus() async {
     try {
+      // Check if there's an existing current user
       final user = await UserService.instance.getCurrentUser();
+      
       if (user != null && mounted) {
         // Load user preferences into app state
         final appState = context.read<AppState>();
@@ -90,12 +92,14 @@ class _AuthWrapperState extends State<AuthWrapper> {
           _isLoading = false;
         });
       } else {
+        // No current user - show login page
         setState(() {
           _isLoggedIn = false;
           _isLoading = false;
         });
       }
     } catch (e) {
+      // On any error, show login page
       setState(() {
         _isLoggedIn = false;
         _isLoading = false;

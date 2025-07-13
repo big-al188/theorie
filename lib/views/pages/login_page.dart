@@ -15,8 +15,9 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
-  final _emailController = TextEditingController();
+  final _usernameEmailController = TextEditingController(); // For login (username OR email)
+  final _usernameController = TextEditingController(); // For registration username
+  final _emailController = TextEditingController(); // For registration email
   final _passwordController = TextEditingController();
   
   bool _isLogin = true;
@@ -25,6 +26,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    _usernameEmailController.dispose();
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -83,22 +85,28 @@ class _LoginPageState extends State<LoginPage> {
     if (isLandscape && deviceType == DeviceType.mobile) {
       return 16.0; // Less vertical padding in landscape
     }
-    return deviceType == DeviceType.mobile ? 24.0 : 32.0;
+    return deviceType == DeviceType.mobile ? 24.0 : 48.0;
   }
 
   Widget _buildHeader(DeviceType deviceType, bool isLandscape) {
-    final titleFontSize = isLandscape && deviceType == DeviceType.mobile 
-        ? 36.0 
-        : (deviceType == DeviceType.mobile ? 42.0 : 48.0);
+    final titleFontSize = isLandscape
+        ? (deviceType == DeviceType.mobile ? 28.0 : 36.0)
+        : (deviceType == DeviceType.mobile ? 32.0 : 48.0);
     
-    final subtitleFontSize = isLandscape && deviceType == DeviceType.mobile 
-        ? 16.0 
-        : (deviceType == DeviceType.mobile ? 18.0 : 20.0);
+    final subtitleFontSize = isLandscape
+        ? (deviceType == DeviceType.mobile ? 14.0 : 16.0)
+        : (deviceType == DeviceType.mobile ? 16.0 : 18.0);
 
     return Column(
       children: [
+        Icon(
+          Icons.music_note,
+          size: isLandscape ? 60 : 80,
+          color: Theme.of(context).primaryColor,
+        ),
+        SizedBox(height: isLandscape ? 16 : 24),
         Text(
-          'Welcome to Theorie',
+          'Theorie',
           style: TextStyle(
             fontSize: titleFontSize,
             fontWeight: FontWeight.bold,
@@ -108,10 +116,11 @@ class _LoginPageState extends State<LoginPage> {
         ),
         SizedBox(height: isLandscape ? 8 : 16),
         Text(
-          'Your interactive music theory companion',
+          'Learn Music Theory & Guitar Fretboard',
           style: TextStyle(
             fontSize: subtitleFontSize,
             color: Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
           ),
           textAlign: TextAlign.center,
         ),
@@ -125,39 +134,43 @@ class _LoginPageState extends State<LoginPage> {
         constraints: BoxConstraints(
           maxWidth: deviceType == DeviceType.mobile ? double.infinity : 400.0,
         ),
-        child: Card(
-          elevation: 4,
-          child: Padding(
-            padding: EdgeInsets.all(
-              deviceType == DeviceType.mobile ? 20.0 : 32.0,
-            ),
-            child: Form(
-              key: _formKey,
+        child: Form(
+          key: _formKey,
+          child: Card(
+            elevation: 8,
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
                     _isLogin ? 'Sign In' : 'Create Account',
                     style: TextStyle(
-                      fontSize: deviceType == DeviceType.mobile ? 24.0 : 28.0,
+                      fontSize: deviceType == DeviceType.mobile ? 20.0 : 24.0,
                       fontWeight: FontWeight.bold,
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                  SizedBox(height: deviceType == DeviceType.mobile ? 24 : 32),
+                  
+                  const SizedBox(height: 24),
 
-                  // Username field (always shown)
-                  _buildTextField(
-                    controller: _usernameController,
-                    label: 'Username',
-                    icon: Icons.person,
-                    required: !_isLogin, // Only required for registration
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Email field (only for registration)
-                  if (!_isLogin) ...[
+                  // Login: Single field for username OR email
+                  if (_isLogin) ...[
+                    _buildTextField(
+                      controller: _usernameEmailController,
+                      label: 'Username or Email',
+                      icon: Icons.person,
+                      required: false, // Optional for login (can use guest)
+                    ),
+                    const SizedBox(height: 16),
+                  ] else ...[
+                    // Registration: Separate fields for username and email
+                    _buildTextField(
+                      controller: _usernameController,
+                      label: 'Username',
+                      icon: Icons.person,
+                      required: true,
+                    ),
+                    const SizedBox(height: 16),
                     _buildTextField(
                       controller: _emailController,
                       label: 'Email',
@@ -168,15 +181,17 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Password field (show but not required - for future implementation)
+                  // Password field
                   _buildTextField(
                     controller: _passwordController,
-                    label: 'Password',
+                    label: 'Password (coming soon)',
                     icon: Icons.lock,
                     obscureText: _obscurePassword,
-                    required: false, // Not required for now
+                    required: false, // Not required yet
                     suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                      ),
                       onPressed: () {
                         setState(() {
                           _obscurePassword = !_obscurePassword;
@@ -184,16 +199,19 @@ class _LoginPageState extends State<LoginPage> {
                       },
                     ),
                   ),
+
                   const SizedBox(height: 24),
 
-                  // Login/Register button
+                  // Auth button
                   SizedBox(
-                    height: 48,
+                    width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _handleAuth,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).primaryColor,
-                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                       child: _isLoading
                           ? const SizedBox(
@@ -260,8 +278,14 @@ class _LoginPageState extends State<LoginPage> {
         if (value == null || value.trim().isEmpty) {
           return 'This field is required';
         }
-        if (label == 'Email' && !_isValidEmail(value)) {
+        if (label.contains('Email') && !_isValidEmail(value)) {
           return 'Please enter a valid email';
+        }
+        if (label == 'Username or Email' && value.isNotEmpty) {
+          // For combined field, check if it's a valid email OR username
+          if (value.contains('@') && !_isValidEmail(value)) {
+            return 'Please enter a valid email or username';
+          }
         }
         return null;
       } : null,
@@ -280,6 +304,10 @@ class _LoginPageState extends State<LoginPage> {
           label: const Text('Continue as Guest'),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+            side: BorderSide(
+              color: Theme.of(context).primaryColor,
+              width: 2,
+            ),
           ),
         ),
       ),
@@ -292,6 +320,7 @@ class _LoginPageState extends State<LoginPage> {
         setState(() {
           _isLogin = !_isLogin;
           // Clear form when switching modes
+          _usernameEmailController.clear();
           _usernameController.clear();
           _emailController.clear();
           _passwordController.clear();
@@ -322,14 +351,21 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final username = _usernameController.text.trim();
-      final email = _emailController.text.trim();
-      
       if (_isLogin) {
-        // Login
+        // Login: Use combined username/email field
+        final usernameOrEmail = _usernameEmailController.text.trim();
+        
+        if (usernameOrEmail.isEmpty) {
+          _showError('Please enter your username or email to sign in.');
+          return;
+        }
+        
+        // Determine if input is email or username
+        final isEmail = usernameOrEmail.contains('@');
+        
         final user = await UserService.instance.loginUser(
-          username: username.isNotEmpty ? username : null,
-          email: email.isNotEmpty ? email : null,
+          username: isEmail ? null : usernameOrEmail,
+          email: isEmail ? usernameOrEmail : null,
         );
         
         if (user == null) {
@@ -339,7 +375,10 @@ class _LoginPageState extends State<LoginPage> {
         
         await _loginSuccess(user);
       } else {
-        // Register
+        // Registration: Use separate username and email fields
+        final username = _usernameController.text.trim();
+        final email = _emailController.text.trim();
+        
         if (username.isEmpty || email.isEmpty) {
           _showError('Username and email are required for registration.');
           return;
@@ -369,8 +408,9 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final user = await UserService.instance.loginUser();
-      await _loginSuccess(user!);
+      // Use the explicit guest login method for clarity
+      final user = await UserService.instance.loginAsGuest();
+      await _loginSuccess(user);
     } catch (e) {
       _showError('Failed to sign in as guest. Please try again.');
     } finally {

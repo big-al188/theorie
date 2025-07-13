@@ -154,12 +154,28 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Logout current user
-  Future<void> logout() async {
+/// Logout current user and optionally switch to guest
+Future<void> logout({bool switchToGuest = true}) async {
+  try {
+    // Always logout from UserService first
     await UserService.instance.logout();
+    
+    if (switchToGuest) {
+      // Switch to guest user to maintain app functionality
+      final guestUser = await UserService.instance.loginAsGuest();
+      await setCurrentUser(guestUser);
+    } else {
+      // Complete logout - clear user and go to login page
+      _currentUser = null;
+      notifyListeners();
+    }
+  } catch (e) {
+    // If logout fails, at least clear current user locally
     _currentUser = null;
     notifyListeners();
+    rethrow;
   }
+}
 
   // ===== FRETBOARD DEFAULTS SETTERS =====
   void setDefaultStringCount(int count) {

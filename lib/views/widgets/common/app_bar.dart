@@ -1,4 +1,4 @@
-// Enhanced lib/views/widgets/common/app_bar.dart
+// lib/views/widgets/common/app_bar.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/app_state.dart';
@@ -12,97 +12,68 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
   final bool showSettings;
-  final bool showLogout;
+  final bool showLogout; // Keep original name for compatibility
   final bool showThemeToggle;
+  final bool centerTitle;
 
   const TheorieAppBar({
     super.key,
     required this.title,
     this.actions,
     this.showSettings = true,
-    this.showLogout = true,
-    this.showThemeToggle = true,
+    this.showLogout = true, // Keep original name
+    this.showThemeToggle = false,
+    this.centerTitle = true,
   });
 
   @override
-  Size get preferredSize {
-    // Default to mobile height as the most conservative fallback
-    return const Size.fromHeight(UIConstants.mobileAppBarHeight);
-  }
-
-  /// Get responsive app bar height based on screen width
-  static double getAppBarHeight(double screenWidth) {
-    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
-    switch (deviceType) {
-      case DeviceType.mobile:
-        return UIConstants.mobileAppBarHeight;
-      case DeviceType.tablet:
-        return UIConstants.tabletAppBarHeight;
-      case DeviceType.desktop:
-        return UIConstants.desktopAppBarHeight;
-    }
-  }
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
   /// Get responsive icon size based on screen width
   static double getIconSize(double screenWidth) {
     final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
-    switch (deviceType) {
-      case DeviceType.mobile:
-        return 20.0; // Smaller icons for mobile
-      case DeviceType.tablet:
-        return 22.0; // Medium icons for tablet
-      case DeviceType.desktop:
-        return 24.0; // Standard icons for desktop
-    }
+    return deviceType == DeviceType.mobile ? 20.0 : 24.0;
   }
 
-  /// Get responsive title font size based on screen width
+  /// Get responsive title font size
   static double getTitleFontSize(double screenWidth) {
     final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
-    switch (deviceType) {
-      case DeviceType.mobile:
-        return 18.0; // Smaller title for mobile
-      case DeviceType.tablet:
-        return 19.0; // Medium title for tablet
-      case DeviceType.desktop:
-        return 20.0; // Standard title for desktop
-    }
+    return deviceType == DeviceType.mobile ? 18.0 : 22.0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final appBarHeight = getAppBarHeight(screenWidth);
-    final iconSize = getIconSize(screenWidth);
-    final titleFontSize = getTitleFontSize(screenWidth);
-    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
-
     return Consumer<AppState>(
       builder: (context, appState, child) {
-        return PreferredSize(
-          preferredSize: Size.fromHeight(appBarHeight),
-          child: AppBar(
-            title: Text(
-              title,
-              style: TextStyle(fontSize: titleFontSize),
+        final screenWidth = MediaQuery.of(context).size.width;
+        final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
+        final iconSize = getIconSize(screenWidth);
+        final titleFontSize = getTitleFontSize(screenWidth);
+
+        return AppBar(
+          title: Text(
+            title,
+            style: TextStyle(
+              fontSize: titleFontSize,
+              fontWeight: FontWeight.bold,
             ),
-            toolbarHeight: appBarHeight,
-            actions: _buildActionsList(context, appState, iconSize, titleFontSize, deviceType),
           ),
+          centerTitle: centerTitle,
+          elevation: 2,
+          actions: _buildActions(context, appState, deviceType, iconSize, titleFontSize),
         );
       },
     );
   }
 
-  /// Build the complete actions list with proper ordering and responsive sizing
-  List<Widget> _buildActionsList(
-    BuildContext context, 
-    AppState appState, 
-    double iconSize, 
-    double titleFontSize, 
-    DeviceType deviceType
+  List<Widget> _buildActions(
+    BuildContext context,
+    AppState appState,
+    DeviceType deviceType,
+    double iconSize,
+    double titleFontSize,
   ) {
-    final actionsList = <Widget>[];
+    List<Widget> actionsList = [];
 
     // 1. Add custom page-specific actions first (leftmost position)
     if (actions != null) {
@@ -141,33 +112,51 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
       );
     }
     
-    // 3. Add logout button (second to last position)
-    if (showLogout && appState.currentUser != null && !appState.currentUser!.isDefaultUser) {
-      actionsList.add(
-        IconButton(
-          icon: const Icon(Icons.logout),
-          iconSize: iconSize,
-          tooltip: 'Logout',
-          onPressed: () => _handleLogout(context, appState, deviceType),
-        ),
-      );
+    // 3. Add auth button (logout for regular users, sign in for guests)
+    if (showLogout && appState.currentUser != null) {
+      if (appState.currentUser!.isDefaultUser) {
+        // Guest user - show sign in button
+        actionsList.add(
+          IconButton(
+            icon: const Icon(Icons.login),
+            iconSize: iconSize,
+            tooltip: 'Sign In',
+            onPressed: () => _handleSignIn(context, appState, deviceType),
+          ),
+        );
+      } else {
+        // Regular user - show logout button
+        actionsList.add(
+          IconButton(
+            icon: const Icon(Icons.logout),
+            iconSize: iconSize,
+            tooltip: 'Logout',
+            onPressed: () => _handleLogout(context, appState, deviceType),
+          ),
+        );
+      }
     }
     
     // 4. Add user indicator for mobile (rightmost position)
-    if (deviceType == DeviceType.mobile && 
-        appState.currentUser != null && 
-        !appState.currentUser!.isDefaultUser) {
+    if (deviceType == DeviceType.mobile && appState.currentUser != null) {
+      final displayName = appState.currentUser!.isDefaultUser 
+          ? 'Guest'
+          : (appState.currentUser!.username.length > 8 
+              ? '${appState.currentUser!.username.substring(0, 8)}...'
+              : appState.currentUser!.username);
+              
       actionsList.add(
         Padding(
           padding: const EdgeInsets.only(right: 8.0),
           child: Center(
             child: Text(
-              appState.currentUser!.username.length > 8 
-                  ? '${appState.currentUser!.username.substring(0, 8)}...'
-                  : appState.currentUser!.username,
+              displayName,
               style: TextStyle(
                 fontSize: titleFontSize - 4,
                 fontWeight: FontWeight.w500,
+                color: appState.currentUser!.isDefaultUser 
+                    ? Colors.grey.shade600 
+                    : null,
               ),
             ),
           ),
@@ -177,6 +166,16 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
 
     return actionsList;
   }
+
+  Future<void> _handleSignIn(BuildContext context, AppState appState, DeviceType deviceType) async {
+    // Navigate to login page, allowing user to sign in or create account
+    if (context.mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+    }
+  }
+
   Future<void> _handleLogout(BuildContext context, AppState appState, DeviceType deviceType) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -210,7 +209,8 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
 
     if (confirmed == true && context.mounted) {
-      await appState.logout();
+      // Logout completely and go back to login page
+      await appState.logout(switchToGuest: false);
       
       if (context.mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -267,32 +267,39 @@ class ViewModeToggle extends StatelessWidget {
                     : Text(
                         mode.displayName,
                         style: TextStyle(
-                          fontSize: deviceType == DeviceType.mobile ? 10.0 : 12.0,
+                          fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
                         ),
                       ),
                 icon: Icon(
                   _getIconForViewMode(mode),
-                  size: iconSize - 4,
+                  size: iconSize,
                 ),
               ))
           .toList(),
       selected: {currentMode},
-      onSelectionChanged: (selected) {
+      onSelectionChanged: (Set<ViewMode> selected) {
         if (selected.isNotEmpty) {
           onChanged(selected.first);
         }
       },
+      style: SegmentedButton.styleFrom(
+        visualDensity: isCompact ? VisualDensity.compact : null,
+        padding: isCompact 
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+            : null,
+      ),
     );
   }
 
+  /// Get appropriate icon for each view mode
   IconData _getIconForViewMode(ViewMode mode) {
     switch (mode) {
+      case ViewMode.intervals:
+        return Icons.analytics;
       case ViewMode.scales:
         return Icons.music_note;
       case ViewMode.chords:
         return Icons.piano;
-      case ViewMode.intervals:
-        return Icons.straighten;
     }
   }
 }

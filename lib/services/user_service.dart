@@ -8,6 +8,7 @@ class UserService {
   static const String _currentUserKey = 'current_user';
   static const String _usersKey = 'all_users';
   static const String _lastLoginKey = 'last_login_user_id';
+  static const String _defaultUserKey = 'default_user_persistent';
 
   static UserService? _instance;
   static UserService get instance => _instance ??= UserService._();
@@ -18,6 +19,44 @@ class UserService {
   /// Initialize the service
   Future<void> initialize() async {
     _prefs ??= await SharedPreferences.getInstance();
+    await _ensureDefaultUserExists();
+  }
+
+  /// Ensure a persistent default user exists
+  Future<void> _ensureDefaultUserExists() async {
+    // Don't call initialize() here to avoid recursion
+    // _prefs should already be initialized when this is called
+    
+    final existingDefaultUser = _prefs!.getString(_defaultUserKey);
+    if (existingDefaultUser == null) {
+      // Create and save a persistent default user
+      final defaultUser = User.defaultUser();
+      await _prefs!.setString(_defaultUserKey, jsonEncode(defaultUser.toJson()));
+    }
+  }
+
+  /// Get the persistent default user
+  Future<User> _getDefaultUser() async {
+    // Don't call initialize() here to avoid recursion
+    // _prefs should already be initialized when this is called
+    
+    final defaultUserJson = _prefs!.getString(_defaultUserKey);
+    if (defaultUserJson != null) {
+      try {
+        final userData = jsonDecode(defaultUserJson) as Map<String, dynamic>;
+        return User.fromJson(userData);
+      } catch (e) {
+        // If corrupted, create a new default user
+        final defaultUser = User.defaultUser();
+        await _prefs!.setString(_defaultUserKey, jsonEncode(defaultUser.toJson()));
+        return defaultUser;
+      }
+    }
+    
+    // Fallback - create new default user
+    final defaultUser = User.defaultUser();
+    await _prefs!.setString(_defaultUserKey, jsonEncode(defaultUser.toJson()));
+    return defaultUser;
   }
 
   /// Get current logged-in user
@@ -47,8 +86,15 @@ class UserService {
     // Save current user
     await _prefs!.setString(_currentUserKey, jsonEncode(updatedUser.toJson()));
     
-    // Save to users list
-    await _saveUserToList(updatedUser);
+    // Save to users list (but only if not default user)
+    if (!updatedUser.isDefaultUser) {
+      await _saveUserToList(updatedUser);
+    }
+    
+    // Update default user if this is a default user with changes
+    if (updatedUser.isDefaultUser) {
+      await _prefs!.setString(_defaultUserKey, jsonEncode(updatedUser.toJson()));
+    }
     
     // Update last login user ID
     await _prefs!.setString(_lastLoginKey, updatedUser.id);
@@ -83,20 +129,16 @@ class UserService {
     return newUser;
   }
 
-  /// Login with username or email
+  /// Login with username or email, or get default user for guest login
   Future<User?> loginUser({
     String? username,
     String? email,
   }) async {
-    if (username == null && email == null) {
-      throw UserServiceException('Username or email must be provided');
-    }
-    
     await initialize();
     
-    // Handle default user (empty credentials)
+    // Handle guest login (empty or null credentials)
     if ((username?.isEmpty ?? true) && (email?.isEmpty ?? true)) {
-      final defaultUser = User.defaultUser();
+      final defaultUser = await _getDefaultUser();
       await saveCurrentUser(defaultUser);
       return defaultUser;
     }
@@ -121,6 +163,13 @@ class UserService {
     }
     
     return null;
+  }
+
+  /// Login as guest - explicit method for guest login
+  Future<User> loginAsGuest() async {
+    final defaultUser = await _getDefaultUser();
+    await saveCurrentUser(defaultUser);
+    return defaultUser;
   }
 
   /// Logout current user
@@ -207,11 +256,14 @@ class UserService {
     await _prefs!.remove(_currentUserKey);
     await _prefs!.remove(_usersKey);
     await _prefs!.remove(_lastLoginKey);
+    await _prefs!.remove(_defaultUserKey);
+    await _ensureDefaultUserExists(); // Recreate default user
   }
 
   /// Private method to get all users
   Future<Map<String, User>> _getAllUsers() async {
-    await initialize();
+    // Don't call initialize() here since this is called from other methods
+    // that already call initialize()
     
     final usersJson = _prefs!.getString(_usersKey);
     if (usersJson != null) {
