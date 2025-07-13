@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import '../../models/learning/learning_content.dart';
 import '../../constants/ui_constants.dart';
-import '../widgets/common/app_bar.dart';
 import 'home_page.dart'; // This will be the original home page
 
 class InstrumentSelectionPage extends StatelessWidget {
@@ -16,11 +15,15 @@ class InstrumentSelectionPage extends StatelessWidget {
     final isLandscape = orientation == Orientation.landscape;
 
     return Scaffold(
-      appBar: const TheorieAppBar(
-        title: 'Select Your Instrument',
-        showSettings: true,
-        showThemeToggle: true,
-        showLogout: true,
+      appBar: AppBar(
+        title: Text(
+          'Select Your Instrument',
+          style: TextStyle(
+            fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+          ),
+        ),
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -61,14 +64,17 @@ class InstrumentSelectionPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Select an instrument to explore its interactive fretboard and music theory concepts.',
-          style: TextStyle(
-            fontSize: subtitleFontSize,
-            color: Colors.grey.shade600,
-            height: 1.4,
+        // Only show descriptive text on desktop and tablet
+        if (deviceType != DeviceType.mobile) ...[
+          Text(
+            'Select an instrument to explore its interactive fretboard and music theory concepts.',
+            style: TextStyle(
+              fontSize: subtitleFontSize,
+              color: Colors.grey.shade600,
+              height: 1.4,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -78,12 +84,22 @@ class InstrumentSelectionPage extends StatelessWidget {
     
     // Responsive grid layout
     int crossAxisCount;
+    double childAspectRatio;
+    
     if (deviceType == DeviceType.mobile) {
-      crossAxisCount = isLandscape ? 3 : 1; // Single column for mobile portrait
+      if (isLandscape) {
+        crossAxisCount = 4; // More columns in landscape
+        childAspectRatio = 0.9; // Slightly taller than wide
+      } else {
+        crossAxisCount = 2; // Two columns in portrait
+        childAspectRatio = 1.0; // Square-ish cards
+      }
     } else if (deviceType == DeviceType.tablet) {
-      crossAxisCount = isLandscape ? 4 : 2;
+      crossAxisCount = isLandscape ? 4 : 3;
+      childAspectRatio = 1.1; // Slightly wider than tall
     } else {
       crossAxisCount = 4; // Desktop
+      childAspectRatio = 1.1; // Slightly wider than tall
     }
 
     return GridView.builder(
@@ -91,11 +107,9 @@ class InstrumentSelectionPage extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        crossAxisSpacing: 16.0,
-        mainAxisSpacing: 16.0,
-        childAspectRatio: deviceType == DeviceType.mobile && !isLandscape 
-            ? 3.5 // Wide cards for mobile portrait
-            : 1.1, // Square-ish for others
+        crossAxisSpacing: deviceType == DeviceType.mobile ? 12.0 : 16.0,
+        mainAxisSpacing: deviceType == DeviceType.mobile ? 12.0 : 16.0,
+        childAspectRatio: childAspectRatio,
       ),
       itemCount: instruments.length,
       itemBuilder: (context, index) {
@@ -107,11 +121,19 @@ class InstrumentSelectionPage extends StatelessWidget {
 
   Widget _buildInstrumentCard(BuildContext context, Instrument instrument, DeviceType deviceType, bool isLandscape) {
     final isAvailable = instrument.isAvailable;
-    final titleFontSize = deviceType == DeviceType.mobile ? 18.0 : 20.0;
-    final subtitleFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
-    final iconSize = deviceType == DeviceType.mobile 
-        ? (isLandscape ? 40.0 : 48.0)
-        : 56.0;
+    
+    // Mobile-specific styling
+    if (deviceType == DeviceType.mobile) {
+      return _buildMobileInstrumentCard(context, instrument, isAvailable, isLandscape);
+    }
+    
+    // Desktop/Tablet styling with full descriptions
+    return _buildDesktopInstrumentCard(context, instrument, isAvailable, deviceType);
+  }
+
+  Widget _buildMobileInstrumentCard(BuildContext context, Instrument instrument, bool isAvailable, bool isLandscape) {
+    final titleFontSize = isLandscape ? 16.0 : 18.0;
+    final iconSize = isLandscape ? 36.0 : 48.0;
 
     return Card(
       elevation: 4,
@@ -119,12 +141,73 @@ class InstrumentSelectionPage extends StatelessWidget {
         onTap: isAvailable ? () => _navigateToInstrument(context, instrument) : null,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+          padding: const EdgeInsets.all(16.0),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            color: isAvailable 
-                ? null 
-                : Colors.grey.shade100,
+            color: isAvailable ? null : Colors.grey.shade100,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(
+                _getInstrumentIcon(instrument),
+                size: iconSize,
+                color: isAvailable 
+                    ? Theme.of(context).primaryColor 
+                    : Colors.grey.shade400,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                instrument.displayName,
+                style: TextStyle(
+                  fontSize: titleFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: isAvailable ? null : Colors.grey.shade500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              // No description text on mobile for cleaner look
+              if (!isAvailable) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Coming Soon',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.orange.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopInstrumentCard(BuildContext context, Instrument instrument, bool isAvailable, DeviceType deviceType) {
+    final titleFontSize = deviceType == DeviceType.tablet ? 18.0 : 20.0;
+    final subtitleFontSize = deviceType == DeviceType.tablet ? 14.0 : 16.0;
+    final iconSize = deviceType == DeviceType.tablet ? 48.0 : 56.0;
+
+    return Card(
+      elevation: 4,
+      child: InkWell(
+        onTap: isAvailable ? () => _navigateToInstrument(context, instrument) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(20.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: isAvailable ? null : Colors.grey.shade100,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -136,7 +219,7 @@ class InstrumentSelectionPage extends StatelessWidget {
                     ? Theme.of(context).primaryColor 
                     : Colors.grey.shade400,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Text(
                 instrument.displayName,
                 style: TextStyle(
@@ -157,13 +240,13 @@ class InstrumentSelectionPage extends StatelessWidget {
                   height: 1.3,
                 ),
                 textAlign: TextAlign.center,
-                maxLines: deviceType == DeviceType.mobile && !isLandscape ? 2 : 3,
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
               if (!isAvailable) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.orange.shade100,
                     borderRadius: BorderRadius.circular(12),
