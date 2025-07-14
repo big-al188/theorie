@@ -272,16 +272,22 @@ class LearningTopicsPage extends StatelessWidget {
 
   Color _getLevelColor(LearningLevel level) {
     switch (level) {
-      case LearningLevel.beginner:
+      case LearningLevel.introduction:
         return Colors.green;
-      case LearningLevel.novice:
+      case LearningLevel.fundamentals:
         return Colors.blue;
+      case LearningLevel.essentials:
+        return Colors.cyan;
       case LearningLevel.intermediate:
         return Colors.orange;
       case LearningLevel.advanced:
         return Colors.red;
-      case LearningLevel.expert:
+      case LearningLevel.professional:
         return Colors.purple;
+      case LearningLevel.master:
+        return Colors.deepPurple;
+      case LearningLevel.virtuoso:
+        return Colors.brown;
     }
   }
 
