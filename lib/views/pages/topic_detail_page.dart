@@ -6,6 +6,7 @@ import '../../models/learning/learning_content.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/common/app_bar.dart';
 import 'quiz_placeholder_page.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class TopicDetailPage extends StatefulWidget {
   final LearningTopic topic;
@@ -253,12 +254,32 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            widget.topic.content,
-            style: TextStyle(
-              fontSize: bodyFontSize,
-              color: Colors.grey.shade800,
-              height: 1.6,
+          MarkdownBody(
+            data: widget.topic.content,
+            styleSheet: MarkdownStyleSheet(
+              p: TextStyle(
+                fontSize: bodyFontSize,
+                color: Colors.grey.shade800,
+                height: 1.6,
+              ),
+              strong: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade900,
+              ),
+              h2: TextStyle(
+                fontSize: bodyFontSize + 4,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade900,
+              ),
+              listBullet: TextStyle(
+                fontSize: bodyFontSize,
+                color: _getLevelColor(widget.section.level),
+              ),
+              blockquote: TextStyle(
+                fontSize: bodyFontSize,
+                color: Colors.grey.shade700,
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ),
         ],
