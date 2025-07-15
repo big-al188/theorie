@@ -6,8 +6,11 @@ import '../../../models/quiz/quiz_question.dart';
 
 /// Widget for displaying and interacting with multiple choice questions
 ///
-/// FIXED: Enhanced for UI stability - minimizes rebuilds and layout shifts
-/// during answer selection to provide a smooth user experience.
+/// This widget handles the presentation of multiple choice questions including:
+/// - Option selection (single or multiple)
+/// - Visual feedback for selected/correct/incorrect answers
+/// - Clean, non-redundant UI
+/// - Accessibility support
 class MultipleChoiceWidget extends StatefulWidget {
   const MultipleChoiceWidget({
     super.key,
@@ -18,6 +21,7 @@ class MultipleChoiceWidget extends StatefulWidget {
     this.showExplanation = false,
     this.enabled = true,
     this.randomSeed,
+    this.showQuestionText = false, // NEW: Control question text display
   });
 
   /// The multiple choice question to display
@@ -41,6 +45,9 @@ class MultipleChoiceWidget extends StatefulWidget {
   /// Optional seed for consistent option ordering
   final int? randomSeed;
 
+  /// Whether to show the question text (to avoid duplication)
+  final bool showQuestionText;
+
   @override
   State<MultipleChoiceWidget> createState() => _MultipleChoiceWidgetState();
 }
@@ -48,21 +55,18 @@ class MultipleChoiceWidget extends StatefulWidget {
 class _MultipleChoiceWidgetState extends State<MultipleChoiceWidget>
     with TickerProviderStateMixin {
   late List<AnswerOption> _displayOptions;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
-  // FIXED: Stable selection state management
+  // Selection state
   Set<String> _selectedOptionIds = {};
-  Set<String> _lastNotifiedSelection = {};
-
-  // FIXED: Animation controller for subtle feedback only
-  late AnimationController _feedbackController;
-  late Animation<double> _feedbackAnimation;
 
   @override
   void initState() {
     super.initState();
     _initializeOptions();
     _initializeSelection();
-    _setupFeedbackAnimation();
+    _setupAnimations();
   }
 
   void _initializeOptions() {
@@ -98,163 +102,237 @@ class _MultipleChoiceWidgetState extends State<MultipleChoiceWidget>
         }
       }
     }
-
-    _lastNotifiedSelection = Set<String>.from(_selectedOptionIds);
   }
 
-  // FIXED: Minimal animation setup for subtle feedback
-  void _setupFeedbackAnimation() {
-    _feedbackController = AnimationController(
-      duration: const Duration(milliseconds: 150),
-      vsync: this as TickerProvider,
+  void _setupAnimations() {
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
     );
 
-    _feedbackAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.95,
-    ).animate(CurvedAnimation(
-      parent: _feedbackController,
-      curve: Curves.easeInOut,
-    ));
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
+
+    _animationController.forward();
   }
 
   @override
   void didUpdateWidget(MultipleChoiceWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Only reinitialize if question actually changed
-    if (oldWidget.question.id != widget.question.id) {
-      _initializeOptions();
+    if (oldWidget.selectedAnswer != widget.selectedAnswer) {
       _initializeSelection();
-    } else if (oldWidget.selectedAnswer != widget.selectedAnswer) {
-      // FIXED: Only update selection state, don't rebuild entire widget
+    }
+
+    if (oldWidget.question != widget.question) {
+      _initializeOptions();
       _initializeSelection();
     }
   }
 
   @override
   void dispose() {
-    _feedbackController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // FIXED: Static question header - doesn't change during selection
-        _buildStaticQuestionHeader(context),
-        const SizedBox(height: 24),
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Question header (only if requested)
+          if (widget.showQuestionText) _buildQuestionHeader(context),
 
-        // FIXED: Stable options list with minimal rebuilds
-        _buildStableOptionsList(context),
+          // Selection instruction - always show this
+          _buildSelectionInstruction(context),
 
-        // FIXED: Static explanation section
-        if (widget.showExplanation && widget.question.explanation != null) ...[
-          const SizedBox(height: 24),
-          _buildStaticExplanation(context),
+          const SizedBox(height: 16),
+
+          // Answer options
+          _buildOptionsSection(context),
+
+          // Explanation (if enabled)
+          if (widget.showExplanation &&
+              widget.question.explanation != null) ...[
+            const SizedBox(height: 20),
+            _buildExplanation(context),
+          ],
         ],
-      ],
+      ),
     );
   }
 
-  // FIXED: Static header that doesn't rebuild during selection
-  Widget _buildStaticQuestionHeader(BuildContext context) {
+  Widget _buildQuestionHeader(BuildContext context) {
     return Card(
+      elevation: 1,
+      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Question metadata
+            Row(
+              children: [
+                _buildTopicChip(context),
+                const SizedBox(width: 8),
+                _buildDifficultyChip(context),
+                const Spacer(),
+                _buildPointValue(context),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Question text
             Text(
-              widget.question.multiSelect
-                  ? 'Select all that apply:'
-                  : 'Select the best answer:',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).primaryColor,
-                    fontWeight: FontWeight.w600,
+              widget.question.questionText,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w500,
                   ),
             ),
-            if (widget.question.questionText.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                widget.question.questionText,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  // FIXED: Stable options list that minimizes rebuilds
-  Widget _buildStableOptionsList(BuildContext context) {
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _displayOptions.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final option = _displayOptions[index];
-        return _buildStableOptionTile(context, option);
-      },
+  Widget _buildSelectionInstruction(BuildContext context) {
+    final isMultiSelect = widget.question.multiSelect;
+    final icon = isMultiSelect ? Icons.checklist : Icons.radio_button_checked;
+    final text =
+        isMultiSelect ? 'Select all that apply' : 'Select the best answer';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).primaryColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Theme.of(context).primaryColor.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: Theme.of(context).primaryColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).primaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
     );
   }
 
-  // FIXED: Stable option tile with efficient state management
-  Widget _buildStableOptionTile(BuildContext context, AnswerOption option) {
+  Widget _buildOptionsSection(BuildContext context) {
+    return Column(
+      children: _displayOptions.asMap().entries.map((entry) {
+        final index = entry.key;
+        final option = entry.value;
+
+        return Padding(
+          padding: EdgeInsets.only(
+              bottom: index < _displayOptions.length - 1 ? 12 : 0),
+          child: _buildOptionTile(context, option),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildOptionTile(BuildContext context, AnswerOption option) {
     final isSelected = _selectedOptionIds.contains(option.id);
     final isCorrect = option.isCorrect;
-    final showResult = widget.showCorrectAnswer;
+    final showResults = widget.showCorrectAnswer;
 
-    // FIXED: Determine styling efficiently
-    final styling =
-        _getOptionStyling(context, isSelected, isCorrect, showResult);
+    Color? backgroundColor;
+    Color? borderColor;
+    IconData? trailingIcon;
+
+    if (showResults) {
+      if (isCorrect) {
+        backgroundColor = Colors.green.withOpacity(0.1);
+        borderColor = Colors.green;
+        trailingIcon = Icons.check_circle;
+      } else if (isSelected) {
+        backgroundColor = Colors.red.withOpacity(0.1);
+        borderColor = Colors.red;
+        trailingIcon = Icons.cancel;
+      }
+    } else if (isSelected) {
+      backgroundColor = Theme.of(context).primaryColor.withOpacity(0.1);
+      borderColor = Theme.of(context).primaryColor;
+    }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      child: Material(
+      decoration: BoxDecoration(
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: borderColor ?? Colors.grey.shade300,
+          width: isSelected || showResults ? 2 : 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: widget.enabled && !showResult
-              ? () => _handleOptionSelection(option)
+          onTap: widget.enabled && !showResults
+              ? () => _handleOptionTap(option)
               : null,
-          child: Container(
+          child: Padding(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: styling.backgroundColor,
-              border: Border.all(
-                color: styling.borderColor,
-                width: styling.borderWidth,
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
             child: Row(
               children: [
-                // FIXED: Stable selection indicator
-                _buildSelectionIndicator(styling, isSelected),
-                const SizedBox(width: 16),
+                // Selection indicator
+                if (widget.question.multiSelect)
+                  Icon(
+                    isSelected
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    color: isSelected
+                        ? Theme.of(context).primaryColor
+                        : Colors.grey.shade400,
+                  )
+                else
+                  Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    color: isSelected
+                        ? Theme.of(context).primaryColor
+                        : Colors.grey.shade400,
+                  ),
 
-                // FIXED: Stable option text
+                const SizedBox(width: 12),
+
+                // Option text
                 Expanded(
                   child: Text(
                     option.text,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: styling.textColor,
                           fontWeight: isSelected ? FontWeight.w500 : null,
                         ),
                   ),
                 ),
 
-                // FIXED: Result icon (only when showing results)
-                if (showResult && styling.trailingIcon != null) ...[
+                // Result icon
+                if (trailingIcon != null) ...[
                   const SizedBox(width: 12),
                   Icon(
-                    styling.trailingIcon,
+                    trailingIcon,
                     color: isCorrect ? Colors.green : Colors.red,
                     size: 24,
                   ),
@@ -267,34 +345,80 @@ class _MultipleChoiceWidgetState extends State<MultipleChoiceWidget>
     );
   }
 
-  // FIXED: Stable selection indicator that doesn't cause layout shifts
-  Widget _buildSelectionIndicator(_OptionStyling styling, bool isSelected) {
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        shape:
-            widget.question.multiSelect ? BoxShape.rectangle : BoxShape.circle,
-        borderRadius:
-            widget.question.multiSelect ? BorderRadius.circular(4) : null,
-        border: Border.all(
-          color: styling.borderColor,
-          width: 2,
-        ),
-        color: isSelected ? styling.borderColor : null,
+  Widget _buildTopicChip(BuildContext context) {
+    return Chip(
+      label: Text(
+        widget.question.topic.name.toUpperCase(),
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
       ),
-      child: isSelected
-          ? Icon(
-              widget.question.multiSelect ? Icons.check : Icons.circle,
-              size: widget.question.multiSelect ? 16 : 12,
-              color: Colors.white,
-            )
-          : null,
+      backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+      labelStyle: TextStyle(color: Theme.of(context).primaryColor),
+      side: BorderSide.none,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 
-  // FIXED: Static explanation that doesn't rebuild
-  Widget _buildStaticExplanation(BuildContext context) {
+  Widget _buildDifficultyChip(BuildContext context) {
+    final difficulty = widget.question.difficulty;
+    Color difficultyColor;
+
+    switch (difficulty) {
+      case QuestionDifficulty.beginner:
+        difficultyColor = Colors.green;
+        break;
+      case QuestionDifficulty.intermediate:
+        difficultyColor = Colors.orange;
+        break;
+      case QuestionDifficulty.advanced:
+        difficultyColor = Colors.red;
+        break;
+      case QuestionDifficulty.expert:
+        difficultyColor = Colors.purple;
+        break;
+    }
+
+    return Chip(
+      label: Text(
+        difficulty.name.toUpperCase(),
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+      ),
+      backgroundColor: difficultyColor.withOpacity(0.1),
+      labelStyle: TextStyle(color: difficultyColor),
+      side: BorderSide.none,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+
+  Widget _buildPointValue(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.star,
+            size: 14,
+            color: Colors.amber,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '${widget.question.pointValue} pts',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.amber.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExplanation(BuildContext context) {
     return Card(
       color: Theme.of(context).primaryColor.withOpacity(0.05),
       child: Padding(
@@ -330,13 +454,7 @@ class _MultipleChoiceWidgetState extends State<MultipleChoiceWidget>
     );
   }
 
-  // FIXED: Efficient option selection handling
-  void _handleOptionSelection(AnswerOption option) {
-    // Provide immediate visual feedback
-    _feedbackController.forward().then((_) {
-      _feedbackController.reverse();
-    });
-
+  void _handleOptionTap(AnswerOption option) {
     setState(() {
       if (widget.question.multiSelect) {
         // Multi-select logic
@@ -345,99 +463,20 @@ class _MultipleChoiceWidgetState extends State<MultipleChoiceWidget>
         } else {
           _selectedOptionIds.add(option.id);
         }
+
+        // Create list of selected options
+        final selectedOptions = _displayOptions
+            .where((o) => _selectedOptionIds.contains(o.id))
+            .toList();
+
+        widget.onAnswerSelected?.call(selectedOptions);
       } else {
         // Single select logic
         _selectedOptionIds.clear();
         _selectedOptionIds.add(option.id);
+
+        widget.onAnswerSelected?.call(option);
       }
     });
-
-    // FIXED: Only notify parent if selection actually changed
-    if (!_selectedOptionIds.setEquals(_lastNotifiedSelection)) {
-      _lastNotifiedSelection = Set<String>.from(_selectedOptionIds);
-
-      if (widget.question.multiSelect) {
-        // Create list of selected options for multi-select
-        final selectedOptions = _displayOptions
-            .where((o) => _selectedOptionIds.contains(o.id))
-            .toList();
-        widget.onAnswerSelected?.call(selectedOptions);
-      } else {
-        // Return single option for single-select
-        if (_selectedOptionIds.isNotEmpty) {
-          final selectedOption = _displayOptions
-              .firstWhere((o) => o.id == _selectedOptionIds.first);
-          widget.onAnswerSelected?.call(selectedOption);
-        }
-      }
-    }
-  }
-
-  // FIXED: Efficient styling calculation
-  _OptionStyling _getOptionStyling(
-    BuildContext context,
-    bool isSelected,
-    bool isCorrect,
-    bool showResult,
-  ) {
-    Color? backgroundColor;
-    Color borderColor = Colors.grey.shade300;
-    double borderWidth = 1;
-    Color? textColor;
-    IconData? trailingIcon;
-
-    if (showResult) {
-      if (isCorrect) {
-        backgroundColor = Colors.green.withOpacity(0.1);
-        borderColor = Colors.green;
-        textColor = Colors.green.shade700;
-        trailingIcon = Icons.check_circle;
-        borderWidth = 2;
-      } else if (isSelected) {
-        backgroundColor = Colors.red.withOpacity(0.1);
-        borderColor = Colors.red;
-        textColor = Colors.red.shade700;
-        trailingIcon = Icons.cancel;
-        borderWidth = 2;
-      }
-    } else if (isSelected) {
-      backgroundColor = Theme.of(context).primaryColor.withOpacity(0.1);
-      borderColor = Theme.of(context).primaryColor;
-      textColor = Theme.of(context).primaryColor;
-      borderWidth = 2;
-    }
-
-    return _OptionStyling(
-      backgroundColor: backgroundColor,
-      borderColor: borderColor,
-      borderWidth: borderWidth,
-      textColor: textColor,
-      trailingIcon: trailingIcon,
-    );
-  }
-}
-
-// FIXED: Helper class for efficient styling calculations
-class _OptionStyling {
-  const _OptionStyling({
-    this.backgroundColor,
-    required this.borderColor,
-    required this.borderWidth,
-    this.textColor,
-    this.trailingIcon,
-  });
-
-  final Color? backgroundColor;
-  final Color borderColor;
-  final double borderWidth;
-  final Color? textColor;
-  final IconData? trailingIcon;
-}
-
-// FIXED: Extension for set comparison
-extension SetEquality<T> on Set<T> {
-  bool setEquals(Set<T> other) {
-    if (length != other.length) return false;
-    return every(other.contains);
   }
 }

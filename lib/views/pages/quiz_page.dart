@@ -543,16 +543,8 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
               ),
         ),
 
-        // Question description/explanation
-        if (question.explanation?.isNotEmpty == true) ...[
-          const SizedBox(height: 12),
-          Text(
-            question.explanation!,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.grey[700],
-                ),
-          ),
-        ],
+        // REMOVED: Question explanation (this was revealing the answer!)
+        // We only show explanations after the user answers in results
 
         const SizedBox(height: 24),
 
@@ -587,6 +579,8 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
         onAnswerSelected: (answer) =>
             _handleAnswerSubmission(controller, answer),
         enabled: !controller.isProcessingAnswer && !_isTransitioning,
+        // Don't show question text again - it's already displayed above
+        showQuestionText: false,
       );
     }
 
