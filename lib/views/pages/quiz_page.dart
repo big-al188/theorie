@@ -211,7 +211,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     if (_isTransitioning) return;
 
     try {
-      await controller.skipQuestion(autoAdvance: false);
+      await controller.skipQuestion(autoAdvance: true);
       if (mounted) {
         setState(() {
           _lastFeedback = 'Question skipped';

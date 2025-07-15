@@ -41,6 +41,28 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
     super.dispose();
   }
 
+  /// Convert LearningLevel enum to level number (1-8)
+  int _getLevelNumber(LearningLevel level) {
+    switch (level) {
+      case LearningLevel.introduction:
+        return 1;
+      case LearningLevel.fundamentals:
+        return 2;
+      case LearningLevel.essentials:
+        return 3;
+      case LearningLevel.intermediate:
+        return 4;
+      case LearningLevel.advanced:
+        return 5;
+      case LearningLevel.professional:
+        return 6;
+      case LearningLevel.master:
+        return 7;
+      case LearningLevel.virtuoso:
+        return 8;
+    }
+  }
+
   /// ADDED: Handle progress changes and refresh UI
   void _onProgressChanged() {
     if (mounted) {
@@ -203,7 +225,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    section.level.displayName.toUpperCase(),
+                    'Level ${_getLevelNumber(section.level)}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
