@@ -10,14 +10,15 @@
 /// - Section quiz completion status
 class UserProgress {
   final Set<String> completedTopics;
-  final Set<String> completedSectionQuizzes;
+  final Set<String>
+      completedSections; // UNIFIED: Use single field for section completion
   final Map<String, SectionProgress> sectionProgress;
   final List<QuizAttempt>? quizAttempts;
   final Map<String, double>? bestScores;
 
   const UserProgress({
     this.completedTopics = const <String>{},
-    this.completedSectionQuizzes = const <String>{},
+    this.completedSections = const <String>{},
     this.sectionProgress = const <String, SectionProgress>{},
     this.quizAttempts,
     this.bestScores,
@@ -26,15 +27,14 @@ class UserProgress {
   /// Creates a copy with updated values
   UserProgress copyWith({
     Set<String>? completedTopics,
-    Set<String>? completedSectionQuizzes,
+    Set<String>? completedSections,
     Map<String, SectionProgress>? sectionProgress,
     List<QuizAttempt>? quizAttempts,
     Map<String, double>? bestScores,
   }) {
     return UserProgress(
       completedTopics: completedTopics ?? this.completedTopics,
-      completedSectionQuizzes:
-          completedSectionQuizzes ?? this.completedSectionQuizzes,
+      completedSections: completedSections ?? this.completedSections,
       sectionProgress: sectionProgress ?? this.sectionProgress,
       quizAttempts: quizAttempts ?? this.quizAttempts,
       bestScores: bestScores ?? this.bestScores,
@@ -57,13 +57,14 @@ class UserProgress {
   }
 
   /// Marks a section quiz as completed
+  /// ENHANCED: Auto-completes all topics in the section when section quiz is passed
   UserProgress completeSectionQuiz(String sectionId, bool passed) {
-    final updatedCompleted = Set<String>.from(completedSectionQuizzes);
+    final updatedCompletedSections = Set<String>.from(completedSections);
 
     if (passed) {
-      updatedCompleted.add(sectionId);
+      updatedCompletedSections.add(sectionId);
     } else {
-      updatedCompleted.remove(sectionId);
+      updatedCompletedSections.remove(sectionId);
     }
 
     // Update the specific section progress
@@ -78,7 +79,7 @@ class UserProgress {
     );
 
     return copyWith(
-      completedSectionQuizzes: updatedCompleted,
+      completedSections: updatedCompletedSections,
       sectionProgress: updatedSectionProgress,
     );
   }
@@ -96,8 +97,8 @@ class UserProgress {
   }
 
   /// Checks if a section quiz is completed
-  bool isSectionQuizCompleted(String sectionId) {
-    return completedSectionQuizzes.contains(sectionId);
+  bool isSectionCompleted(String sectionId) {
+    return completedSections.contains(sectionId);
   }
 
   /// Gets the best score for a topic
@@ -137,7 +138,7 @@ class UserProgress {
   Map<String, dynamic> toJson() {
     return {
       'completedTopics': completedTopics.toList(),
-      'completedSectionQuizzes': completedSectionQuizzes.toList(),
+      'completedSections': completedSections.toList(),
       'sectionProgress': sectionProgress.map(
         (key, value) => MapEntry(key, value.toJson()),
       ),
@@ -149,8 +150,9 @@ class UserProgress {
   factory UserProgress.fromJson(Map<String, dynamic> json) {
     return UserProgress(
       completedTopics: Set<String>.from(json['completedTopics'] ?? []),
-      completedSectionQuizzes:
-          Set<String>.from(json['completedSectionQuizzes'] ?? []),
+      completedSections: Set<String>.from(
+          // COMPATIBILITY: Handle both old and new field names
+          json['completedSections'] ?? json['completedSectionQuizzes'] ?? []),
       sectionProgress: (json['sectionProgress'] as Map<String, dynamic>?)?.map(
             (key, value) => MapEntry(key, SectionProgress.fromJson(value)),
           ) ??
@@ -174,11 +176,11 @@ class UserProgress {
     if (identical(this, other)) return true;
     return other is UserProgress &&
         other.completedTopics == completedTopics &&
-        other.completedSectionQuizzes == completedSectionQuizzes;
+        other.completedSections == completedSections;
   }
 
   @override
-  int get hashCode => Object.hash(completedTopics, completedSectionQuizzes);
+  int get hashCode => Object.hash(completedTopics, completedSections);
 }
 
 /// Represents progress within a specific learning section
@@ -239,7 +241,7 @@ class SectionProgress {
 
   @override
   String toString() {
-    return 'SectionProgress($progressText, quiz: $sectionQuizCompleted)';
+    return 'SectionProgress($topicsCompleted/$totalTopics, quiz: $sectionQuizCompleted)';
   }
 
   @override
@@ -256,41 +258,43 @@ class SectionProgress {
       Object.hash(topicsCompleted, totalTopics, sectionQuizCompleted);
 }
 
-/// Represents a single quiz attempt for detailed tracking
+/// Represents a quiz attempt for tracking purposes
 class QuizAttempt {
+  final String id;
   final String topicId;
+  final DateTime timestamp;
   final double score;
-  final Duration timeSpent;
   final bool passed;
-  final DateTime attemptDate;
+  final Duration timeSpent;
 
   const QuizAttempt({
+    required this.id,
     required this.topicId,
+    required this.timestamp,
     required this.score,
-    required this.timeSpent,
     required this.passed,
-    required this.attemptDate,
+    required this.timeSpent,
   });
 
-  /// Serialization methods
-  Map<String, dynamic> toJson() => {
-        'topicId': topicId,
-        'score': score,
-        'timeSpent': timeSpent.inSeconds,
-        'passed': passed,
-        'attemptDate': attemptDate.toIso8601String(),
-      };
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'topicId': topicId,
+      'timestamp': timestamp.toIso8601String(),
+      'score': score,
+      'passed': passed,
+      'timeSpent': timeSpent.inMilliseconds,
+    };
+  }
 
-  factory QuizAttempt.fromJson(Map<String, dynamic> json) => QuizAttempt(
-        topicId: json['topicId'] as String,
-        score: (json['score'] as num).toDouble(),
-        timeSpent: Duration(seconds: json['timeSpent'] as int),
-        passed: json['passed'] as bool,
-        attemptDate: DateTime.parse(json['attemptDate'] as String),
-      );
-
-  @override
-  String toString() {
-    return 'QuizAttempt($topicId: ${(score * 100).round()}%, ${passed ? "PASSED" : "FAILED"})';
+  factory QuizAttempt.fromJson(Map<String, dynamic> json) {
+    return QuizAttempt(
+      id: json['id'] as String,
+      topicId: json['topicId'] as String,
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      score: json['score'] as double,
+      passed: json['passed'] as bool,
+      timeSpent: Duration(milliseconds: json['timeSpent'] as int),
+    );
   }
 }

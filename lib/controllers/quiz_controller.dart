@@ -5,6 +5,7 @@ import '../models/quiz/quiz_question.dart';
 import '../models/quiz/quiz_session.dart';
 import '../models/quiz/quiz_result.dart';
 import '../models/quiz/multiple_choice_question.dart';
+import '../services/progress_tracking_service.dart'; // ADDED: Only new import
 
 /// Exception thrown when quiz controller operations fail
 class QuizControllerException implements Exception {
@@ -32,7 +33,7 @@ class QuizController extends ChangeNotifier {
   final Map<String, int> _questionStartTimes = {};
   bool _isProcessingAnswer = false;
 
-  // Quiz context for future progress tracking
+  // ADDED: Quiz context for progress tracking
   String? _currentTopicId;
   String? _currentSectionId;
 
@@ -58,12 +59,12 @@ class QuizController extends ChangeNotifier {
 
   /// Creates and starts a new quiz session
   ///
-  /// FIXED: Enhanced session management with proper cleanup
+  /// ENHANCED: Added context parameters for progress tracking
   Future<void> startQuiz({
     required List<QuizQuestion> questions,
     required QuizType quizType,
-    String? topicId,
-    String? sectionId,
+    String? topicId, // ADDED
+    String? sectionId, // ADDED
     String? title,
     String? description,
     bool allowReview = true,
@@ -71,7 +72,7 @@ class QuizController extends ChangeNotifier {
     int? timeLimit,
     double passingScore = 0.7,
   }) async {
-    // FIXED: Clean up any existing session first
+    // Clean up any existing session first
     if (_currentSession != null) {
       try {
         await _cleanupCurrentSession();
@@ -86,7 +87,7 @@ class QuizController extends ChangeNotifier {
     }
 
     try {
-      // Store context for future progress tracking
+      // ADDED: Store context for progress tracking
       _currentTopicId = topicId;
       _currentSectionId = sectionId;
 
@@ -183,7 +184,6 @@ class QuizController extends ChangeNotifier {
     }
 
     try {
-      // FIXED: Use the correct method signature - no parameters needed
       _currentSession!.skipQuestion();
 
       // Auto-advance if enabled and not on last question
@@ -283,6 +283,7 @@ class QuizController extends ChangeNotifier {
   }
 
   /// Completes the quiz and returns the result
+  /// ENHANCED: Added progress tracking integration
   Future<QuizResult> completeQuiz() async {
     if (_currentSession == null) {
       throw QuizControllerException('No active quiz session');
@@ -294,10 +295,8 @@ class QuizController extends ChangeNotifier {
       // Store the result for display
       _lastResult = QuizResult.fromSession(_currentSession!);
 
-      // TODO: Add progress tracking here once we resolve import conflicts
-      // if (_currentTopicId != null) {
-      //   await ProgressTrackingService.instance.recordQuizCompletion(...);
-      // }
+      // ADDED: Record progress based on quiz type
+      await _recordQuizProgress(_lastResult!);
 
       // Clean up session
       await _cleanupCurrentSession();
@@ -309,7 +308,38 @@ class QuizController extends ChangeNotifier {
     }
   }
 
-  /// FIXED: New method to properly abandon a quiz session
+  /// ADDED: Records quiz progress based on quiz type (topic or section)
+  Future<void> _recordQuizProgress(QuizResult result) async {
+    try {
+      if (_currentSession?.quizType == QuizType.section &&
+          _currentSectionId != null) {
+        // This is a section quiz - use section completion method
+        await ProgressTrackingService.instance.recordSectionQuizCompletion(
+          result: result,
+          sectionId: _currentSectionId!,
+        );
+        debugPrint(
+            'Section quiz progress recorded for section: $_currentSectionId');
+      } else if (_currentSession?.quizType == QuizType.topic &&
+          _currentTopicId != null) {
+        // This is a topic quiz - use topic completion method
+        await ProgressTrackingService.instance.recordQuizCompletion(
+          result: result,
+          topicId: _currentTopicId!,
+          sectionId: _currentSectionId, // Pass section ID if available
+        );
+        debugPrint('Topic quiz progress recorded for topic: $_currentTopicId');
+      } else {
+        debugPrint(
+            'No progress tracking context available or unknown quiz type');
+      }
+    } catch (e) {
+      debugPrint('Error recording quiz progress: $e');
+      // Don't rethrow - progress tracking failures shouldn't prevent quiz completion
+    }
+  }
+
+  /// Abandons the current quiz session
   Future<void> abandonQuiz() async {
     if (_currentSession == null) {
       return; // Nothing to abandon
@@ -330,11 +360,11 @@ class QuizController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// FIXED: Clears results and session state for new quiz
+  /// Clears results and session state for new quiz
   void clearResults() {
     _lastResult = null;
-    _currentTopicId = null;
-    _currentSectionId = null;
+    _currentTopicId = null; // ADDED
+    _currentSectionId = null; // ADDED
 
     // Ensure no active session when clearing results
     if (_currentSession != null) {
@@ -380,12 +410,12 @@ class QuizController extends ChangeNotifier {
     };
   }
 
-  /// Method for quiz results widget compatibility
+  /// ADDED: Method for quiz results widget compatibility
   Map<String, dynamic> getCurrentPerformanceStats() {
     return getQuizStatistics();
   }
 
-  /// FIXED: Private method to properly clean up current session
+  /// Private method to properly clean up current session
   Future<void> _cleanupCurrentSession() async {
     if (_currentSession == null) return;
 
@@ -405,7 +435,7 @@ class QuizController extends ChangeNotifier {
     }
   }
 
-  /// FIXED: Force cleanup method for when normal cleanup fails
+  /// Force cleanup method for when normal cleanup fails
   void _forceCleanup() {
     // Remove listener if session exists
     if (_currentSession != null) {
@@ -420,8 +450,8 @@ class QuizController extends ChangeNotifier {
     _currentSession = null;
     _questionStartTimes.clear();
     _isProcessingAnswer = false;
-    _currentTopicId = null;
-    _currentSectionId = null;
+    _currentTopicId = null; // ADDED
+    _currentSectionId = null; // ADDED
   }
 
   /// Records the start time for the current question
@@ -452,7 +482,7 @@ class QuizController extends ChangeNotifier {
 
   @override
   void dispose() {
-    // FIXED: Proper cleanup on disposal
+    // Proper cleanup on disposal
     try {
       if (_currentSession != null) {
         _cleanupCurrentSession();

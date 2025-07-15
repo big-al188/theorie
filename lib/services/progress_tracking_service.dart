@@ -11,6 +11,7 @@ import 'user_service.dart';
 /// This service handles:
 /// - Topic completion tracking when quizzes are finished
 /// - Section progress calculations and updates
+/// - Section quiz auto-completion of all topics
 /// - Progress persistence through UserService
 /// - Real-time progress notifications
 class ProgressTrackingService extends ChangeNotifier {
@@ -20,7 +21,7 @@ class ProgressTrackingService extends ChangeNotifier {
 
   ProgressTrackingService._internal();
 
-  /// Records quiz completion and updates progress
+  /// Records topic quiz completion and updates progress
   ///
   /// This method:
   /// 1. Determines if the quiz was passed based on score
@@ -63,6 +64,136 @@ class ProgressTrackingService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error recording quiz completion: $e');
       rethrow;
+    }
+  }
+
+  /// Records section quiz completion and auto-completes all topics
+  ///
+  /// When a user passes a section quiz, this method:
+  /// 1. Marks the section quiz as completed
+  /// 2. Automatically marks ALL topics in the section as completed
+  /// 3. Updates section progress to reflect full completion
+  /// 4. Notifies listeners for real-time UI updates
+  Future<void> recordSectionQuizCompletion({
+    required QuizResult result,
+    required String sectionId,
+    double passingScore = 0.7,
+  }) async {
+    try {
+      // Determine if quiz was passed
+      final passed = result.scorePercentage >= passingScore;
+
+      // Get current user
+      final currentUser = await UserService.instance.getCurrentUser();
+      if (currentUser == null) {
+        debugPrint('Warning: Cannot record section progress - no current user');
+        return;
+      }
+
+      // Get the section to find all topics
+      final section = _findSectionById(sectionId);
+      if (section == null) {
+        debugPrint('Warning: Could not find section $sectionId');
+        return;
+      }
+
+      var currentProgress = currentUser.progress;
+
+      // Mark section quiz as completed
+      currentProgress = currentProgress.completeSectionQuiz(sectionId, passed);
+
+      // If section quiz was passed, auto-complete all topics in the section
+      if (passed) {
+        for (final topic in section.topics) {
+          currentProgress = currentProgress.completeTopicQuiz(topic.id, true);
+        }
+
+        // Update section progress to reflect all topics completed
+        currentProgress = _updateSectionProgress(
+          progress: currentProgress,
+          sectionId: sectionId,
+          allTopicsCompleted: true,
+        );
+
+        debugPrint(
+            'Section quiz passed: Auto-completed ${section.topics.length} topics in $sectionId');
+      }
+
+      // Save updated progress
+      await UserService.instance.updateUserProgress(currentProgress);
+
+      // Notify all listeners immediately after saving
+      notifyListeners();
+      debugPrint('Section quiz progress saved and listeners notified');
+
+      debugPrint(
+          'Section quiz completed: $sectionId - ${passed ? "PASSED" : "FAILED"} (${(result.scorePercentage * 100).round()}%)');
+    } catch (e) {
+      debugPrint('Error recording section quiz completion: $e');
+      rethrow;
+    }
+  }
+
+  /// Initialize section progress data for current user
+  ///
+  /// This ensures all sections have proper progress tracking data
+  /// and creates missing entries with default values.
+  Future<void> initializeSectionProgress() async {
+    try {
+      final currentUser = await UserService.instance.getCurrentUser();
+      if (currentUser == null) return;
+
+      final sections = LearningContentRepository.getAllSections();
+      var currentProgress = currentUser.progress;
+      bool hasUpdates = false;
+
+      // Ensure all sections have progress data
+      for (final section in sections) {
+        if (!currentProgress.sectionProgress.containsKey(section.id)) {
+          final newSectionProgress = Map<String, SectionProgress>.from(
+              currentProgress.sectionProgress);
+
+          // Count already completed topics for this section
+          int completedTopics = 0;
+          for (final topic in section.topics) {
+            if (currentProgress.completedTopics.contains(topic.id)) {
+              completedTopics++;
+            }
+          }
+
+          newSectionProgress[section.id] = SectionProgress(
+            topicsCompleted: completedTopics,
+            totalTopics: section.totalTopics,
+            sectionQuizCompleted:
+                currentProgress.completedSections.contains(section.id),
+          );
+
+          currentProgress = UserProgress(
+            sectionProgress: newSectionProgress,
+            completedTopics: currentProgress.completedTopics,
+            completedSections: currentProgress.completedSections,
+            totalQuizzesTaken: currentProgress.totalQuizzesTaken,
+            totalQuizzesPassed: currentProgress.totalQuizzesPassed,
+          );
+
+          hasUpdates = true;
+        }
+      }
+
+      // Save if there were any updates
+      if (hasUpdates) {
+        final newProgress = UserProgress(
+          sectionProgress: currentProgress.sectionProgress,
+          completedTopics: currentProgress.completedTopics,
+          completedSections: currentProgress.completedSections,
+          totalQuizzesTaken: currentProgress.totalQuizzesTaken,
+          totalQuizzesPassed: currentProgress.totalQuizzesPassed,
+        );
+        await UserService.instance.updateUserProgress(newProgress);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error initializing section progress: $e');
     }
   }
 
@@ -140,12 +271,13 @@ class ProgressTrackingService extends ChangeNotifier {
   }
 
   /// Updates section-level progress calculations
-  /// FIXED: Creates new UserProgress instead of using copyWith
+  /// ENHANCED: Support for auto-completing all topics when section quiz passed
   UserProgress _updateSectionProgress({
     required UserProgress progress,
     required String sectionId,
-    required String topicId,
-    required bool passed,
+    String? topicId,
+    bool? passed,
+    bool allTopicsCompleted = false,
   }) {
     try {
       // Get the section to find total topics
@@ -158,9 +290,15 @@ class ProgressTrackingService extends ChangeNotifier {
 
       // Count completed topics in this section
       int completedTopics = 0;
-      for (final topic in section.topics) {
-        if (progress.completedTopics.contains(topic.id)) {
-          completedTopics++;
+      if (allTopicsCompleted) {
+        // All topics are completed (section quiz passed)
+        completedTopics = section.totalTopics;
+      } else {
+        // Count individually
+        for (final topic in section.topics) {
+          if (progress.completedTopics.contains(topic.id)) {
+            completedTopics++;
+          }
         }
       }
 
@@ -176,7 +314,7 @@ class ProgressTrackingService extends ChangeNotifier {
           Map<String, SectionProgress>.from(progress.sectionProgress);
       updatedSectionProgress[sectionId] = newSectionProgress;
 
-      // FIXED: Create new UserProgress instead of using copyWith
+      // Create new UserProgress with updated section data
       return UserProgress(
         sectionProgress: updatedSectionProgress,
         completedTopics: progress.completedTopics,
@@ -193,71 +331,12 @@ class ProgressTrackingService extends ChangeNotifier {
   /// Find a section by its ID
   LearningSection? _findSectionById(String sectionId) {
     final sections = LearningContentRepository.getAllSections();
-    try {
-      return sections.firstWhere((section) => section.id == sectionId);
-    } catch (e) {
-      debugPrint('Section not found: $sectionId');
-      return null;
-    }
-  }
-
-  /// Initialize or refresh section progress for all sections
-  Future<void> initializeSectionProgress() async {
-    try {
-      final currentUser = await UserService.instance.getCurrentUser();
-      if (currentUser == null) return;
-
-      var currentProgress = currentUser.progress;
-      final sections = LearningContentRepository.getAllSections();
-
-      // Initialize progress for all sections
-      final updatedSectionProgress =
-          Map<String, SectionProgress>.from(currentProgress.sectionProgress);
-
-      bool hasChanges = false;
-
-      for (final section in sections) {
-        // Count completed topics in this section
-        int completedTopics = 0;
-        for (final topic in section.topics) {
-          if (currentProgress.completedTopics.contains(topic.id)) {
-            completedTopics++;
-          }
-        }
-
-        // Create or update section progress
-        final newSectionProgress = SectionProgress(
-          topicsCompleted: completedTopics,
-          totalTopics: section.totalTopics,
-          sectionQuizCompleted:
-              currentProgress.completedSections.contains(section.id),
-        );
-
-        final existingProgress = updatedSectionProgress[section.id];
-        if (existingProgress == null ||
-            existingProgress.topicsCompleted != completedTopics ||
-            existingProgress.totalTopics != section.totalTopics) {
-          updatedSectionProgress[section.id] = newSectionProgress;
-          hasChanges = true;
-        }
+    for (final section in sections) {
+      if (section.id == sectionId) {
+        return section;
       }
-
-      // Update progress if there were changes
-      if (hasChanges) {
-        // FIXED: Create new UserProgress instead of using copyWith
-        final newProgress = UserProgress(
-          sectionProgress: updatedSectionProgress,
-          completedTopics: currentProgress.completedTopics,
-          completedSections: currentProgress.completedSections,
-          totalQuizzesTaken: currentProgress.totalQuizzesTaken,
-          totalQuizzesPassed: currentProgress.totalQuizzesPassed,
-        );
-        await UserService.instance.updateUserProgress(newProgress);
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('Error initializing section progress: $e');
     }
+    return null;
   }
 
   /// Gets current progress for a specific section
@@ -283,64 +362,5 @@ class ProgressTrackingService extends ChangeNotifier {
       totalTopics: section?.totalTopics ?? 0,
       sectionQuizCompleted: false,
     );
-  }
-
-  /// ADDED: Records section quiz completion
-  Future<void> recordSectionQuizCompletion({
-    required QuizResult result,
-    required String sectionId,
-    double passingScore = 0.7,
-  }) async {
-    try {
-      // Determine if quiz was passed
-      final passed = result.scorePercentage >= passingScore;
-
-      // Get current user
-      final currentUser = await UserService.instance.getCurrentUser();
-      if (currentUser == null) {
-        debugPrint('Warning: Cannot record section progress - no current user');
-        return;
-      }
-
-      // Update section quiz completion
-      var currentProgress = currentUser.progress;
-      currentProgress = currentProgress.completeSectionQuiz(sectionId, passed);
-
-      // Save updated progress
-      await UserService.instance.updateUserProgress(currentProgress);
-
-      // Notify all listeners immediately after saving
-      notifyListeners();
-      debugPrint('Section quiz progress saved and listeners notified');
-
-      debugPrint(
-          'Section quiz completed: $sectionId - ${passed ? "PASSED" : "FAILED"} (${(result.scorePercentage * 100).round()}%)');
-    } catch (e) {
-      debugPrint('Error recording section quiz completion: $e');
-      rethrow;
-    }
-  }
-
-  /// Clears all progress data (for testing or reset functionality)
-  Future<void> clearAllProgress() async {
-    try {
-      final currentUser = await UserService.instance.getCurrentUser();
-      if (currentUser != null) {
-        // FIXED: Create new UserProgress instead of using copyWith
-        final emptyProgress = UserProgress(
-          sectionProgress: <String, SectionProgress>{},
-          completedTopics: <String>{},
-          completedSections: <String>{},
-          totalQuizzesTaken: 0,
-          totalQuizzesPassed: 0,
-        );
-
-        await UserService.instance.updateUserProgress(emptyProgress);
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('Error clearing progress: $e');
-      rethrow;
-    }
   }
 }
