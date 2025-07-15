@@ -1,271 +1,236 @@
 # Theorie - Interactive Guitar Fretboard Theory App
 
 ## Project Overview
-Theorie is a Flutter web application for learning and exploring music theory on guitar fretboards. It provides interactive visualization of scales, chords, and intervals across multiple configurable fretboards, helping musicians understand the relationships between notes, patterns, and musical concepts.
+Theorie is a Flutter web application for learning and exploring music theory on guitar fretboards. It provides interactive visualization of scales, chords, and intervals across multiple configurable fretboards, helping musicians understand the relationships between notes, patterns, and musical concepts through visual and hands-on learning.
 
 ## Core Features
 - **Multi-Fretboard Display**: Support for multiple simultaneous fretboard instances
-- **Music Theory Modes**: Scales, intervals, and chord visualization
-- **Interactive Controls**: Real-time updates for root notes, scale types, modes, and octaves
-- **Customizable Tunings**: Support for various guitar tunings
-- **Visual Learning**: Color-coded notes based on scale degrees and intervals
-- **Responsive Design**: Optimized for web browsers
+- **Three Theory Modes**: Scales, intervals, and chord visualization with real-time switching
+- **Interactive Controls**: Live updates for root notes, scale types, modes, octaves, and intervals
+- **User Management**: Registration, login, guest access, and personalized settings
+- **Visual Learning**: Color-coded notes based on scale degrees and interval relationships
+- **Customizable Experience**: Multiple tunings, layouts, themes, and display options
+- **Responsive Design**: Optimized for web browsers with adaptive layouts
 
 ## Technology Stack
-- **Flutter**: 3.24.3 (stable channel)
+- **Flutter**: 3.24.3 (stable channel, web-optimized)
 - **Dart**: 3.5.3
-- **State Management**: Provider 6.1.1
-- **Architecture**: MVC (Model-View-Controller)
-- **Deployment**: GitLab Pages (web build)
-- **Development Tools**: DevTools 2.37.3
+- **State Management**: Provider 6.1.1 with ChangeNotifier pattern
+- **Architecture**: Strict MVC (Model-View-Controller) with clear separation of concerns
+- **Persistence**: SharedPreferences for user data and settings
+- **Deployment**: GitLab Pages with automated CI/CD pipeline
+- **Development Tools**: Flutter DevTools 2.37.3
 
-## Project Architecture
+## Architecture & Design Principles
 
-### MVC Pattern Implementation
+### MVC Implementation
 ```
-Models (Data & Domain Logic)
-    ↓
-Controllers (Business Logic)
-    ↓
-Views (UI Components)
-    ↑
-Provider (State Management)
-```
-
-### Key Architectural Principles
-1. **Separation of Concerns**: Each file has a single responsibility
-2. **File Size Limit**: ~500 lines max for maintainability
-3. **Reusability**: Common functionality extracted to utilities
-4. **Testability**: Business logic isolated from UI
-5. **Scalability**: Modular structure for easy feature additions
-
-## Directory Structure
-```
-lib/
-├── main.dart                      # App entry point
-├── models/                        # Data models and domain entities
-│   ├── music/                     # Music theory models
-│   │   ├── note.dart             # Note representation (pitch, octave, MIDI)
-│   │   ├── interval.dart         # Musical intervals
-│   │   ├── scale.dart            # Scale formulas and modes
-│   │   ├── chord.dart            # Chord structures and voicings
-│   │   └── tuning.dart           # Instrument tunings
-│   ├── fretboard/                # Fretboard-specific models
-│   │   ├── fretboard_config.dart # Fretboard configuration
-│   │   ├── fretboard_instance.dart # Individual fretboard state
-│   │   └── fret_position.dart    # Fret position calculations
-│   └── app_state.dart            # Global application state
-├── controllers/                   # Business logic layer
-│   ├── music_controller.dart     # Music theory operations
-│   ├── fretboard_controller.dart # Fretboard calculations
-│   └── chord_controller.dart     # Chord building logic
-├── views/                        # UI components
-│   ├── pages/                    # Full-screen pages
-│   ├── widgets/                  # Reusable components
-│   └── dialogs/                  # Dialog windows
-├── utils/                        # Helper functions
-│   ├── note_utils.dart          # Note calculations
-│   ├── scale_utils.dart         # Scale generation
-│   ├── chord_utils.dart         # Chord utilities
-│   ├── color_utils.dart         # Color generation
-│   └── music_utils.dart         # General music utilities
-└── constants/                    # Application constants
-    ├── app_constants.dart       # App configuration
-    ├── music_constants.dart     # Music theory data
-    └── ui_constants.dart        # UI measurements
+Models (Domain Logic & Data)
+    ↓ Business Operations
+Controllers (Music Theory & State Logic)  
+    ↓ State Updates
+Views (UI Components & Rendering)
+    ↑ User Interactions
+Provider (State Management & Notifications)
 ```
 
-## Key Components
+### Core Architectural Rules
+1. **File Size Limit**: ~500 lines maximum for maintainability (exceptions: chord.dart with hundreds of chord variations)
+2. **Single Responsibility**: Each file serves one clear, well-defined purpose
+3. **Separation of Concerns**: Strict boundaries between models, controllers, and views
+4. **No Business Logic in UI**: All music theory calculations isolated in controllers/utils
+5. **Testable Design**: Business logic separated for easy unit testing
+6. **Reusable Components**: Common functionality extracted to utilities and widgets
 
-### Models
-- **Note**: Represents musical notes with pitch class, octave, and MIDI conversion
-- **Scale**: Contains scale formulas, modes, and pitch class sets
-- **Chord**: Defines chord formulas, inversions, and voicings
-- **FretboardInstance**: Manages individual fretboard state and configuration
-- **AppState**: Central state management using ChangeNotifier
+## Key Components & Responsibilities
 
-### Controllers
-- **MusicController**: Handles music theory calculations and transformations
-- **FretboardController**: Manages fretboard logic, note highlighting, and interactions
-- **ChordController**: Builds chord voicings and analyzes fingering patterns
+### Models (`/models`)
+- **Music Theory**: `Note`, `Scale`, `Chord`, `Interval` - Core music domain entities
+- **Fretboard**: `FretboardConfig`, `FretboardInstance` - Display and state configuration  
+- **User System**: `User`, `UserPreferences`, `UserProgress` - Account and learning management
+- **App State**: `AppState` - Central state management with ChangeNotifier
 
-### Views
-- **FretboardWidget**: Main fretboard display component
-- **FretboardPainter**: Custom canvas painter for fretboard rendering
-- **Control Widgets**: Dropdowns and selectors for user input
-- **ScaleStrip**: Horizontal note display for scales/intervals
+### Controllers (`/controllers`) 
+- **MusicController**: Music theory calculations, mode operations, note transformations
+- **FretboardController**: Fretboard logic, note highlighting algorithms, visual mapping
+- **ChordController**: Chord construction, voicing analysis, inversion handling
 
-## State Management
+### Views (`/views`)
+- **Pages**: Full-screen interfaces (`LoginPage`, `WelcomePage`, `HomePage`, `FretboardPage`, `SettingsPage`)
+- **Fretboard Widgets**: `FretboardWidget`, `FretboardPainter`, `ScaleStrip` - Core visualization
+- **Control Widgets**: All user input components (selectors, dropdowns, checkboxes)
+- **Dialogs**: Modal interfaces for settings and configuration
+
+### Services (`/services`)
+- **UserService**: Complete user data management, authentication, persistence, import/export
+
+## State Management Architecture
 
 ### Provider Pattern
 ```dart
 // Global state access
 final appState = Provider.of<AppState>(context);
 
-// State updates
+// Targeted updates with selectors  
+Consumer<AppState>(
+  builder: (context, appState, child) => Widget(),
+)
+
+// State modifications
 appState.updateRootNote(newNote);
 appState.notifyListeners();
 ```
 
-### State Flow
-1. User interacts with control widgets
-2. Controllers process the input
-3. Models/State are updated
-4. Provider notifies listeners
-5. UI widgets rebuild with new data
+### State Flow & Data Management
+1. **User Interactions** → Control Widgets → Controller Methods
+2. **Controller Logic** → Model Updates → AppState Changes  
+3. **State Notifications** → Provider Updates → Widget Rebuilds
+4. **Persistence Layer** → UserService → SharedPreferences Storage
 
-## Development Guidelines
+## Music Theory Implementation
 
-### Code Style
-- **Files**: `snake_case.dart`
-- **Classes**: `PascalCase`
-- **Methods/Variables**: `camelCase`
-- **Constants**: `SCREAMING_SNAKE_CASE` or `camelCase` for const
-- **Private members**: `_prefixWithUnderscore`
+### Note System Architecture
+- **MIDI Foundation**: All calculations based on MIDI note numbers (60 = Middle C)
+- **Enharmonic Support**: Proper handling of sharps/flats (C# = Db, B# = C)
+- **Octave Management**: Scientific pitch notation with flexible octave selection
+- **Chromatic Base**: 12-tone equal temperament as calculation foundation
 
-### Widget Best Practices
-- Extract widgets when > 100 lines
-- Use `const` constructors where possible
-- Implement `Key` parameters for list items
-- Separate business logic from UI code
+### Scale System Features  
+- **20+ Scale Types**: Major, minor modes, pentatonic, blues, exotic scales
+- **Modal Relationships**: Automatic mode rotation and root calculation
+- **Pitch Class Sets**: Efficient scale membership testing and comparison
+- **Mode Display**: Proper mode names and interval patterns
 
-### Music Theory Implementation
-- All calculations should go through utility functions
-- Use MIDI numbers for internal note representation
-- Support enharmonic equivalents (C# = Db)
-- Maintain chromatic scale as source of truth
-
-## Common Commands
-
-```bash
-# Development
-flutter run -d chrome              # Run in Chrome browser
-flutter run --web-port=8080       # Run on specific port
-flutter run --web-renderer html   # Use HTML renderer
-flutter run --web-renderer canvaskit # Use CanvasKit renderer
-
-# Testing
-flutter test                      # Run all tests
-flutter test test/unit/          # Run unit tests only
-flutter test --coverage          # Generate coverage report
-
-# Building
-flutter build web                # Build for production
-flutter build web --release      # Build optimized release
-flutter build web --web-renderer html # Build with HTML renderer
-
-# Analysis
-flutter analyze                  # Run static analysis
-flutter format .                # Format all Dart files
-dart fix --apply               # Apply automated fixes
-
-# Maintenance
-flutter clean                   # Clean build artifacts
-flutter pub get                # Install dependencies
-flutter pub upgrade            # Upgrade dependencies
-flutter doctor                 # Check Flutter setup
-```
-
-## Music Theory Implementation Details
-
-### Note System
-- Uses chromatic scale (12 semitones)
-- MIDI note numbers for calculations (60 = Middle C)
-- Supports sharps and flats with enharmonic awareness
-- Octave numbering follows scientific pitch notation
-
-### Scale System
-- Scales defined as interval patterns (e.g., Major: [2,2,1,2,2,2,1])
-- Supports all standard modes (Ionian, Dorian, etc.)
-- Pitch class sets for scale membership testing
-- Mode rotation handled automatically
-
-### Chord System
-- Chords defined as interval formulas from root
-- Supports inversions and voicings
-- Chord-scale relationships maintained
-- Voice leading calculations available
+### Chord System Capabilities
+- **Extensive Database**: Major, minor, diminished, augmented, extended chords
+- **Inversion Support**: Root position, 1st, 2nd, 3rd inversions with proper voicing
+- **Voice Leading**: Intelligent chord progression and voice movement
+- **Fretboard Mapping**: Optimal fingering suggestions and chord shape analysis
 
 ### Fretboard Calculations
-- Standard tuning: E-A-D-G-B-E (low to high)
-- Fret positions calculated from nut (0) to body
-- Support for custom tunings
-- Capo support through transposition
+- **Multiple Tunings**: Standard (E-A-D-G-B-E) plus alternative tunings
+- **Layout Options**: Right/left-handed, bass-top/bottom configurations  
+- **Fret Positioning**: Accurate mathematical fret spacing and note placement
+- **Visual Optimization**: Efficient coordinate calculation and rendering
 
-## Performance Considerations
+## Performance & Optimization
 
-### Rendering Optimization
-- Use `CustomPainter` for fretboard rendering
-- Implement `shouldRepaint` efficiently
-- Cache calculated positions
-- Minimize widget rebuilds
+### Rendering Performance
+- **CustomPainter**: High-performance Canvas-based fretboard rendering
+- **Selective Repainting**: `shouldRepaint` logic to minimize unnecessary updates
+- **Color Caching**: Pre-calculated color maps for theory visualization
+- **Widget Optimization**: Efficient widget composition and minimal rebuilds
 
-### State Management
-- Use `selector` for granular updates
-- Avoid unnecessary `notifyListeners()` calls
-- Batch state updates when possible
+### State Management Efficiency
+- **Granular Updates**: Provider selectors for targeted widget rebuilds
+- **Batch Operations**: Multiple state changes combined into single notifications
+- **Memory Management**: Proper disposal of controllers and cached data
+- **Responsive Calculations**: Optimized algorithms for real-time theory updates
 
-## Testing Approach
+## Development Practices
 
-### Unit Tests
-- Test music theory calculations
-- Verify note/scale/chord operations
-- Test utility functions independently
+### Code Organization Standards
+- **Naming Conventions**: `snake_case.dart`, `PascalCase` classes, `camelCase` methods
+- **Import Organization**: Relative imports for project files, package imports first
+- **File Structure**: Logical grouping with clear hierarchies and dependencies
+- **Documentation**: Comprehensive inline docs for complex music theory logic
 
-### Widget Tests
-- Test control widget interactions
-- Verify state updates propagate correctly
-- Test responsive behavior
+### Quality Assurance
+- **Static Analysis**: Comprehensive Flutter/Dart linting with custom rules
+- **Unit Testing**: All music theory calculations and controller logic tested
+- **Widget Testing**: Critical UI interactions and state management verified
+- **Integration Testing**: End-to-end user workflows and multi-fretboard operations
 
-### Integration Tests
-- Test full user workflows
-- Verify multi-fretboard synchronization
-- Test settings persistence
+### Common Development Tasks
+1. **Adding Scale Types**: Update `music_constants.dart` intervals, test with `scale_utils.dart`
+2. **New Chord Types**: Extend `chord.dart` formulas, update voicing algorithms  
+3. **Custom Tunings**: Add to `music_constants.dart` presets, test fret calculations
+4. **UI Components**: Follow widget patterns, implement proper state management
+5. **Color Schemes**: Modify `color_utils.dart` generation algorithms for theory visualization
 
-## Known Patterns & Solutions
+## Debugging & Development Tools
 
-### Common Tasks
-1. **Adding a new scale type**: Update `music_constants.dart` and `scale_utils.dart`
-2. **Adding a new tuning**: Add to `music_constants.dart` tuning presets
-3. **Customizing colors**: Modify `color_utils.dart` generation algorithms
-4. **Adding new view mode**: Update `ViewMode` enum and related controllers
+### Debugging Strategies
+- **Flutter Inspector**: Widget tree analysis and performance profiling
+- **Browser DevTools**: Web-specific debugging and network monitoring
+- **Debug Prints**: Controlled logging in controllers for calculation verification
+- **Visual Debugging**: `debugPaintSizeEnabled` for layout analysis
 
-### Debugging Tips
-- Use Flutter Inspector for widget tree analysis
-- Enable `debugPaintSizeEnabled` for layout debugging
-- Check browser console for web-specific errors
-- Use `print()` statements in controllers for logic flow
+### Music Theory Validation
+- **Interval Accuracy**: Verify all semitone calculations and enharmonic equivalents
+- **Mode Relationships**: Test scale rotation and root note calculations
+- **Chord Formulas**: Validate interval patterns and inversion logic
+- **Edge Cases**: Handle unusual note names (B#, Cb) and octave boundaries
 
-## Important Considerations
+## Deployment & CI/CD
 
-### Web-Specific
-- No access to device file system
-- Browser compatibility considerations
-- Performance varies by renderer choice
-- Handle keyboard/mouse input appropriately
+### Build Configuration
+- **Web Optimization**: CanvasKit renderer for performance, HTML renderer for compatibility
+- **Asset Management**: Efficient bundling and loading strategies
+- **Environment Configuration**: Production vs development build variations
 
-### Music Theory Accuracy
-- Verify all interval calculations
-- Test edge cases (B# = C, Cb = B)
-- Ensure mode relationships are correct
-- Validate chord formula implementations
+### GitLab Integration
+- **Primary Repository**: GitLab with full project including assets and CI/CD
+- **GitHub Mirror**: `lib/` and `test/` directories only for public access
+- **Automated Deployment**: GitLab Pages with branch-based deployment strategies
+- **Build Artifacts**: Optimized web builds with proper caching headers
 
-## CI/CD Notes
-- GitLab CI/CD builds and deploys to GitLab Pages
-- Only `lib/` and `test/` directories synced to GitHub
-- Assets and build artifacts remain in GitLab
-- Production URL: [GitLab Pages deployment]
+## Security & User Data
 
-## Do Not
-- Don't hardcode note names - use constants
-- Don't bypass utility functions for calculations
-- Don't mix UI logic with music theory logic
-- Don't assume standard tuning - always check
-- Don't modify this file without updating GitLab source
+### User Management
+- **Guest Access**: Full functionality without account creation
+- **Data Privacy**: Local storage only, no external data transmission
+- **Session Management**: Secure user state handling and logout procedures
+- **Data Export**: User progress and settings backup/restore functionality
 
-## Future Considerations
-- Audio playback integration
-- MIDI input/output support
-- Additional instrument support
-- Advanced chord voicing algorithms
-- Music theory exercises/quizzes
+## Testing Strategy
+
+### Unit Testing Focus Areas
+- **Music Theory**: All note, scale, chord, and interval calculations
+- **Controllers**: State management logic and theory transformations
+- **Utilities**: Helper functions and mathematical operations
+- **Edge Cases**: Boundary conditions and error handling
+
+### Widget Testing Priorities  
+- **User Interactions**: Control widget responses and state propagation
+- **Fretboard Rendering**: Visual accuracy and performance validation
+- **Multi-Instance**: Multiple fretboard coordination and independence
+- **Responsive Behavior**: Layout adaptation and screen size handling
+
+## Known Limitations & Considerations
+
+### Web Platform Constraints
+- **File System Access**: No local file operations, SharedPreferences only
+- **Audio Limitations**: No native audio, future MIDI/Web Audio API integration needed
+- **Performance Variations**: Browser-dependent rendering performance differences
+- **Mobile Web**: Touch interaction limitations compared to native mobile apps
+
+### Future Enhancement Areas
+- **Audio Integration**: MIDI playback, chord strumming, scale playing
+- **Advanced Theory**: Chord progressions, voice leading analysis, harmonic relationships  
+- **Educational Content**: Interactive lessons, progress tracking, achievement systems
+- **Collaboration Features**: Shared sessions, social learning, community content
+- **Mobile Native**: iOS/Android apps with platform-specific optimizations
+
+## Critical Development Rules
+
+### Do Not
+- **Hardcode Music Data**: Always use constants and utility functions for music theory
+- **Mix UI with Logic**: Keep business logic out of widget build methods
+- **Bypass Utilities**: Use existing helper functions for calculations
+- **Assume Tuning**: Always check current tuning configuration
+- **Ignore File Size**: Maintain size limits except for strongly justified cases
+
+### Always Do  
+- **Test Music Theory**: Verify all calculations with known musical examples
+- **Document Complex Logic**: Explain non-obvious music theory implementations
+- **Handle Edge Cases**: Account for unusual note names and boundary conditions
+- **Optimize Performance**: Profile rendering and state management regularly
+- **Update Documentation**: Keep this file current with architectural changes
+
+## Emergency Debugging Checklist
+1. **Check Browser Console**: Web-specific errors and warnings
+2. **Verify Music Constants**: Ensure scales/chords match music theory standards
+3. **Test State Updates**: Confirm Provider notifications and widget rebuilds
+4. **Validate Calculations**: Check MIDI numbers and interval mathematics
+5. **Review Performance**: Profile CustomPainter and state management efficiency
