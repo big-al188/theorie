@@ -2,16 +2,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'models/app_state.dart';
+import 'controllers/quiz_controller.dart'; // Add QuizController import
 import 'services/user_service.dart';
 import 'views/pages/login_page.dart';
 import 'views/pages/welcome_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize user service
   await UserService.instance.initialize();
-  
+
   runApp(const TheorieApp());
 }
 
@@ -20,8 +21,14 @@ class TheorieApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AppState(),
+    return MultiProvider(
+      providers: [
+        // Existing app state provider
+        ChangeNotifierProvider(create: (_) => AppState()),
+
+        // Add QuizController provider for quiz system
+        ChangeNotifierProvider(create: (_) => QuizController()),
+      ],
       child: Consumer<AppState>(
         builder: (context, appState, child) {
           return MaterialApp(
@@ -81,12 +88,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
     try {
       // Check if there's an existing current user
       final user = await UserService.instance.getCurrentUser();
-      
+
       if (user != null && mounted) {
         // Load user preferences into app state
         final appState = context.read<AppState>();
         await appState.setCurrentUser(user);
-        
+
         setState(() {
           _isLoggedIn = true;
           _isLoading = false;
