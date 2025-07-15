@@ -1,20 +1,20 @@
 # Theorie - Project Structure Overview
 
 ## Project Description
-Theorie is a comprehensive Flutter web application for interactive guitar fretboard theory learning. It provides real-time visualization of scales, chords, and intervals across configurable fretboards, helping musicians understand music theory concepts through visual and interactive learning.
+Theorie is a comprehensive Flutter web application for interactive guitar fretboard theory learning. It provides real-time visualization of scales, chords, and intervals across configurable fretboards, helping musicians understand music theory concepts through visual and interactive learning. The application now includes a complete quiz system for testing and reinforcing music theory knowledge.
 
 ## Architecture
 The application follows strict MVC (Model-View-Controller) architecture with clear separation of concerns:
 
-- **Models**: Data structures and domain entities for music theory and fretboard configuration
-- **Controllers**: Business logic for music calculations, fretboard rendering, and state management  
-- **Views**: UI components including pages, widgets, and dialogs
-- **Utils**: Helper functions for music theory calculations and color generation
-- **Constants**: Configuration values and music theory data
-- **Services**: User management and data persistence
+- **Models**: Data structures and domain entities for music theory, fretboard configuration, and quiz system
+- **Controllers**: Business logic for music calculations, fretboard rendering, state management, and quiz operations
+- **Views**: UI components including pages, widgets, and dialogs for theory visualization and quiz interfaces
+- **Utils**: Helper functions for music theory calculations, color generation, and quiz utilities
+- **Constants**: Configuration values, music theory data, and quiz constants
+- **Services**: User management, data persistence, and quiz integration
 
 ## Key Architectural Principles
-1. **File Size Limit**: All files maintained around or under 500 lines unless strongly justified (e.g., chord.dart with hundreds of chord variations)
+1. **File Size Limit**: All files maintained around or under 500 lines unless strongly justified (e.g., chord.dart with hundreds of chord variations, unified_quiz_generator.dart with comprehensive quiz logic)
 2. **MVC Separation**: Clear separation between models, controllers, and views
 3. **Separation of Concerns**: Each file has a single, well-defined responsibility
 4. **Reusability**: Common functionality extracted into utility modules
@@ -41,94 +41,95 @@ lib/
 │   │   ├── user.dart                  # User profiles and authentication
 │   │   ├── user_preferences.dart      # User settings and defaults
 │   │   └── user_progress.dart         # Learning progress tracking
+│   ├── quiz/                          # Quiz system models (NEW)
+│   │   ├── quiz_question.dart         # Abstract base class for all question types
+│   │   ├── multiple_choice_question.dart  # Multiple choice question implementation
+│   │   ├── quiz_session.dart          # Quiz session state and management
+│   │   └── quiz_result.dart           # Quiz results and performance tracking
 │   └── app_state.dart                 # Central application state with ChangeNotifier
 ├── controllers/                       # Business logic layer
 │   ├── music_controller.dart          # Music theory operations and calculations
 │   ├── fretboard_controller.dart      # Fretboard logic and note highlighting
-│   └── chord_controller.dart          # Chord building and voicing analysis
-├── services/                          # External services and persistence
-│   └── user_service.dart             # User data management and persistence
-├── views/                             # UI components and presentation layer
-│   ├── pages/                         # Full-screen application pages
-│   │   ├── login_page.dart           # User authentication interface
-│   │   ├── welcome_page.dart         # Landing page and navigation
-│   │   ├── home_page.dart            # Single fretboard view with controls
-│   │   ├── fretboard_page.dart       # Multi-fretboard workspace
-│   │   └── settings_page.dart        # Comprehensive user settings
-│   ├── widgets/                       # Reusable UI components
-│   │   ├── fretboard/                # Fretboard-specific widgets
-│   │   │   ├── fretboard_widget.dart # Main fretboard display component
-│   │   │   ├── fretboard_painter.dart # Custom Canvas painter for rendering
-│   │   │   ├── scale_strip.dart      # Horizontal note strip display
-│   │   │   └── fretboard_container.dart # Stateful fretboard wrapper
-│   │   ├── controls/                 # Interactive control widgets
-│   │   │   ├── root_selector.dart    # Root note selection dropdown
-│   │   │   ├── scale_selector.dart   # Scale type selection
-│   │   │   ├── chord_selector.dart   # Hierarchical chord selection
-│   │   │   ├── mode_selector.dart    # Scale mode selection
-│   │   │   ├── octave_selector.dart  # Octave range selection (checkboxes)
-│   │   │   ├── interval_selector.dart # Individual interval selection
-│   │   │   ├── tuning_selector.dart  # Instrument tuning presets
-│   │   │   ├── view_mode_selector.dart # Mode switching (scales/intervals/chords)
-│   │   │   └── fretboard_controls.dart # Unified control panel
-│   │   └── common/                   # Shared UI components
-│   │       └── app_bar.dart         # Reusable application bar
-│   └── dialogs/                      # Modal dialog components
-│       ├── settings_dialog.dart     # Main settings interface
-│       └── settings_sections.dart   # Organized settings sections
-├── utils/                            # Helper functions and calculations
-│   ├── note_utils.dart              # Note parsing, MIDI conversion, transposition
-│   ├── scale_utils.dart             # Scale generation and mode calculations
-│   ├── chord_utils.dart             # Chord building and inversion handling
-│   ├── color_utils.dart             # Color generation for theory visualization
-│   └── music_utils.dart             # General music theory utilities
-└── constants/                        # Application configuration
-    ├── app_constants.dart            # General application settings and limits
-    ├── music_constants.dart          # Music theory data (notes, intervals, tunings)
-    └── ui_constants.dart             # UI measurements, colors, and styling
+│   ├── chord_controller.dart          # Chord analysis and voice leading (NEW)
+│   ├── quiz_controller.dart           # Quiz session management and flow (NEW)
+│   └── unified_quiz_generator.dart    # Comprehensive quiz question generation (NEW, >500 lines - justified)
+├── views/                             # User interface components
+│   ├── pages/                         # Full-screen page components
+│   │   ├── welcome_page.dart          # Landing page with app introduction
+│   │   ├── login_page.dart            # User authentication interface
+│   │   ├── home_page.dart             # Main navigation and feature access
+│   │   ├── fretboard_page.dart        # Primary fretboard interaction interface
+│   │   ├── settings_page.dart         # User preferences and configuration
+│   │   ├── learning_topics_page.dart  # Educational content navigation (NEW)
+│   │   ├── quiz_page.dart             # Interactive quiz taking interface (NEW)
+│   │   └── quiz_placeholder_page.dart # Placeholder for future quiz content (NEW)
+│   └── widgets/                       # Reusable UI components
+│       ├── fretboard/                 # Fretboard visualization widgets
+│       │   ├── fretboard_widget.dart  # Main fretboard display component
+│       │   ├── fretboard_painter.dart # Custom painter for fretboard rendering
+│       │   ├── scale_strip.dart       # Horizontal note display widget
+│       │   └── note_display.dart      # Individual note visualization
+│       ├── controls/                  # User input and control widgets
+│       │   ├── theory_controls.dart   # Music theory selection controls
+│       │   ├── fretboard_controls.dart # Fretboard configuration controls
+│       │   ├── user_controls.dart     # User management controls
+│       │   ├── root_note_selector.dart # Root note selection widget
+│       │   ├── scale_selector.dart    # Scale type selection widget
+│       │   ├── mode_selector.dart     # Mode selection widget
+│       │   ├── octave_selector.dart   # Octave selection widget
+│       │   ├── interval_controls.dart # Interval configuration controls
+│       │   └── tuning_selector.dart   # Tuning selection widget
+│       ├── dialogs/                   # Modal dialog components
+│       │   ├── settings_dialog.dart   # Settings configuration modal
+│       │   ├── user_dialog.dart       # User account management modal
+│       │   └── about_dialog.dart      # Application information modal
+│       └── quiz/                      # Quiz-specific widgets (NEW)
+│           ├── quiz_progress_bar.dart # Quiz progress visualization
+│           ├── multiple_choice_widget.dart # Multiple choice question interface
+│           └── quiz_results_widget.dart    # Quiz results and statistics display
+├── utils/                             # Helper functions and utilities
+│   ├── music_utils.dart               # Music theory calculation helpers
+│   ├── color_utils.dart               # Color generation and theme utilities
+│   ├── note_utils.dart                # Note manipulation and conversion utilities
+│   ├── scale_utils.dart               # Scale calculation and analysis utilities
+│   ├── chord_utils.dart               # Chord analysis and construction utilities
+│   └── quiz_utils.dart                # Quiz-related helper functions (NEW)
+├── constants/                         # Configuration and constant values
+│   ├── music_constants.dart           # Music theory data and scales
+│   ├── ui_constants.dart              # UI configuration and styling constants
+│   ├── app_constants.dart             # Application-wide configuration
+│   └── quiz_constants.dart            # Quiz configuration and settings (NEW)
+└── services/                          # External services and data management
+    ├── user_service.dart              # User data persistence and management
+    └── quiz_integration_service.dart  # Quiz system integration (NEW)
 ```
-
-## Core Features Implemented
-
-### Music Theory Engine
-- **Comprehensive Note System**: MIDI-based note representation with enharmonic support
-- **Scale System**: 20+ scale types with all modal variations and pitch class sets
-- **Chord System**: Extensive chord database with inversions, voicings, and voice leading
-- **Interval System**: All musical intervals with compound interval support
-
-### Fretboard Visualization  
-- **Multi-Fretboard Support**: Display multiple configurable fretboard instances
-- **Three View Modes**: 
-  - **Intervals**: Individual interval visualization from root
-  - **Scales**: Complete scale patterns with modal variations
-  - **Chords**: Chord voicings with inversion support
-- **Interactive Controls**: Real-time updates for all musical parameters
-- **Custom Rendering**: High-performance Canvas-based fretboard painting
-- **Responsive Design**: Adaptive layouts for different screen sizes
-
-### User Experience
-- **User Management**: Registration, login, and guest access
-- **Personalization**: User preferences for defaults and visual settings
-- **Progress Tracking**: Learning progress and quiz completion tracking
-- **Theme Support**: Light and dark mode themes
-- **Persistent State**: Settings and preferences saved across sessions
-
-### Visual Learning System
-- **Color-Coded Theory**: Distinct colors for scale degrees and intervals
-- **Scale Strip Display**: Horizontal note reference strips
-- **Multiple Tunings**: Support for various guitar tunings
-- **Layout Options**: Right/left-handed and bass positioning options
-- **Note Names**: Optional note name display overlay
 
 ## State Management Architecture
 
 ### Provider Pattern Implementation
 ```dart
-AppState (ChangeNotifier)
-    ├── User Management (currentUser, preferences)
-    ├── Global Settings (theme, defaults)
-    ├── Session State (current root, scale, mode)
-    └── Fretboard Instances (individual configurations)
+// Global state access
+final appState = Provider.of<AppState>(context);
+
+// Targeted updates with selectors  
+Consumer<AppState>(
+  builder: (context, appState, child) => Widget(),
+)
+
+// State modifications
+appState.updateRootNote(newNote);
+appState.notifyListeners();
+```
+
+### Quiz State Management (NEW)
+```dart
+// Quiz controller integration
+final quizController = Provider.of<QuizController>(context);
+
+// Quiz session management
+quizController.startQuiz(questions: questions, quizType: QuizType.topic);
+quizController.submitAnswer(userAnswer);
+quizController.navigateToNextQuestion();
 ```
 
 ### Data Flow
@@ -136,6 +137,7 @@ AppState (ChangeNotifier)
 2. **State Changes** → Provider notifications → Widget rebuilds  
 3. **Music Theory** → Controllers → Models → Visual updates
 4. **User Actions** → Services → Persistence → State synchronization
+5. **Quiz Flow** → Quiz Controller → Quiz Models → Quiz Widgets (NEW)
 
 ## Technology Stack
 - **Framework**: Flutter 3.24.3 (web-optimized)
@@ -146,11 +148,36 @@ AppState (ChangeNotifier)
 - **Deployment**: GitLab Pages (CI/CD pipeline)
 - **Development**: Flutter DevTools 2.37.3
 
+## Core Features
+
+### Music Theory Visualization
+- **Multi-Fretboard Display**: Support for multiple simultaneous fretboard instances
+- **Three Theory Modes**: Scales, intervals, and chord visualization with real-time switching
+- **Interactive Controls**: Live updates for root notes, scale types, modes, octaves, and intervals
+- **Visual Learning**: Color-coded notes based on scale degrees and interval relationships
+- **Customizable Experience**: Multiple tunings, layouts, themes, and display options
+
+### Quiz System (NEW)
+- **Comprehensive Question Types**: Multiple choice questions with detailed explanations
+- **Topic-Based Quizzes**: Focused quizzes on specific music theory topics
+- **Section-Based Quizzes**: Comprehensive quizzes covering multiple related topics
+- **Progress Tracking**: Quiz results and performance analytics
+- **Adaptive Difficulty**: Questions scaled to user skill level
+- **Time Management**: Optional time limits and time tracking
+- **Detailed Feedback**: Explanations for correct and incorrect answers
+
+### User Management
+- **Registration and Login**: Complete user account system
+- **Guest Access**: Full functionality without account creation
+- **Personalized Settings**: Individual user preferences and configurations
+- **Progress Tracking**: Learning progress and quiz performance history
+
 ## Performance Optimizations
 - **Efficient Rendering**: CustomPainter with selective repainting
 - **State Granularity**: Targeted widget updates using Provider selectors
 - **Memory Management**: Cached calculations and optimized color generation
 - **Responsive UI**: Adaptive layouts and efficient widget composition
+- **Quiz Performance**: Optimized question generation and state management
 
 ## Development Workflow
 - **Architecture**: Strict MVC pattern enforcement
@@ -160,19 +187,20 @@ AppState (ChangeNotifier)
 - **Version Control**: GitLab primary, GitHub mirror for lib/ directory
 
 ## Recent Enhancements
-- **User System**: Complete user registration and login functionality
-- **Chord Voicing**: Advanced chord building with proper voice leading
-- **Scale Strip**: Enhanced horizontal note display with user-selected octaves
-- **Multi-Octave Support**: Flexible octave selection for all view modes
-- **Settings Persistence**: Comprehensive user preference management
-- **Guest Access**: Seamless experience for users without accounts
+- **Complete Quiz System**: Comprehensive quiz functionality with multiple question types
+- **Educational Content**: Structured learning topics and progressive content
+- **Quiz Integration**: Seamless integration between theory visualization and quiz system
+- **Performance Analytics**: Detailed quiz results and progress tracking
+- **User Experience**: Improved navigation and responsive design
+- **Advanced Question Generation**: Sophisticated quiz question creation system
 
 ## Future Considerations
-- **Audio Integration**: MIDI playback and audio generation
-- **Educational Content**: Interactive theory lessons and exercises
-- **Advanced Features**: Chord progressions, voice leading analysis
+- **Audio Integration**: MIDI playback and audio generation for quiz questions
+- **Advanced Question Types**: Interactive fretboard questions and audio-based questions
+- **Social Features**: Shared quiz sessions and collaborative learning
 - **Mobile Support**: Native mobile app development
-- **Collaboration**: Shared fretboard sessions and social features
+- **Advanced Analytics**: Detailed learning analytics and adaptive content
+- **Gamification**: Achievement systems and learning rewards
 
 ## Development Guidelines
 - **File Organization**: Each file serves a single, clear purpose
@@ -180,3 +208,24 @@ AppState (ChangeNotifier)
 - **Testing**: Write tests for all business logic and critical UI components
 - **Documentation**: Keep inline documentation current with code changes
 - **Performance**: Profile and optimize rendering and state management regularly
+- **Quiz Quality**: Ensure all quiz questions are educationally valuable and technically accurate
+
+## Quiz System Architecture (NEW)
+
+### Question Generation System
+- **Unified Generator**: Central system for creating all quiz question types
+- **Topic-Based Generation**: Questions targeted to specific music theory topics
+- **Difficulty Scaling**: Questions adapted to different skill levels
+- **Quality Assurance**: Comprehensive validation of question accuracy
+
+### Quiz Session Management
+- **Session Lifecycle**: Complete management of quiz sessions from start to finish
+- **Progress Tracking**: Real-time progress monitoring and time management
+- **Answer Validation**: Sophisticated answer checking and feedback generation
+- **Results Calculation**: Detailed scoring and performance analysis
+
+### User Experience Design
+- **Responsive Interface**: Adaptive quiz interface for different screen sizes
+- **Progressive Disclosure**: Information presented when needed
+- **Clear Navigation**: Intuitive quiz flow and navigation options
+- **Accessibility**: Support for different learning styles and accessibility needs
