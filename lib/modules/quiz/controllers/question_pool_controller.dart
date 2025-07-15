@@ -121,7 +121,7 @@ class QuestionPoolController {
 
     // Shuffle and take required count
     final shuffled = List.from(availableQuestions)..shuffle();
-    return shuffled.take(count).toList();
+    return shuffled.take(count).toList().cast<Question>();
   }
 
   /// Get question statistics

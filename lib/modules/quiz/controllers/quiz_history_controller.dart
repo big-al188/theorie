@@ -3,6 +3,7 @@ import '../models/quiz_models.dart';
 import '../models/quiz_enums.dart';
 import '../services/quiz_storage_service.dart';
 import '../services/quiz_analytics_service.dart';
+import 'dart:math' as math;
 
 /// Controller for managing quiz history and statistics
 class QuizHistoryController extends ChangeNotifier {
@@ -140,7 +141,7 @@ class QuizHistoryController extends ChangeNotifier {
     final statsByType = <QuizType, QuizTypeStats>{};
 
     for (final type in QuizType.values) {
-      final typeHistory = _history.where((entry) => entry.quizType == type).toList();
+      final typeHistory = _history.where((entry) => entry.type == type).toList();
       
       if (typeHistory.isNotEmpty) {
         final totalScore = typeHistory.fold(0.0, (sum, entry) => sum + entry.score);
@@ -241,7 +242,7 @@ class QuizHistoryController extends ChangeNotifier {
       return sum + (score - mean) * (score - mean);
     }) / scores.length;
     
-    return variance.sqrt();
+    return math.sqrt(variance);
   }
 
   /// Get learning insights

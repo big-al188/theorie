@@ -277,7 +277,7 @@ class _QuizReviewViewState extends State<QuizReviewView>
                       value: percentage / 100,
                       backgroundColor: theme.colorScheme.surfaceVariant,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        _getScoreColor(percentage, theme),
+                        _getScoreColor(percentage.toDouble(), theme)
                       ),
                     ),
                   ],
@@ -320,7 +320,7 @@ class _QuizReviewViewState extends State<QuizReviewView>
                 final correct = entry.value.where((a) => a.isCorrect).length;
                 final total = entry.value.length;
                 final percentage = total > 0 ? (correct / total) * 100 : 0;
-                final color = _getScoreColor(percentage, theme);
+                final color = _getScoreColor(percentage.toDouble(), theme);
                 
                 return Chip(
                   label: Row(

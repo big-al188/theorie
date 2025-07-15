@@ -1,9 +1,10 @@
+// lib/modules/quiz/views/quiz_history_view.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../models/quiz_enums.dart';
 import '../controllers/quiz_history_controller.dart';
 import '../services/quiz_storage_service.dart';
+import '../models/quiz_models.dart';
 
 /// View for displaying quiz history and performance analytics
 class QuizHistoryView extends StatefulWidget {
@@ -79,7 +80,18 @@ class _QuizHistoryViewState extends State<QuizHistoryView> {
           }
 
           if (!controller.hasData) {
-            return _buildEmptyState(theme);
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.history, size: 64),
+                  SizedBox(height: 16),
+                  Text('No quiz history yet'),
+                  SizedBox(height: 8),
+                  Text('Complete some quizzes to see your progress!'),
+                ],
+              ),
+            );
           }
 
           return RefreshIndicator(
@@ -87,22 +99,17 @@ class _QuizHistoryViewState extends State<QuizHistoryView> {
             child: CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(
-                  child: _buildStatisticsSection(controller, theme),
+                  child: _buildStatisticsCard(context, controller),
                 ),
                 SliverToBoxAdapter(
-                  child: _buildPerformanceChart(controller, theme),
-                ),
-                SliverToBoxAdapter(
-                  child: _buildInsightsSection(controller, theme),
+                  child: _buildPerformanceTrend(context, controller),
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Text(
                       'Recent Quizzes',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: theme.textTheme.titleLarge,
                     ),
                   ),
                 ),
@@ -110,7 +117,7 @@ class _QuizHistoryViewState extends State<QuizHistoryView> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final entry = controller.history[index];
-                      return _buildHistoryItem(entry, theme);
+                      return _buildHistoryItem(context, entry);
                     },
                     childCount: controller.history.length,
                   ),
@@ -123,141 +130,62 @@ class _QuizHistoryViewState extends State<QuizHistoryView> {
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.quiz_outlined,
-            size: 96,
-            color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No quiz history yet',
-            style: theme.textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Complete some quizzes to see your progress here',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Take a Quiz'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatisticsSection(
-    QuizHistoryController controller,
-    ThemeData theme,
-  ) {
+  Widget _buildStatisticsCard(BuildContext context, QuizHistoryController controller) {
+    final theme = Theme.of(context);
     final stats = controller.statistics;
-    final streak = controller.getStreakInfo();
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Your Statistics',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Total Quizzes',
-                  value: stats.totalQuizzesTaken.toString(),
-                  icon: Icons.quiz,
-                  color: theme.colorScheme.primary,
-                  theme: theme,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Average Score',
-                  value: '${stats.averageScore.toStringAsFixed(1)}%',
-                  icon: Icons.grade,
-                  color: Colors.green,
-                  theme: theme,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Current Streak',
-                  value: '${streak.currentStreak} days',
-                  icon: Icons.local_fire_department,
-                  color: Colors.orange,
-                  theme: theme,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Total Time',
-                  value: _formatTotalTime(stats.totalTimeSpent),
-                  icon: Icons.timer,
-                  color: theme.colorScheme.secondary,
-                  theme: theme,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required ThemeData theme,
-  }) {
     return Card(
+      margin: const EdgeInsets.all(16),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              'Overall Statistics',
+              style: theme.textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
             Row(
               children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                Expanded(
+                  child: _buildStatItem(
+                    context,
+                    'Total Quizzes',
+                    stats.totalQuizzes.toString(),
+                    Icons.quiz,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    context,
+                    'Average Score',
+                    '${stats.averageScore.toStringAsFixed(1)}%',
+                    Icons.score,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    context,
+                    'Best Score',
+                    '${stats.bestScore.toStringAsFixed(1)}%',
+                    Icons.emoji_events,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    context,
+                    'Total Time',
+                    _formatDuration(stats.totalTimeSpent),
+                    Icons.timer,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -265,228 +193,50 @@ class _QuizHistoryViewState extends State<QuizHistoryView> {
     );
   }
 
-  Widget _buildPerformanceChart(
-    QuizHistoryController controller,
-    ThemeData theme,
-  ) {
-    final performanceData = controller.getOverallPerformanceTrend(days: 30);
+  Widget _buildStatItem(BuildContext context, String label, String value, IconData icon) {
+    final theme = Theme.of(context);
     
+    return Column(
+      children: [
+        Icon(icon, color: theme.colorScheme.primary),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPerformanceTrend(BuildContext context, QuizHistoryController controller) {
+    final theme = Theme.of(context);
+    final performanceData = controller.getOverallPerformanceTrend(days: 30);
+
     if (performanceData.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Performance Trend',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: SizedBox(
-                height: 200,
-                child: LineChart(
-                  LineChartData(
-                    gridData: FlGridData(
-                      show: true,
-                      drawVerticalLine: false,
-                      horizontalInterval: 20,
-                      getDrawingHorizontalLine: (value) {
-                        return FlLine(
-                          color: theme.colorScheme.outline.withOpacity(0.2),
-                          strokeWidth: 1,
-                        );
-                      },
-                    ),
-                    titlesData: FlTitlesData(
-                      show: true,
-                      rightTitles: AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      topTitles: AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 30,
-                          interval: 1,
-                          getTitlesWidget: (value, meta) {
-                            if (value.toInt() >= 0 && 
-                                value.toInt() < performanceData.length) {
-                              final date = performanceData[value.toInt()].date;
-                              return Text(
-                                '${date.month}/${date.day}',
-                                style: const TextStyle(fontSize: 10),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          interval: 20,
-                          reservedSize: 40,
-                          getTitlesWidget: (value, meta) {
-                            return Text(
-                              '${value.toInt()}%',
-                              style: const TextStyle(fontSize: 10),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    borderData: FlBorderData(
-                      show: true,
-                      border: Border.all(
-                        color: theme.colorScheme.outline.withOpacity(0.2),
-                      ),
-                    ),
-                    minX: 0,
-                    maxX: (performanceData.length - 1).toDouble(),
-                    minY: 0,
-                    maxY: 100,
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: performanceData.asMap().entries.map((entry) {
-                          return FlSpot(
-                            entry.key.toDouble(),
-                            entry.value.score,
-                          );
-                        }).toList(),
-                        isCurved: true,
-                        color: theme.colorScheme.primary,
-                        barWidth: 3,
-                        isStrokeCapRound: true,
-                        dotData: FlDotData(
-                          show: true,
-                          getDotPainter: (spot, percent, barData, index) {
-                            return FlDotCirclePainter(
-                              radius: 4,
-                              color: theme.colorScheme.primary,
-                              strokeWidth: 2,
-                              strokeColor: theme.colorScheme.surface,
-                            );
-                          },
-                        ),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: theme.colorScheme.primary.withOpacity(0.1),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInsightsSection(
-    QuizHistoryController controller,
-    ThemeData theme,
-  ) {
-    final weakTopics = controller.getWeakTopics();
-    final strongTopics = controller.getStrongTopics();
-
-    if (weakTopics.isEmpty && strongTopics.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Learning Insights',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (strongTopics.isNotEmpty) ...[
-            _buildTopicSection(
-              title: 'Your Strengths',
-              icon: Icons.star,
-              color: Colors.green,
-              topics: strongTopics.map((t) => _TopicInfo(
-                name: _formatTopicName(t.topicId),
-                score: t.averageScore,
-                isStrong: true,
-              )).toList(),
-              theme: theme,
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (weakTopics.isNotEmpty) ...[
-            _buildTopicSection(
-              title: 'Areas for Improvement',
-              icon: Icons.trending_up,
-              color: theme.colorScheme.error,
-              topics: weakTopics.map((t) => _TopicInfo(
-                name: _formatTopicName(t.topicId),
-                score: t.averageScore,
-                isStrong: false,
-              )).toList(),
-              theme: theme,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTopicSection({
-    required String title,
-    required IconData icon,
-    required Color color,
-    required List<_TopicInfo> topics,
-    required ThemeData theme,
-  }) {
     return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+            Text(
+              'Performance Trend',
+              style: theme.textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: topics.map((topic) {
-                return Chip(
-                  label: Text(
-                    '${topic.name} (${topic.score.toStringAsFixed(0)}%)',
-                  ),
-                  backgroundColor: color.withOpacity(0.1),
-                  side: BorderSide(color: color.withOpacity(0.5)),
-                );
-              }).toList(),
+            const SizedBox(height: 16),
+            Container(
+              height: 200,
+              child: _buildSimpleChart(context, performanceData),
             ),
           ],
         ),
@@ -494,70 +244,174 @@ class _QuizHistoryViewState extends State<QuizHistoryView> {
     );
   }
 
-  Widget _buildHistoryItem(QuizHistoryEntry entry, ThemeData theme) {
-    final icon = _getQuizTypeIcon(entry.quizType);
-    final scoreColor = _getScoreColor(entry.score);
+  Widget _buildSimpleChart(BuildContext context, List<PerformancePoint> data) {
+    final theme = Theme.of(context);
+    
+    if (data.isEmpty) {
+      return Center(
+        child: Text(
+          'No data to display',
+          style: theme.textTheme.bodyMedium,
+        ),
+      );
+    }
+
+    // Take last 10 data points for display
+    final displayData = data.length > 10 ? data.sublist(data.length - 10) : data;
+    final maxScore = displayData.map((p) => p.score).reduce((a, b) => a > b ? a : b);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: displayData.map((point) {
+        final barHeight = (point.score / (maxScore > 0 ? maxScore : 100)) * 150;
+        
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Tooltip(
+                  message: '${point.score.toStringAsFixed(1)}%',
+                  child: Container(
+                    height: barHeight,
+                    decoration: BoxDecoration(
+                      color: _getScoreColor(point.score, theme),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${point.date.day}/${point.date.month}',
+                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildHistoryItem(BuildContext context, QuizHistoryEntry entry) {
+    final theme = Theme.of(context);
+    final percentage = (entry.score / entry.totalQuestions) * 100;
+    final color = _getScoreColor(percentage, theme);
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: theme.colorScheme.primaryContainer,
-          child: Icon(icon, color: theme.colorScheme.primary),
-        ),
-        title: Text(
-          entry.metadata.title,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        subtitle: Text(
-          '${_formatDate(entry.completedAt)} • '
-          '${_formatDuration(entry.timeSpent)} • '
-          '${entry.metadata.coveredTopics.length} topics',
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: scoreColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
-          ),
+          backgroundColor: color.withOpacity(0.2),
           child: Text(
-            '${entry.score.toStringAsFixed(0)}%',
+            '${percentage.toStringAsFixed(0)}%',
             style: TextStyle(
-              color: scoreColor,
+              color: color,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
+        title: Text(entry.title),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${entry.questionsAnswered}/${entry.totalQuestions} questions • ${_formatDuration(entry.timeSpent)}',
+            ),
+            Text(
+              _formatDate(entry.completedAt),
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+        trailing: _getQuizTypeIcon(entry.type),
         onTap: () => _showQuizDetails(context, entry),
       ),
     );
   }
 
+  Color _getScoreColor(double score, ThemeData theme) {
+    if (score >= 80) return Colors.green;
+    if (score >= 60) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _getQuizTypeIcon(QuizType type) {
+    switch (type) {
+      case QuizType.section:
+        return const Icon(Icons.folder_outlined);
+      case QuizType.topic:
+        return const Icon(Icons.topic_outlined);
+      case QuizType.refresher:
+        return const Icon(Icons.refresh);
+      case QuizType.custom:
+        return const Icon(Icons.tune);
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    if (duration.inHours > 0) {
+      return '${duration.inHours}h ${duration.inMinutes % 60}m';
+    }
+    return '${duration.inMinutes}m ${duration.inSeconds % 60}s';
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return 'Today at ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
   void _showFilterDialog(BuildContext context) {
+    // Implement filter dialog
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Filter History'),
+        content: const Text('Filter options coming soon...'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQuizDetails(BuildContext context, QuizHistoryEntry entry) {
+    // Implement quiz details dialog
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(entry.title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Filter options would go here
-            const Text('Filter options coming soon'),
+            Text('Score: ${entry.score}/${entry.totalQuestions}'),
+            Text('Accuracy: ${entry.accuracy.toStringAsFixed(1)}%'),
+            Text('Time: ${_formatDuration(entry.timeSpent)}'),
+            Text('Date: ${_formatDate(entry.completedAt)}'),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              // Apply filters
-              Navigator.of(context).pop();
-            },
-            child: const Text('Apply'),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -579,139 +433,22 @@ class _QuizHistoryViewState extends State<QuizHistoryView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear History?'),
-        content: const Text(
-          'This will permanently delete all quiz history and statistics. '
-          'This action cannot be undone.',
-        ),
+        title: const Text('Clear History'),
+        content: const Text('Are you sure you want to clear all quiz history? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
+              Navigator.pop(context);
               context.read<QuizHistoryController>().clearAllHistory();
-              Navigator.of(context).pop();
             },
-            child: Text(
-              'Clear All',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
+            child: const Text('Clear', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
   }
-
-  void _showQuizDetails(BuildContext context, QuizHistoryEntry entry) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.9,
-        builder: (context, scrollController) {
-          final theme = Theme.of(context);
-          return Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Text(
-                  entry.metadata.title,
-                  style: theme.textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 16),
-                // Quiz details would go here
-                Text('Quiz details coming soon'),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  IconData _getQuizTypeIcon(QuizType type) {
-    switch (type) {
-      case QuizType.section:
-        return Icons.folder_outlined;
-      case QuizType.topic:
-        return Icons.topic_outlined;
-      case QuizType.refresher:
-        return Icons.refresh;
-      case QuizType.custom:
-        return Icons.tune;
-    }
-  }
-
-  Color _getScoreColor(double score) {
-    if (score >= 80) return Colors.green;
-    if (score >= 60) return Colors.orange;
-    return Colors.red;
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${date.month}/${date.day}/${date.year}';
-    }
-  }
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  String _formatTotalTime(Duration duration) {
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes % 60;
-    
-    if (hours > 0) {
-      return '${hours}h ${minutes}m';
-    } else {
-      return '${minutes}m';
-    }
-  }
-
-  String _formatTopicName(String topicId) {
-    return topicId
-        .split('_')
-        .map((word) => word[0].toUpperCase() + word.substring(1))
-        .join(' ');
-  }
-}
-
-class _TopicInfo {
-  final String name;
-  final double score;
-  final bool isStrong;
-
-  _TopicInfo({
-    required this.name,
-    required this.score,
-    required this.isStrong,
-  });
 }

@@ -31,6 +31,14 @@ class Quiz {
   })  : answers = answers ?? {},
         startTime = startTime ?? DateTime.now();
 
+
+
+    /// Get accuracy percentage
+    double get accuracy {
+    if (questions.isEmpty) return 0.0;
+    final correctCount = answers.values.where((a) => a.isCorrect).length;
+    return (correctCount / questions.length) * 100;
+    }
   /// Calculate current score
   double get score {
     if (questions.isEmpty) return 0.0;
@@ -275,4 +283,161 @@ class QuizResult {
       areasForImprovement: List<String>.from(json['areasForImprovement']),
     );
   }
+}
+
+/// Entry in quiz history
+class QuizHistoryEntry {
+  final String quizId;
+  final String sectionId;
+  final String? topicId;
+  final QuizType type;
+  final String title;
+  final DateTime completedAt;
+  final double score;
+  final int questionsAnswered;
+  final int totalQuestions;
+  final Duration timeSpent;
+  final double accuracy;
+
+  const QuizHistoryEntry({
+    required this.quizId,
+    required this.sectionId,
+    this.topicId,
+    required this.type,
+    required this.title,
+    required this.completedAt,
+    required this.score,
+    required this.questionsAnswered,
+    required this.totalQuestions,
+    required this.timeSpent,
+    required this.accuracy,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'quizId': quizId,
+      'sectionId': sectionId,
+      'topicId': topicId,
+      'type': type.toString(),
+      'title': title,
+      'completedAt': completedAt.toIso8601String(),
+      'score': score,
+      'questionsAnswered': questionsAnswered,
+      'totalQuestions': totalQuestions,
+      'timeSpent': timeSpent.inSeconds,
+      'accuracy': accuracy,
+    };
+  }
+
+  factory QuizHistoryEntry.fromJson(Map<String, dynamic> json) {
+    return QuizHistoryEntry(
+      quizId: json['quizId'],
+      sectionId: json['sectionId'],
+      topicId: json['topicId'],
+      type: QuizType.values.firstWhere(
+        (t) => t.toString() == json['type'],
+      ),
+      title: json['title'],
+      completedAt: DateTime.parse(json['completedAt']),
+      score: json['score'].toDouble(),
+      questionsAnswered: json['questionsAnswered'],
+      totalQuestions: json['totalQuestions'],
+      timeSpent: Duration(seconds: json['timeSpent']),
+      accuracy: json['accuracy'].toDouble(),
+    );
+  }
+}
+
+/// Quiz statistics
+class QuizStatistics {
+  final int totalQuizzes;
+  final double totalScore;
+  final Duration totalTimeSpent;
+  final double averageScore;
+  final Duration averageTimePerQuiz;
+  final double bestScore;
+  final double worstScore;
+  final int totalQuestionsAnswered;
+  final int correctAnswers;
+  final DateTime? lastQuizDate;
+
+  const QuizStatistics({
+    required this.totalQuizzes,
+    required this.totalScore,
+    required this.totalTimeSpent,
+    required this.averageScore,
+    required this.averageTimePerQuiz,
+    required this.bestScore,
+    required this.worstScore,
+    required this.totalQuestionsAnswered,
+    required this.correctAnswers,
+    this.lastQuizDate,
+  });
+
+  factory QuizStatistics.empty() {
+    return QuizStatistics(
+      totalQuizzes: 0,
+      totalScore: 0.0,
+      totalTimeSpent: Duration.zero,
+      averageScore: 0.0,
+      averageTimePerQuiz: Duration.zero,
+      bestScore: 0.0,
+      worstScore: 0.0,
+      totalQuestionsAnswered: 0,
+      correctAnswers: 0,
+      lastQuizDate: null,
+    );
+  }
+
+  double get accuracy {
+    if (totalQuestionsAnswered == 0) return 0.0;
+    return (correctAnswers / totalQuestionsAnswered) * 100;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'totalQuizzes': totalQuizzes,
+      'totalScore': totalScore,
+      'totalTimeSpent': totalTimeSpent.inSeconds,
+      'averageScore': averageScore,
+      'averageTimePerQuiz': averageTimePerQuiz.inSeconds,
+      'bestScore': bestScore,
+      'worstScore': worstScore,
+      'totalQuestionsAnswered': totalQuestionsAnswered,
+      'correctAnswers': correctAnswers,
+      'lastQuizDate': lastQuizDate?.toIso8601String(),
+    };
+  }
+
+  factory QuizStatistics.fromJson(Map<String, dynamic> json) {
+    return QuizStatistics(
+      totalQuizzes: json['totalQuizzes'] ?? 0,
+      totalScore: (json['totalScore'] ?? 0).toDouble(),
+      totalTimeSpent: Duration(seconds: json['totalTimeSpent'] ?? 0),
+      averageScore: (json['averageScore'] ?? 0).toDouble(),
+      averageTimePerQuiz: Duration(seconds: json['averageTimePerQuiz'] ?? 0),
+      bestScore: (json['bestScore'] ?? 0).toDouble(),
+      worstScore: (json['worstScore'] ?? 0).toDouble(),
+      totalQuestionsAnswered: json['totalQuestionsAnswered'] ?? 0,
+      correctAnswers: json['correctAnswers'] ?? 0,
+      lastQuizDate: json['lastQuizDate'] != null 
+          ? DateTime.parse(json['lastQuizDate']) 
+          : null,
+    );
+  }
+}
+
+/// Validation result for question answers
+class AnswerValidation {
+  final bool isCorrect;
+  final double earnedPoints;
+  final String? feedback;
+  final Map<String, dynamic> details;
+
+  const AnswerValidation({
+    required this.isCorrect,
+    required this.earnedPoints,
+    this.feedback,
+    this.details = const {},
+  });
 }

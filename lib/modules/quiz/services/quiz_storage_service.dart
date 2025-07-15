@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/quiz_models.dart';
+import '../models/quiz_enums.dart';
 
 /// Service for storing and retrieving quiz data
 class QuizStorageService {
@@ -184,22 +185,46 @@ class QuizStorageService {
     
     try {
       final json = _prefs.getString(_statsKey);
-      if (json == null) {
-        return QuizStatistics.empty();
-      }
+      if (json == null) return QuizStatistics.empty();
       
       final data = jsonDecode(json) as Map<String, dynamic>;
-      final stats = QuizStatistics.fromJson(data);
+      var stats = QuizStatistics.fromJson(data);
       
-      // Filter stats if needed
+      // Filter statistics if needed
       if (sectionId != null || topicId != null) {
-        return await _calculateFilteredStats(sectionId, topicId);
+        final history = await getQuizHistory(
+          sectionId: sectionId,
+          topicId: topicId,
+        );
+        
+        // Recalculate statistics based on filtered history
+        stats = _calculateStatistics(history);
       }
       
       return stats;
     } catch (e) {
-      debugPrint('Error getting quiz statistics: $e');
+      debugPrint('Error getting statistics: $e');
       return QuizStatistics.empty();
+    }
+  }
+
+  /// Delete quiz from history
+  Future<void> deleteFromHistory(String quizId) async {
+    await _ensureInitialized();
+    
+    try {
+      final history = await getQuizHistory();
+      final updatedHistory = history.where((entry) => entry.quizId != quizId).toList();
+      
+      final json = jsonEncode(updatedHistory.map((e) => e.toJson()).toList());
+      await _prefs.setString(_historyKey, json);
+      
+      // Recalculate statistics
+      final stats = _calculateStatistics(updatedHistory);
+      await _prefs.setString(_statsKey, jsonEncode(stats.toJson()));
+    } catch (e) {
+      debugPrint('Error deleting from history: $e');
+      rethrow;
     }
   }
 
@@ -231,30 +256,50 @@ class QuizStorageService {
     
     final entry = QuizHistoryEntry(
       quizId: quiz.id,
-      quizType: quiz.type,
       sectionId: quiz.sectionId,
       topicId: quiz.topicId,
-      score: quiz.score,
-      timeSpent: quiz.timeSpent,
+      type: quiz.type,
+      title: quiz.metadata.title,
       completedAt: quiz.endTime ?? DateTime.now(),
-      metadata: quiz.metadata,
+      score: quiz.score,
+      questionsAnswered: quiz.answers.length,
+      totalQuestions: quiz.questions.length,
+      timeSpent: quiz.timeSpent,
+      accuracy: quiz.accuracy,
     );
     
     history.insert(0, entry);
     
     // Keep only last 100 entries
-    if (history.length > 100) {
-      history.removeRange(100, history.length);
-    }
+    final trimmedHistory = history.take(100).toList();
     
-    final json = jsonEncode(history.map((e) => e.toJson()).toList());
+    final json = jsonEncode(trimmedHistory.map((e) => e.toJson()).toList());
     await _prefs.setString(_historyKey, json);
   }
 
   /// Update statistics
   Future<void> _updateStatistics(Quiz quiz) async {
     final stats = await getStatistics();
-    final updatedStats = stats.updateWithQuiz(quiz);
+    
+    // Update statistics based on the completed quiz
+    final updatedStats = QuizStatistics(
+      totalQuizzes: stats.totalQuizzes + 1,
+      totalScore: stats.totalScore + quiz.score,
+      totalTimeSpent: stats.totalTimeSpent + quiz.timeSpent,
+      averageScore: (stats.totalScore + quiz.score) / (stats.totalQuizzes + 1),
+      averageTimePerQuiz: Duration(
+        seconds: ((stats.totalTimeSpent.inSeconds + quiz.timeSpent.inSeconds) / 
+                  (stats.totalQuizzes + 1)).round(),
+      ),
+      bestScore: quiz.score > stats.bestScore ? quiz.score : stats.bestScore,
+      worstScore: stats.worstScore == 0 || quiz.score < stats.worstScore 
+          ? quiz.score 
+          : stats.worstScore,
+      totalQuestionsAnswered: stats.totalQuestionsAnswered + quiz.answers.length,
+      correctAnswers: stats.correctAnswers + 
+          quiz.answers.values.where((a) => a.isCorrect).length,
+      lastQuizDate: DateTime.now(),
+    );
     
     final json = jsonEncode(updatedStats.toJson());
     await _prefs.setString(_statsKey, json);
@@ -266,180 +311,39 @@ class QuizStorageService {
     await _prefs.setString(key, DateTime.now().toIso8601String());
   }
 
-  /// Calculate filtered statistics
-  Future<QuizStatistics> _calculateFilteredStats(
-    String? sectionId,
-    String? topicId,
-  ) async {
-    final history = await getQuizHistory(
-      sectionId: sectionId,
-      topicId: topicId,
-    );
+  /// Calculate statistics from history
+  QuizStatistics _calculateStatistics(List<QuizHistoryEntry> history) {
+    if (history.isEmpty) return QuizStatistics.empty();
     
-    if (history.isEmpty) {
-      return QuizStatistics.empty();
-    }
-    
-    // Calculate stats from filtered history
-    final totalQuizzes = history.length;
-    final totalScore = history.fold(0.0, (sum, entry) => sum + entry.score);
-    final totalTime = history.fold(
-      Duration.zero,
-      (sum, entry) => sum + entry.timeSpent,
-    );
-    
-    return QuizStatistics(
-      totalQuizzesTaken: totalQuizzes,
-      averageScore: totalScore / totalQuizzes,
-      totalTimeSpent: totalTime,
-      lastQuizDate: history.first.completedAt,
-      topicScores: _calculateTopicScores(history),
-    );
-  }
-
-  /// Calculate topic scores from history
-  Map<String, double> _calculateTopicScores(List<QuizHistoryEntry> history) {
-    final topicScores = <String, List<double>>{};
+    double totalScore = 0;
+    Duration totalTime = Duration.zero;
+    double bestScore = 0;
+    double worstScore = 100;
+    int totalQuestionsAnswered = 0;
+    int correctAnswers = 0;
     
     for (final entry in history) {
-      if (entry.topicId != null) {
-        topicScores.putIfAbsent(entry.topicId!, () => []);
-        topicScores[entry.topicId!]!.add(entry.score);
-      }
+      totalScore += entry.score;
+      totalTime += entry.timeSpent;
+      if (entry.score > bestScore) bestScore = entry.score;
+      if (entry.score < worstScore) worstScore = entry.score;
+      totalQuestionsAnswered += entry.questionsAnswered;
+      correctAnswers += (entry.questionsAnswered * entry.accuracy / 100).round();
     }
     
-    // Calculate averages
-    return topicScores.map((topic, scores) {
-      final average = scores.fold(0.0, (sum, score) => sum + score) / scores.length;
-      return MapEntry(topic, average);
-    });
-  }
-}
-
-/// Entry in quiz history
-class QuizHistoryEntry {
-  final String quizId;
-  final QuizType quizType;
-  final String sectionId;
-  final String? topicId;
-  final double score;
-  final Duration timeSpent;
-  final DateTime completedAt;
-  final QuizMetadata metadata;
-
-  const QuizHistoryEntry({
-    required this.quizId,
-    required this.quizType,
-    required this.sectionId,
-    this.topicId,
-    required this.score,
-    required this.timeSpent,
-    required this.completedAt,
-    required this.metadata,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'quizId': quizId,
-      'quizType': quizType.toString(),
-      'sectionId': sectionId,
-      'topicId': topicId,
-      'score': score,
-      'timeSpent': timeSpent.inSeconds,
-      'completedAt': completedAt.toIso8601String(),
-      'metadata': metadata.toJson(),
-    };
-  }
-
-  factory QuizHistoryEntry.fromJson(Map<String, dynamic> json) {
-    return QuizHistoryEntry(
-      quizId: json['quizId'],
-      quizType: QuizType.values.firstWhere(
-        (t) => t.toString() == json['quizType'],
+    return QuizStatistics(
+      totalQuizzes: history.length,
+      totalScore: totalScore,
+      totalTimeSpent: totalTime,
+      averageScore: totalScore / history.length,
+      averageTimePerQuiz: Duration(
+        seconds: (totalTime.inSeconds / history.length).round(),
       ),
-      sectionId: json['sectionId'],
-      topicId: json['topicId'],
-      score: json['score'].toDouble(),
-      timeSpent: Duration(seconds: json['timeSpent']),
-      completedAt: DateTime.parse(json['completedAt']),
-      metadata: QuizMetadata.fromJson(json['metadata']),
-    );
-  }
-}
-
-/// Quiz statistics
-class QuizStatistics {
-  final int totalQuizzesTaken;
-  final double averageScore;
-  final Duration totalTimeSpent;
-  final DateTime? lastQuizDate;
-  final Map<String, double> topicScores;
-
-  const QuizStatistics({
-    required this.totalQuizzesTaken,
-    required this.averageScore,
-    required this.totalTimeSpent,
-    this.lastQuizDate,
-    required this.topicScores,
-  });
-
-  factory QuizStatistics.empty() {
-    return const QuizStatistics(
-      totalQuizzesTaken: 0,
-      averageScore: 0.0,
-      totalTimeSpent: Duration.zero,
-      topicScores: {},
-    );
-  }
-
-  QuizStatistics updateWithQuiz(Quiz quiz) {
-    final newTotal = totalQuizzesTaken + 1;
-    final newAverageScore = ((averageScore * totalQuizzesTaken) + quiz.score) / newTotal;
-    final newTotalTime = totalTimeSpent + quiz.timeSpent;
-    
-    // Update topic scores
-    final newTopicScores = Map<String, double>.from(topicScores);
-    if (quiz.topicId != null) {
-      final currentScore = topicScores[quiz.topicId!] ?? 0.0;
-      final currentCount = _getTopicQuizCount(quiz.topicId!);
-      newTopicScores[quiz.topicId!] = 
-          ((currentScore * currentCount) + quiz.score) / (currentCount + 1);
-    }
-    
-    return QuizStatistics(
-      totalQuizzesTaken: newTotal,
-      averageScore: newAverageScore,
-      totalTimeSpent: newTotalTime,
-      lastQuizDate: DateTime.now(),
-      topicScores: newTopicScores,
-    );
-  }
-
-  int _getTopicQuizCount(String topicId) {
-    // This is a simplified calculation
-    // In a real app, you'd track count per topic
-    return totalQuizzesTaken ~/ topicScores.length;
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'totalQuizzesTaken': totalQuizzesTaken,
-      'averageScore': averageScore,
-      'totalTimeSpent': totalTimeSpent.inSeconds,
-      'lastQuizDate': lastQuizDate?.toIso8601String(),
-      'topicScores': topicScores,
-    };
-  }
-
-  factory QuizStatistics.fromJson(Map<String, dynamic> json) {
-    return QuizStatistics(
-      totalQuizzesTaken: json['totalQuizzesTaken'],
-      averageScore: json['averageScore'].toDouble(),
-      totalTimeSpent: Duration(seconds: json['totalTimeSpent']),
-      lastQuizDate: json['lastQuizDate'] != null 
-          ? DateTime.parse(json['lastQuizDate'])
-          : null,
-      topicScores: Map<String, double>.from(json['topicScores']),
+      bestScore: bestScore,
+      worstScore: worstScore,
+      totalQuestionsAnswered: totalQuestionsAnswered,
+      correctAnswers: correctAnswers,
+      lastQuizDate: history.first.completedAt,
     );
   }
 }
