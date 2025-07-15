@@ -5,7 +5,7 @@ import '../../models/app_state.dart';
 import '../../models/learning/learning_content.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/common/app_bar.dart';
-import '../../modules/quiz/views/quiz_landing_view.dart';
+import 'quiz_placeholder_page.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 class TopicDetailPage extends StatefulWidget {
@@ -89,17 +89,17 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildTopicHeader(context, deviceType),
-              SizedBox(height: deviceType == DeviceType.mobile ? 24.0 : 32.0),
+              SizedBox(height: deviceType == DeviceType.mobile ? 20.0 : 24.0),
               _buildTopicContent(context, deviceType),
               SizedBox(height: deviceType == DeviceType.mobile ? 24.0 : 32.0),
               _buildKeyPoints(context, deviceType),
               if (widget.topic.examples.isNotEmpty) ...[
-                SizedBox(height: deviceType == DeviceType.mobile ? 24.0 : 32.0),
+                SizedBox(height: deviceType == DeviceType.mobile ? 20.0 : 24.0),
                 _buildExamples(context, deviceType),
               ],
               SizedBox(height: deviceType == DeviceType.mobile ? 32.0 : 48.0),
               _buildQuizButton(context, deviceType),
-              const SizedBox(height: 80), // Extra space for FAB
+              const SizedBox(height: 32.0), // Extra bottom padding
             ],
           ),
         ),
@@ -107,9 +107,10 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
       floatingActionButton: _showFloatingButton
           ? FloatingActionButton.extended(
               onPressed: () => _navigateToQuiz(context),
-              label: const Text('Take Quiz'),
-              icon: const Icon(Icons.quiz),
               backgroundColor: _getLevelColor(widget.section.level),
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.quiz),
+              label: const Text('Take Quiz'),
             )
           : null,
     );
@@ -123,259 +124,293 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
   }
 
   Widget _buildTopicHeader(BuildContext context, DeviceType deviceType) {
-    final subtitleFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
-    final theme = Theme.of(context);
+    final titleFontSize = deviceType == DeviceType.mobile ? 28.0 : 32.0;
+    final subtitleFontSize = deviceType == DeviceType.mobile ? 16.0 : 18.0;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return Consumer<AppState>(
+      builder: (context, appState, child) {
+        final isCompleted = appState.currentUser?.progress.isTopicCompleted(widget.topic.id) ?? false;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: _getLevelColor(widget.section.level).withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                widget.section.title,
-                style: TextStyle(
-                  fontSize: subtitleFontSize - 2,
-                  fontWeight: FontWeight.w600,
-                  color: _getLevelColor(widget.section.level),
-                ),
+            // Topic title
+            Text(
+              widget.topic.title,
+              style: TextStyle(
+                fontSize: titleFontSize,
+                fontWeight: FontWeight.bold,
+                color: _getLevelColor(widget.section.level),
+                height: 1.2,
               ),
             ),
-            const SizedBox(width: 8),
-            Consumer<AppState>(
-              builder: (context, appState, child) {
-                final isCompleted = appState.currentUser?.progress.isTopicCompleted(widget.topic.id) ?? false;
-                if (isCompleted) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            
+            const SizedBox(height: 8),
+            
+            // Topic metadata
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getLevelColor(widget.section.level).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    widget.section.level.displayName,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _getLevelColor(widget.section.level),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.access_time, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Text(
+                  '${widget.topic.estimatedReadTime.inMinutes} min read',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                if (isCompleted) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.2),
+                      color: Colors.green.shade100,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.check,
-                          size: 14,
-                          color: Colors.green.shade700,
-                        ),
+                        Icon(Icons.check_circle, size: 14, color: Colors.green.shade700),
                         const SizedBox(width: 4),
                         Text(
                           'Completed',
                           style: TextStyle(
-                            fontSize: subtitleFontSize - 2,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
                             color: Colors.green.shade700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
+                  ),
+                ],
+              ],
             ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Text(
-          widget.topic.description,
-          style: TextStyle(
-            fontSize: subtitleFontSize,
-            color: theme.textTheme.bodyLarge?.color?.withOpacity(0.7),
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Icon(
-              Icons.timer_outlined,
-              size: 16,
-              color: theme.textTheme.bodySmall?.color,
-            ),
-            const SizedBox(width: 4),
+            
+            const SizedBox(height: 12),
+            
+            // Topic description
             Text(
-              'Estimated reading time: ${widget.topic.estimatedReadTime.inMinutes} minutes',
+              widget.topic.description,
               style: TextStyle(
-                fontSize: subtitleFontSize - 2,
-                color: theme.textTheme.bodySmall?.color,
+                fontSize: subtitleFontSize,
+                color: Colors.grey.shade700,
+                height: 1.4,
+                fontStyle: FontStyle.italic,
               ),
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
   Widget _buildTopicContent(BuildContext context, DeviceType deviceType) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
+    final bodyFontSize = deviceType == DeviceType.mobile ? 16.0 : 18.0;
+
     return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade900 : Colors.grey.shade50,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-          width: 1,
-        ),
+        border: Border.all(color: Colors.grey.shade200),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: MarkdownBody(
-          data: widget.topic.content,
-          styleSheet: MarkdownStyleSheet(
-            h1: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.primary,
-            ),
-            h2: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.secondary,
-            ),
-            h3: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-            p: theme.textTheme.bodyLarge?.copyWith(
-              height: 1.6,
-            ),
-            code: TextStyle(
-              backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-              fontFamily: 'monospace',
-              fontSize: deviceType == DeviceType.mobile ? 12 : 14,
-            ),
-            codeblockDecoration: BoxDecoration(
-              color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            blockquote: theme.textTheme.bodyLarge?.copyWith(
-              fontStyle: FontStyle.italic,
-              color: theme.textTheme.bodyLarge?.color?.withOpacity(0.7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.article,
+                color: _getLevelColor(widget.section.level),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Topic Content',
+                style: TextStyle(
+                  fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: _getLevelColor(widget.section.level),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          MarkdownBody(
+            data: widget.topic.content,
+            styleSheet: MarkdownStyleSheet(
+              p: TextStyle(
+                fontSize: bodyFontSize,
+                color: Colors.grey.shade800,
+                height: 1.6,
+              ),
+              strong: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade900,
+              ),
+              h2: TextStyle(
+                fontSize: bodyFontSize + 4,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade900,
+              ),
+              listBullet: TextStyle(
+                fontSize: bodyFontSize,
+                color: _getLevelColor(widget.section.level),
+              ),
+              blockquote: TextStyle(
+                fontSize: bodyFontSize,
+                color: Colors.grey.shade700,
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
   Widget _buildKeyPoints(BuildContext context, DeviceType deviceType) {
-    if (widget.topic.keyPoints.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (widget.topic.keyPoints.isEmpty) return const SizedBox.shrink();
 
     final titleFontSize = deviceType == DeviceType.mobile ? 18.0 : 20.0;
     final bodyFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Key Points',
-          style: TextStyle(
-            fontSize: titleFontSize,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...widget.topic.keyPoints.asMap().entries.map((entry) => Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+      decoration: BoxDecoration(
+        color: _getLevelColor(widget.section.level).withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _getLevelColor(widget.section.level).withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: _getLevelColor(widget.section.level).withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    '${entry.key + 1}',
-                    style: TextStyle(
-                      fontSize: bodyFontSize - 2,
-                      fontWeight: FontWeight.bold,
-                      color: _getLevelColor(widget.section.level),
-                    ),
-                  ),
-                ),
+              Icon(
+                Icons.lightbulb,
+                color: _getLevelColor(widget.section.level),
+                size: 20,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  entry.value,
-                  style: TextStyle(
-                    fontSize: bodyFontSize,
-                    color: isDark 
-                        ? Colors.grey.shade300 
-                        : Colors.grey.shade800,
-                    height: 1.4,
-                  ),
+              const SizedBox(width: 8),
+              Text(
+                'Key Points',
+                style: TextStyle(
+                  fontSize: titleFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: _getLevelColor(widget.section.level),
                 ),
               ),
             ],
           ),
-        )),
-      ],
+          const SizedBox(height: 12),
+          ...widget.topic.keyPoints.map((point) => Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.only(top: 8, right: 12),
+                  decoration: BoxDecoration(
+                    color: _getLevelColor(widget.section.level),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    point,
+                    style: TextStyle(
+                      fontSize: bodyFontSize,
+                      color: Colors.grey.shade800,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )),
+        ],
+      ),
     );
   }
 
   Widget _buildExamples(BuildContext context, DeviceType deviceType) {
+    if (widget.topic.examples.isEmpty) return const SizedBox.shrink();
+
     final titleFontSize = deviceType == DeviceType.mobile ? 18.0 : 20.0;
     final bodyFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Examples',
-          style: TextStyle(
-            fontSize: titleFontSize,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...widget.topic.examples.map((example) => Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark 
-                  ? Colors.grey.shade900 
-                  : Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isDark 
-                    ? Colors.grey.shade800 
-                    : Colors.grey.shade200,
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+      decoration: BoxDecoration(
+        color: _getLevelColor(widget.section.level).withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _getLevelColor(widget.section.level).withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.music_note,
+                color: _getLevelColor(widget.section.level),
+                size: 20,
               ),
-            ),
+              const SizedBox(width: 8),
+              Text(
+                'Examples',
+                style: TextStyle(
+                  fontSize: titleFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: _getLevelColor(widget.section.level),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...widget.topic.examples.map((example) => Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.lightbulb_outline,
-                  color: _getLevelColor(widget.section.level),
-                  size: 20,
+                Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.only(top: 8, right: 12),
+                  decoration: BoxDecoration(
+                    color: _getLevelColor(widget.section.level),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
                 ),
-                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     example,
                     style: TextStyle(
                       fontSize: bodyFontSize,
-                      color: isDark 
+                      color: Theme.of(context).brightness == Brightness.dark 
                           ? Colors.grey.shade300 
                           : Colors.grey.shade800,
                       height: 1.4,
@@ -384,9 +419,9 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                 ),
               ],
             ),
-          ),
-        )),
-      ],
+          )),
+        ],
+      ),
     );
   }
 
@@ -448,8 +483,9 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
   void _navigateToQuiz(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => QuizLandingView(
-          sectionId: widget.section.id,
+        builder: (_) => QuizPlaceholderPage(
+          title: '${widget.topic.title} Quiz',
+          description: 'Test your understanding of "${widget.topic.title}" concepts.',
           topicId: widget.topic.id,
         ),
       ),

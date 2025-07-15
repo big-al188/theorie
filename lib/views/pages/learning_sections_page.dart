@@ -7,7 +7,7 @@ import '../../models/user/user.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/common/app_bar.dart';
 import 'learning_topics_page.dart';
-import '../../modules/quiz/views/quiz_landing_view.dart';
+import 'quiz_placeholder_page.dart';
 
 class LearningSectionsPage extends StatelessWidget {
   const LearningSectionsPage({super.key});
@@ -44,7 +44,7 @@ class LearningSectionsPage extends StatelessWidget {
 
   double _getPadding(DeviceType deviceType, bool isLandscape) {
     if (isLandscape && deviceType == DeviceType.mobile) {
-      return 16.0;
+      return 16.0; // Reduced padding for landscape mobile
     }
     return deviceType == DeviceType.mobile ? 20.0 : 32.0;
   }
@@ -70,7 +70,7 @@ class LearningSectionsPage extends StatelessWidget {
           'Each section contains topics and quizzes to test your knowledge.',
           style: TextStyle(
             fontSize: subtitleFontSize,
-            color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.7),
+            color: Colors.grey.shade600,
             height: 1.4,
           ),
         ),
@@ -79,169 +79,187 @@ class LearningSectionsPage extends StatelessWidget {
   }
 
   Widget _buildSectionsList(BuildContext context, DeviceType deviceType, bool isLandscape) {
+    final sections = LearningContentRepository.getAllSections();
+
     return Consumer<AppState>(
       builder: (context, appState, child) {
-        final sections = LearningContentRepository.getAllSections();
-        
-        if (sections.isEmpty) {
-          return _buildEmptyState(context, deviceType);
-        }
-
         return Column(
-          children: sections.map((section) => Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: _buildSectionCard(context, section, deviceType, isLandscape),
-          )).toList(),
+          children: sections.map((section) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: _buildSectionCard(context, section, appState, deviceType),
+            );
+          }).toList(),
         );
       },
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, DeviceType deviceType) {
-    final fontSize = deviceType == DeviceType.mobile ? 16.0 : 18.0;
+  Widget _buildSectionCard(BuildContext context, LearningSection section, AppState appState, DeviceType deviceType) {
+    final user = appState.currentUser;
+    final sectionProgress = user?.progress.getSectionProgress(section.id) ?? SectionProgress.empty();
+    final isCompleted = user?.progress.isSectionCompleted(section.id) ?? false;
+    final hasTopics = section.hasTopics;
     
-    return Center(
+    final titleFontSize = deviceType == DeviceType.mobile ? 20.0 : 24.0;
+    final subtitleFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
+    final bodyFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
+
+    return Card(
+      elevation: 4,
       child: Padding(
-        padding: const EdgeInsets.all(32.0),
+        padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.school_outlined,
-              size: 64,
-              color: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+            // Header row with title and completion status
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        section.title,
+                        style: TextStyle(
+                          fontSize: titleFontSize,
+                          fontWeight: FontWeight.bold,
+                          color: _getLevelColor(section.level),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        section.level.description,
+                        style: TextStyle(
+                          fontSize: subtitleFontSize,
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isCompleted)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Completed',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 16),
+            
+            const SizedBox(height: 12),
+            
+            // Description
             Text(
-              'No learning content available',
+              section.description,
               style: TextStyle(
-                fontSize: fontSize,
-                color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.5),
+                fontSize: bodyFontSize,
+                color: Colors.grey.shade700,
+                height: 1.4,
               ),
             ),
+            
+            if (hasTopics) ...[
+              const SizedBox(height: 12),
+              
+              // Progress indicator
+              _buildProgressIndicator(context, sectionProgress, deviceType),
+              
+              const SizedBox(height: 16),
+              
+              // Action buttons
+              _buildActionButtons(context, section, hasTopics, deviceType),
+            ] else ...[
+              const SizedBox(height: 16),
+              
+              // Coming soon indicator
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.construction, color: Colors.orange.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Content coming soon...',
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSectionCard(BuildContext context, LearningSection section, DeviceType deviceType, bool isLandscape) {
-    final theme = Theme.of(context);
-    final cardPadding = deviceType == DeviceType.mobile ? 16.0 : 20.0;
-    final titleFontSize = deviceType == DeviceType.mobile ? 18.0 : 20.0;
-    final descriptionFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
-    final appState = Provider.of<AppState>(context, listen: false);
-    final user = appState.currentUser;
-    
-    // Get section progress
-    final sectionProgress = user?.progress.getSectionProgress(section.id);
-    final progressPercentage = sectionProgress?.progressPercentage ?? 0.0;
-    final completedTopics = sectionProgress?.topicsCompleted ?? 0;
-    final totalTopics = section.topics.length;
-    final hasTopics = totalTopics > 0;
+  Widget _buildProgressIndicator(BuildContext context, SectionProgress progress, DeviceType deviceType) {
+    final progressPercentage = progress.progressPercentage;
+    final completedTopics = progress.topicsCompleted;
+    final totalTopics = progress.totalTopics;
 
-    return Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: hasTopics
-            ? () => _navigateToTopics(context, section)
-            : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: EdgeInsets.all(cardPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _getLevelColor(section.level).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      _getLevelIcon(section.level),
-                      color: _getLevelColor(section.level),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          section.title,
-                          style: TextStyle(
-                            fontSize: titleFontSize,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${section.level.displayName} • $totalTopics topics',
-                          style: TextStyle(
-                            fontSize: descriptionFontSize - 2,
-                            color: theme.textTheme.bodySmall?.color,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Progress',
+              style: TextStyle(
+                fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                fontWeight: FontWeight.w500,
               ),
-              const SizedBox(height: 12),
-              Text(
-                section.description,
-                style: TextStyle(
-                  fontSize: descriptionFontSize,
-                  color: theme.textTheme.bodyLarge?.color?.withOpacity(0.8),
-                  height: 1.4,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              '$completedTopics / $totalTopics topics',
+              style: TextStyle(
+                fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
+                color: Colors.grey.shade600,
               ),
-              if (hasTopics) ...[
-                const SizedBox(height: 16),
-                LinearProgressIndicator(
-                  value: progressPercentage,
-                  backgroundColor: theme.colorScheme.surfaceVariant,
-                  valueColor: AlwaysStoppedAnimation<Color>(_getLevelColor(section.level)),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '$completedTopics/$totalTopics topics completed',
-                      style: TextStyle(
-                        fontSize: descriptionFontSize - 2,
-                        color: theme.textTheme.bodySmall?.color,
-                      ),
-                    ),
-                    Text(
-                      '${(progressPercentage * 100).toInt()}%',
-                      style: TextStyle(
-                        fontSize: descriptionFontSize - 2,
-                        fontWeight: FontWeight.bold,
-                        color: _getLevelColor(section.level),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _buildActionButtons(context, section, deviceType, hasTopics),
-              ],
-            ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: progressPercentage,
+          backgroundColor: Colors.grey.shade300,
+          valueColor: AlwaysStoppedAnimation<Color>(
+            progressPercentage == 1.0 ? Colors.green : Theme.of(context).primaryColor,
           ),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, LearningSection section, DeviceType deviceType, bool hasTopics) {
+  Widget _buildActionButtons(BuildContext context, LearningSection section, bool hasTopics, DeviceType deviceType) {
     final buttonHeight = deviceType == DeviceType.mobile ? 40.0 : 48.0;
     final fontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
 
@@ -317,27 +335,6 @@ class LearningSectionsPage extends StatelessWidget {
     }
   }
 
-  IconData _getLevelIcon(LearningLevel level) {
-    switch (level) {
-      case LearningLevel.introduction:
-        return Icons.school;
-      case LearningLevel.fundamentals:
-        return Icons.foundation;
-      case LearningLevel.essentials:
-        return Icons.star_border;
-      case LearningLevel.intermediate:
-        return Icons.piano;
-      case LearningLevel.advanced:
-        return Icons.music_note;
-      case LearningLevel.professional:
-        return Icons.workspace_premium;
-      case LearningLevel.master:
-        return Icons.emoji_events;
-      case LearningLevel.virtuoso:
-        return Icons.stars;
-    }
-  }
-
   void _navigateToTopics(BuildContext context, LearningSection section) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -349,8 +346,9 @@ class LearningSectionsPage extends StatelessWidget {
   void _navigateToSectionQuiz(BuildContext context, LearningSection section) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => QuizLandingView(
-          sectionId: section.id,
+        builder: (_) => QuizPlaceholderPage(
+          title: '${section.title} Section Quiz',
+          description: 'Test your knowledge of all topics in the ${section.title} section.',
         ),
       ),
     );
