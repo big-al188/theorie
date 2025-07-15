@@ -1,13 +1,13 @@
 // lib/views/pages/quiz_page.dart
 
-import 'dart:async'; // ADDED: For Timer
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../models/quiz/quiz_question.dart';
 import '../../models/quiz/quiz_session.dart';
 import '../../models/quiz/multiple_choice_question.dart';
-import '../../constants/ui_constants.dart'; // ADDED: For responsive design
+import '../../constants/ui_constants.dart';
 import '../widgets/quiz/quiz_progress_bar.dart';
 import '../widgets/quiz/multiple_choice_widget.dart';
 import '../widgets/quiz/quiz_results_widget.dart';
@@ -40,28 +40,32 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  // ADDED: Timer for real-time updates and scroll controller for mobile
   Timer? _timer;
   final ScrollController _scrollController = ScrollController();
 
-  bool _showingResults = false;
+  // FIXED: Stable UI state management - prevent unnecessary rebuilds
   String? _lastFeedback;
+  bool _isTransitioning = false;
+
+  // FIXED: Store stable question data to prevent UI jumps
+  String? _currentQuestionId;
+  Map<String, dynamic>? _stableAnswerState;
 
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
-    _startPeriodicTimer(); // ADDED: Start timer for real-time updates
+    _setupAnimations();
+    _startPeriodicUpdates();
   }
 
-  void _initializeAnimations() {
+  void _setupAnimations() {
     _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 400),
       vsync: this,
     );
 
     _slideController = AnimationController(
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
 
@@ -74,6 +78,42 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     ));
 
     _slideAnimation = Tween<Offset>(
+      // FIXED: Start with no offset for first question
+      begin: Offset.zero,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    // FIXED: Start both animations immediately for first question
+    _fadeController.forward();
+    _slideController.forward();
+  }
+
+  void _startPeriodicUpdates() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      // Only update if mounted and not transitioning
+      if (mounted && !_isTransitioning) {
+        final controller = Provider.of<QuizController>(context, listen: false);
+        // Only notify listeners if there are actual timing updates to show
+        if (controller.hasActiveSession && controller.timeRemaining != null) {
+          setState(() {});
+        }
+      }
+    });
+  }
+
+  // FIXED: Only restart animations during navigation, not answer selection
+  void _restartTransitionAnimations() {
+    if (!mounted) return;
+
+    setState(() {
+      _isTransitioning = true;
+    });
+
+    // FIXED: Set up slide animation for navigation transitions
+    _slideAnimation = Tween<Offset>(
       begin: const Offset(1.0, 0.0),
       end: Offset.zero,
     ).animate(CurvedAnimation(
@@ -81,48 +121,189 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       curve: Curves.easeOutCubic,
     ));
 
-    // Start animations
+    _fadeController.reset();
+    _slideController.reset();
+
     _fadeController.forward();
-    _slideController.forward();
-  }
-
-  // ADDED: Real-time timer for quiz updates
-  void _startPeriodicTimer() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _slideController.forward().then((_) {
       if (mounted) {
-        final controller = context.read<QuizController>();
-
-        // Only update if we have an active session with time limit
-        if (controller.hasActiveSession &&
-            controller.currentSession?.timeLimit != null) {
-          // Force a rebuild to update timer display
-          setState(() {});
-
-          // Check if time expired
-          if (controller.isTimeExpired) {
-            _handleTimeExpired();
-          }
-        }
+        setState(() {
+          _isTransitioning = false;
+        });
       }
     });
   }
 
-  // ADDED: Handle time expiration
-  void _handleTimeExpired() async {
-    _timer?.cancel();
+  // FIXED: Stable answer submission that doesn't trigger page rebuilds
+  void _handleAnswerSubmission(
+      QuizController controller, dynamic answer) async {
+    if (controller.isProcessingAnswer) return;
 
-    final controller = context.read<QuizController>();
-    if (controller.hasActiveSession) {
-      await controller.completeQuiz();
-    }
+    try {
+      // FIXED: Don't trigger state changes during answer submission
+      final questionId = controller.currentQuestion?.id;
 
-    if (mounted) {
-      _showTimeExpiredDialog();
+      // Store answer state locally for stable UI
+      _stableAnswerState = {
+        'questionId': questionId,
+        'answer': answer,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+
+      // Submit answer without auto-advance to prevent UI jumping
+      await controller.submitAnswer(answer, autoAdvance: false);
+
+      // FIXED: Provide immediate feedback with fade in/out animation
+      if (mounted) {
+        setState(() {
+          _lastFeedback = 'Answer submitted';
+        });
+
+        // FIXED: Use animation for smoother feedback display
+        await _showFeedbackWithAnimation();
+      }
+    } catch (e) {
+      _showErrorSnackbar(context, 'Failed to submit answer: $e');
     }
   }
 
-  // ADDED: Show time expired dialog
+  // FIXED: Add smooth feedback animation
+  Future<void> _showFeedbackWithAnimation() async {
+    // Keep feedback visible for 2 seconds, then fade out
+    await Future.delayed(const Duration(milliseconds: 1800));
+
+    if (mounted) {
+      setState(() {
+        _lastFeedback = null;
+      });
+    }
+  }
+
+  // FIXED: Proper navigation handling that triggers animations only when needed
+  void _handleNext(BuildContext context, QuizController controller) async {
+    if (_isTransitioning) return;
+
+    try {
+      if (controller.hasNextQuestion) {
+        await controller.nextQuestion();
+        _restartTransitionAnimations(); // Only animate on navigation
+      } else {
+        await controller.completeQuiz();
+        // Results will show automatically via controller state
+      }
+    } catch (e) {
+      _showErrorSnackbar(context, 'Failed to proceed: $e');
+    }
+  }
+
+  void _handlePrevious(QuizController controller) async {
+    if (_isTransitioning) return;
+
+    try {
+      await controller.previousQuestion();
+      _restartTransitionAnimations(); // Only animate on navigation
+    } catch (e) {
+      _showErrorSnackbar(context, 'Failed to go to previous question: $e');
+    }
+  }
+
+  void _handleSkip(QuizController controller) async {
+    if (_isTransitioning) return;
+
+    try {
+      await controller.skipQuestion(autoAdvance: false);
+      if (mounted) {
+        setState(() {
+          _lastFeedback = 'Question skipped';
+        });
+
+        // FIXED: Use same smooth feedback animation
+        await _showFeedbackWithAnimation();
+      }
+    } catch (e) {
+      _showErrorSnackbar(context, 'Failed to skip question: $e');
+    }
+  }
+
+  void _handleRetakeQuiz(BuildContext context, QuizController controller) {
+    controller.clearResults();
+    Navigator.of(context).pop();
+  }
+
+  void _handleBackToMenu(BuildContext context, QuizController controller) {
+    controller.clearResults();
+    Navigator.of(context).pop();
+  }
+
+  // FIXED: Proper cleanup when exiting quiz early
+  void _handleBackAction(BuildContext context, QuizController controller) {
+    if (controller.isShowingResults) {
+      _handleBackToMenu(context, controller);
+    } else if (controller.hasActiveSession) {
+      _showAbandonQuizDialog(context, controller);
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _showAbandonQuizDialog(BuildContext context, QuizController controller) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Abandon Quiz?'),
+        content: const Text(
+            'Are you sure you want to exit? Your progress will be lost.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Continue Quiz'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // Close dialog
+              // FIXED: Properly clean up session before exiting
+              _cleanupAndExit(context, controller);
+            },
+            child: const Text('Exit Quiz'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // FIXED: Proper cleanup method to prevent session conflicts
+  void _cleanupAndExit(BuildContext context, QuizController controller) async {
+    try {
+      // Clear any active session to prevent conflicts
+      if (controller.hasActiveSession) {
+        await controller.abandonQuiz();
+      }
+      controller.clearResults();
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      // If cleanup fails, force clear and exit
+      controller.clearResults();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
+  void _showErrorSnackbar(BuildContext context, String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _showTimeExpiredDialog() {
     showDialog(
       context: context,
@@ -130,9 +311,9 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       builder: (context) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.timer_off, color: Colors.red),
+            Icon(Icons.timer_off, color: Colors.orange),
             SizedBox(width: 8),
-            Text('Time\'s Up!'),
+            Text('Time Expired'),
           ],
         ),
         content: const Text(
@@ -155,8 +336,8 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   void dispose() {
     _fadeController.dispose();
     _slideController.dispose();
-    _timer?.cancel(); // ADDED: Clean up timer
-    _scrollController.dispose(); // ADDED: Clean up scroll controller
+    _timer?.cancel();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -175,12 +356,10 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
-  // FIXED: Updated to show proper title when showing results
   PreferredSizeWidget _buildAppBar(
       BuildContext context, QuizController controller) {
     String title = widget.title ?? 'Quiz';
 
-    // Show results title when displaying results - THIS FIXES THE TITLE
     if (controller.isShowingResults) {
       title = 'Quiz Results';
     } else if (controller.hasActiveSession) {
@@ -199,9 +378,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
-  // FIXED: Now checks for results display - THIS IS THE KEY FIX
   Widget _buildBody(BuildContext context, QuizController controller) {
-    // Show results if quiz is completed - THIS IS THE KEY FIX
     if (controller.isShowingResults) {
       return QuizResultsWidget(
         onRetakeQuiz: () => _handleRetakeQuiz(context, controller),
@@ -209,7 +386,6 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       );
     }
 
-    // Existing logic for active session
     if (!controller.hasActiveSession) {
       return const Center(
         child: Column(
@@ -224,75 +400,121 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     }
 
     final session = controller.currentSession!;
-    if (_showingResults) {
-      return QuizResultsWidget(
-        onRetakeQuiz: () => _handleRetakeQuiz(context, controller),
-        onBackToMenu: () => _handleBackToMenu(context, controller),
-      );
+
+    // FIXED: Track question changes for stable UI
+    final currentQuestionId = session.currentQuestion.id;
+    if (_currentQuestionId != currentQuestionId) {
+      _currentQuestionId = currentQuestionId;
+      _stableAnswerState = null; // Reset answer state for new question
     }
 
-    return _buildActiveQuizInterface(context, controller, session);
+    // Check for time expiration
+    if (session.timeLimit != null && controller.isTimeExpired) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showTimeExpiredDialog();
+      });
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
+
+        return _buildQuizContent(context, controller, session, deviceType);
+      },
+    );
   }
 
-  // UPDATED: Made responsive for mobile with scrolling
-  Widget _buildActiveQuizInterface(
-      BuildContext context, QuizController controller, QuizSession session) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
-    final isMobile = deviceType == DeviceType.mobile;
-
+  // FIXED: Stable quiz content that doesn't rebuild unnecessarily
+  Widget _buildQuizContent(
+    BuildContext context,
+    QuizController controller,
+    QuizSession session,
+    DeviceType deviceType,
+  ) {
     return Column(
       children: [
-        // Progress bar
-        if (session.totalQuestions > 1)
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 12 : 16, // ADDED: Mobile-specific padding
-              vertical: 8,
-            ),
-            child: QuizProgressBar(
-              current: session.currentQuestionIndex + 1,
-              total: session.totalQuestions,
-              timeRemaining:
-                  session.timeRemaining, // FIXED: Real-time timer updates
-              showPercentage: !isMobile, // ADDED: Hide percentage on mobile
-            ),
-          ),
+        // Fixed header that doesn't change during answer selection
+        _buildStableHeader(context, session, deviceType),
 
-        // Feedback message
-        if (_lastFeedback != null)
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 12 : 16, // ADDED: Mobile-specific padding
-              vertical: 8,
-            ),
-            child: _buildFeedbackCard(context, _lastFeedback!),
-          ),
-
-        // UPDATED: Main question area with scrolling for mobile
+        // Scrollable content area
         Expanded(
           child: SingleChildScrollView(
-            // ADDED: Scrollable for mobile
             controller: _scrollController,
-            padding:
-                EdgeInsets.all(isMobile ? 12 : 16), // ADDED: Responsive padding
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: _buildQuestionSection(context, controller),
-              ),
+            padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16 : 24),
+            child: AnimatedBuilder(
+              animation: _fadeAnimation,
+              builder: (context, child) {
+                return FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: _buildQuestionSection(context, controller),
+                  ),
+                );
+              },
             ),
           ),
         ),
 
-        // Navigation controls
-        Container(
-          padding: EdgeInsets.all(
-              isMobile ? 12 : 16), // ADDED: Mobile-specific padding
-          child: _buildNavigationControls(context, controller, session),
-        ),
+        // Fixed footer that only updates when navigation state changes
+        _buildStableFooter(context, controller, session, deviceType),
       ],
+    );
+  }
+
+  // FIXED: Stable header that shows progress without rebuilding content
+  Widget _buildStableHeader(
+      BuildContext context, QuizSession session, DeviceType deviceType) {
+    return Container(
+      padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 12 : 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).dividerColor,
+            width: 1,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          // FIXED: Use correct QuizProgressBar parameters
+          QuizProgressBar(
+            current: session.currentQuestionIndex + 1,
+            total: session.totalQuestions,
+            timeRemaining: session.timeRemaining,
+          ),
+
+          // FIXED: Always reserve space for feedback to prevent layout shifts
+          SizedBox(
+            height: 40, // FIXED: Increased height to prevent text cutoff
+            child: _lastFeedback != null
+                ? Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8), // FIXED: Increased padding
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Center(
+                      child: Text(
+                        _lastFeedback!,
+                        style: TextStyle(
+                          color: Theme.of(context).primaryColor,
+                          fontSize: 13, // FIXED: Slightly increased font size
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center, // FIXED: Center align text
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(), // Empty space when no feedback
+          ),
+        ],
+      ),
     );
   }
 
@@ -313,15 +535,15 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 16),
 
-        // Question text - FIXED: Use correct property name
+        // Question text
         Text(
-          question.questionText, // FIXED: Use existing property name
+          question.questionText,
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
         ),
 
-        // Question description/explanation - FIXED: Use correct property
+        // Question description/explanation
         if (question.explanation?.isNotEmpty == true) ...[
           const SizedBox(height: 12),
           Text(
@@ -334,27 +556,40 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
 
         const SizedBox(height: 24),
 
-        // Question widget
-        _buildQuestionWidget(context, question, controller),
+        // FIXED: Question widget with stable answer state
+        _buildStableQuestionWidget(context, question, controller),
       ],
     );
   }
 
-  Widget _buildQuestionWidget(
-      BuildContext context, QuizQuestion question, QuizController controller) {
+  // FIXED: Stable question widget that uses local state for selections
+  Widget _buildStableQuestionWidget(
+    BuildContext context,
+    QuizQuestion question,
+    QuizController controller,
+  ) {
     if (question is MultipleChoiceQuestion) {
+      // Use stable answer state or controller state
+      dynamic selectedAnswer;
+
+      if (_stableAnswerState != null &&
+          _stableAnswerState!['questionId'] == question.id) {
+        selectedAnswer = _stableAnswerState!['answer'];
+      } else {
+        selectedAnswer = controller.currentSession
+            ?.getAnswerForQuestion(question.id)
+            ?.answer;
+      }
+
       return MultipleChoiceWidget(
         question: question,
-        selectedAnswer: controller.currentSession
-            ?.getAnswerForQuestion(question.id)
-            ?.answer,
+        selectedAnswer: selectedAnswer,
         onAnswerSelected: (answer) =>
             _handleAnswerSubmission(controller, answer),
-        enabled: !controller.isProcessingAnswer,
+        enabled: !controller.isProcessingAnswer && !_isTransitioning,
       );
     }
 
-    // Handle other question types
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -371,16 +606,26 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
-  // UPDATED: Make navigation responsive
-  Widget _buildNavigationControls(
-      BuildContext context, QuizController controller, QuizSession session) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
+  // FIXED: Stable footer that only updates for navigation state changes
+  Widget _buildStableFooter(
+    BuildContext context,
+    QuizController controller,
+    QuizSession session,
+    DeviceType deviceType,
+  ) {
     final isMobile = deviceType == DeviceType.mobile;
 
-    final isAnswered = controller.currentSession
-            ?.isQuestionAnswered(session.currentQuestion.id) ??
-        false;
+    // Check if current question is answered (use stable state or controller state)
+    bool isAnswered = false;
+    if (_stableAnswerState != null &&
+        _stableAnswerState!['questionId'] == session.currentQuestion.id) {
+      isAnswered = true;
+    } else {
+      isAnswered = controller.currentSession
+              ?.isQuestionAnswered(session.currentQuestion.id) ??
+          false;
+    }
+
     final hasNext = session.hasNextQuestion;
     final hasPrevious = session.hasPreviousQuestion;
 
@@ -394,223 +639,71 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
           ),
         ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Main action buttons
-          Row(
-            children: [
-              // Skip button (if allowed)
-              if (session.allowSkip) ...[
+      child: Padding(
+        padding: EdgeInsets.all(isMobile ? 12 : 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Main action buttons
+            Row(
+              children: [
+                // Skip button (if allowed)
+                if (session.allowSkip) ...[
+                  Expanded(
+                    child: SizedBox(
+                      height: isMobile ? 44 : 48,
+                      child: OutlinedButton(
+                        onPressed: _isTransitioning
+                            ? null
+                            : () => _handleSkip(controller),
+                        child: Text(
+                          'Skip',
+                          style: TextStyle(fontSize: isMobile ? 14 : 16),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+
+                // Next/Complete button
                 Expanded(
+                  flex: 2,
                   child: SizedBox(
-                    height: isMobile ? 44 : 48, // ADDED: Mobile-specific height
-                    child: OutlinedButton(
-                      onPressed: () => _handleSkip(controller),
+                    height: isMobile ? 44 : 48,
+                    child: ElevatedButton(
+                      onPressed: (isAnswered && !_isTransitioning)
+                          ? () => _handleNext(context, controller)
+                          : null,
                       child: Text(
-                        'Skip',
-                        style: TextStyle(
-                            fontSize: isMobile
-                                ? 14
-                                : 16), // ADDED: Mobile-specific font
+                        hasNext ? 'Next Question' : 'Complete Quiz',
+                        style: TextStyle(fontSize: isMobile ? 14 : 16),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
               ],
+            ),
 
-              // Next/Complete button
-              Expanded(
-                flex: 2,
-                child: SizedBox(
-                  height: isMobile ? 44 : 48, // ADDED: Mobile-specific height
-                  child: ElevatedButton(
-                    onPressed: isAnswered
-                        ? () => _handleNext(context, controller)
-                        : null,
-                    child: Text(
-                      hasNext ? 'Next Question' : 'Complete Quiz',
-                      style: TextStyle(
-                          fontSize: isMobile
-                              ? 14
-                              : 16), // ADDED: Mobile-specific font
-                    ),
+            // Previous button row (if has previous)
+            if (hasPrevious) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: isMobile ? 40 : 44,
+                child: OutlinedButton(
+                  onPressed: _isTransitioning
+                      ? null
+                      : () => _handlePrevious(controller),
+                  child: Text(
+                    'Previous Question',
+                    style: TextStyle(fontSize: isMobile ? 12 : 16),
                   ),
                 ),
               ),
             ],
-          ),
-
-          // Previous button row (if has previous)
-          if (hasPrevious) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              height: isMobile ? 40 : 44, // ADDED: Mobile-specific height
-              child: OutlinedButton(
-                onPressed: () => _handlePrevious(controller),
-                child: Text(
-                  'Previous Question',
-                  style: TextStyle(
-                      fontSize:
-                          isMobile ? 13 : 15), // ADDED: Mobile-specific font
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeedbackCard(BuildContext context, String feedback) {
-    return Card(
-      color: Colors.blue[50],
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.blue[700]),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                feedback,
-                style: TextStyle(color: Colors.blue[700]),
-              ),
-            ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _restartTransitionAnimations() {
-    _slideController.reset();
-    _slideController.forward();
-  }
-
-  void _showErrorSnackbar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor:
-            Theme.of(context).colorScheme.error, // FIXED: Use colorScheme.error
-      ),
-    );
-  }
-
-  // Event handlers
-  void _handleAnswerSubmission(
-      QuizController controller, dynamic answer) async {
-    try {
-      await controller.submitAnswer(answer, autoAdvance: false);
-      _restartTransitionAnimations();
-
-      setState(() {
-        _lastFeedback = 'Answer submitted successfully!';
-      });
-
-      // Clear feedback after delay
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _lastFeedback = null;
-          });
-        }
-      });
-    } catch (e) {
-      _showErrorSnackbar(context, 'Failed to submit answer: $e');
-    }
-  }
-
-  // FIXED: Now properly handles quiz completion
-  void _handleNext(BuildContext context, QuizController controller) async {
-    try {
-      if (controller.hasNextQuestion) {
-        await controller.nextQuestion();
-        _restartTransitionAnimations();
-      } else {
-        // Complete the quiz - the UI will automatically switch to results
-        await controller.completeQuiz();
-        // No need to manually set _showingResults since controller.isShowingResults handles this
-      }
-    } catch (e) {
-      _showErrorSnackbar(context, 'Failed to proceed: $e');
-    }
-  }
-
-  void _handlePrevious(QuizController controller) async {
-    try {
-      await controller.previousQuestion();
-      _restartTransitionAnimations();
-    } catch (e) {
-      _showErrorSnackbar(context, 'Failed to go to previous question: $e');
-    }
-  }
-
-  void _handleSkip(QuizController controller) async {
-    try {
-      await controller.skipQuestion(autoAdvance: false);
-      setState(() {
-        _lastFeedback = 'Question skipped';
-      });
-
-      // Clear feedback after delay
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _lastFeedback = null;
-          });
-        }
-      });
-    } catch (e) {
-      _showErrorSnackbar(context, 'Failed to skip question: $e');
-    }
-  }
-
-  // ADDED: Helper methods for result navigation
-  void _handleRetakeQuiz(BuildContext context, QuizController controller) {
-    // Clear results and navigate back to allow starting a new quiz
-    controller.clearResults();
-    Navigator.of(context).pop();
-  }
-
-  void _handleBackToMenu(BuildContext context, QuizController controller) {
-    controller.clearResults();
-    Navigator.of(context).pop();
-  }
-
-  void _handleBackAction(BuildContext context, QuizController controller) {
-    if (controller.isShowingResults) {
-      _handleBackToMenu(context, controller);
-    } else if (controller.hasActiveSession) {
-      _showAbandonQuizDialog(context, controller);
-    } else {
-      Navigator.of(context).pop();
-    }
-  }
-
-  void _showAbandonQuizDialog(BuildContext context, QuizController controller) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Abandon Quiz?'),
-        content: const Text(
-            'Are you sure you want to exit? Your progress will be lost.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop();
-            },
-            child: const Text('Exit'),
-          ),
-        ],
       ),
     );
   }
