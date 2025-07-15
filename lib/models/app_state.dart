@@ -1,4 +1,4 @@
-// lib/models/app_state.dart - Updated with user management
+// lib/models/app_state.dart - Updated with user management and progress tracking
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
@@ -10,11 +10,13 @@ import 'music/chord.dart';
 import 'music/note.dart';
 import 'user/user.dart';
 import '../services/user_service.dart';
+import '../services/progress_tracking_service.dart';
 
 /// Central application state management
 class AppState extends ChangeNotifier {
   // ===== USER MANAGEMENT =====
   User? _currentUser;
+  bool _isInitialized = false;
 
   // ===== FRETBOARD DEFAULTS =====
   // Default fretboard configuration that will be used for new fretboards
@@ -47,6 +49,7 @@ class AppState extends ChangeNotifier {
   // ===== USER GETTERS =====
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
+  bool get isInitialized => _isInitialized;
 
   // ===== FRETBOARD DEFAULTS GETTERS =====
   int get defaultStringCount => _defaultStringCount;
@@ -104,11 +107,52 @@ class AppState extends ChangeNotifier {
       ? availableModes[_modeIndex % availableModes.length]
       : 'Mode ${_modeIndex + 1}';
 
+  // ===== INITIALIZATION =====
+
+  /// Initialize the application state
+  /// FIXED: Now properly initializes progress tracking
+  Future<void> initialize() async {
+    if (_isInitialized) return;
+
+    try {
+      // Load current user
+      _currentUser = await UserService.instance.getCurrentUser();
+
+      // FIXED: Initialize progress tracking if user exists
+      if (_currentUser != null) {
+        await ProgressTrackingService.instance.initializeSectionProgress();
+
+        // Listen to progress changes
+        ProgressTrackingService.instance.addListener(_onProgressChanged);
+
+        // Load user preferences
+        await loadUserPreferences(_currentUser!.preferences);
+      }
+
+      _isInitialized = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error initializing app state: $e');
+      _isInitialized = true; // Mark as initialized to prevent infinite loops
+      notifyListeners();
+    }
+  }
+
   // ===== USER MANAGEMENT METHODS =====
-  
+
   /// Set current user and load their preferences
+  /// FIXED: Initialize progress when user logs in
   Future<void> setCurrentUser(User user) async {
     _currentUser = user;
+
+    // FIXED: Initialize progress for the new user
+    try {
+      await ProgressTrackingService.instance.initializeSectionProgress();
+      ProgressTrackingService.instance.addListener(_onProgressChanged);
+    } catch (e) {
+      debugPrint('Error initializing progress for user: $e');
+    }
+
     await loadUserPreferences(user.preferences);
     notifyListeners();
   }
@@ -124,13 +168,13 @@ class AppState extends ChangeNotifier {
     _defaultViewMode = preferences.defaultViewMode;
     _defaultScale = preferences.defaultScale;
     _defaultSelectedOctaves = Set.from(preferences.defaultSelectedOctaves);
-    
+
     // Also update current session state to match defaults
     _root = _defaultRoot;
     _viewMode = _defaultViewMode;
     _scale = _defaultScale;
     _selectedOctaves = Set.from(_defaultSelectedOctaves);
-    
+
     notifyListeners();
   }
 
@@ -148,34 +192,62 @@ class AppState extends ChangeNotifier {
         defaultScale: _defaultScale,
         defaultSelectedOctaves: _defaultSelectedOctaves,
       );
-      
+
       await UserService.instance.updateUserPreferences(updatedPreferences);
       _currentUser = _currentUser!.copyWith(preferences: updatedPreferences);
     }
   }
 
-/// Logout current user and optionally switch to guest
-Future<void> logout({bool switchToGuest = true}) async {
-  try {
-    // Always logout from UserService first
-    await UserService.instance.logout();
-    
-    if (switchToGuest) {
-      // Switch to guest user to maintain app functionality
-      final guestUser = await UserService.instance.loginAsGuest();
-      await setCurrentUser(guestUser);
-    } else {
-      // Complete logout - clear user and go to login page
+  /// Logout current user and optionally switch to guest
+  /// FIXED: Clean up progress listener
+  Future<void> logout({bool switchToGuest = true}) async {
+    try {
+      // Clean up progress listener
+      ProgressTrackingService.instance.removeListener(_onProgressChanged);
+
+      // Always logout from UserService first
+      await UserService.instance.logout();
+
+      if (switchToGuest) {
+        // Switch to guest user to maintain app functionality
+        final guestUser = await UserService.instance.loginAsGuest();
+        await setCurrentUser(guestUser);
+      } else {
+        // Complete logout - clear user and go to login page
+        _currentUser = null;
+        notifyListeners();
+      }
+    } catch (e) {
+      // If logout fails, at least clear current user locally
+      ProgressTrackingService.instance.removeListener(_onProgressChanged);
       _currentUser = null;
       notifyListeners();
+      rethrow;
     }
-  } catch (e) {
-    // If logout fails, at least clear current user locally
-    _currentUser = null;
-    notifyListeners();
-    rethrow;
   }
-}
+
+  /// ADDED: Handle progress changes
+  void _onProgressChanged() {
+    // When progress changes, immediately refresh user data from storage
+    refreshUserProgress();
+  }
+
+  /// ADDED: Force refresh user progress
+  Future<void> refreshUserProgress() async {
+    if (_currentUser != null) {
+      try {
+        // FIXED: Actually reload user data from UserService storage
+        final refreshedUser = await UserService.instance.getCurrentUser();
+        if (refreshedUser != null) {
+          _currentUser = refreshedUser;
+          notifyListeners();
+          debugPrint('User progress refreshed successfully');
+        }
+      } catch (e) {
+        debugPrint('Error refreshing user progress: $e');
+      }
+    }
+  }
 
   // ===== FRETBOARD DEFAULTS SETTERS =====
   void setDefaultStringCount(int count) {
@@ -531,5 +603,11 @@ Future<void> logout({bool switchToGuest = true}) async {
     } else if (_selectedOctaves.isEmpty) {
       _selectedOctaves = {AppConstants.defaultOctave};
     }
+  }
+
+  @override
+  void dispose() {
+    ProgressTrackingService.instance.removeListener(_onProgressChanged);
+    super.dispose();
   }
 }

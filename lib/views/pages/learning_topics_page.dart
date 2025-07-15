@@ -1,21 +1,58 @@
-// lib/views/pages/learning_topics_page.dart
+// lib/views/pages/learning_topics_page.dart - Enhanced with Progress Tracking
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/learning/learning_content.dart';
+import '../../models/user/user.dart';
 import '../../constants/ui_constants.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../services/quiz_integration_service.dart';
+import '../../services/progress_tracking_service.dart'; // ADDED: For progress tracking
 import '../widgets/common/app_bar.dart';
 import 'topic_detail_page.dart';
 
-class LearningTopicsPage extends StatelessWidget {
+class LearningTopicsPage extends StatefulWidget {
   final LearningSection section;
 
   const LearningTopicsPage({
     super.key,
     required this.section,
   });
+
+  @override
+  State<LearningTopicsPage> createState() => _LearningTopicsPageState();
+}
+
+class _LearningTopicsPageState extends State<LearningTopicsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // ADDED: Listen to progress changes for real-time updates
+    ProgressTrackingService.instance.addListener(_onProgressChanged);
+  }
+
+  @override
+  void dispose() {
+    // ADDED: Clean up progress listener
+    ProgressTrackingService.instance.removeListener(_onProgressChanged);
+    super.dispose();
+  }
+
+  /// ADDED: Handle progress changes and refresh UI
+  void _onProgressChanged() {
+    if (mounted) {
+      // Force AppState to refresh user data
+      final appState = context.read<AppState>();
+      appState.refreshUserProgress().then((_) {
+        if (mounted) {
+          setState(() {
+            // This will trigger a rebuild with updated progress
+          });
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,19 +63,10 @@ class LearningTopicsPage extends StatelessWidget {
 
     return Scaffold(
       appBar: TheorieAppBar(
-        title: '${section.title} Topics',
+        title: widget.section.title,
         showSettings: true,
         showThemeToggle: true,
         showLogout: true,
-        actions: [
-          // Section quiz button in app bar
-          if (QuizIntegrationService.isSectionQuizImplemented(section.id))
-            IconButton(
-              onPressed: () => _navigateToSectionQuiz(context),
-              icon: const Icon(Icons.quiz),
-              tooltip: 'Section Quiz',
-            ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -48,12 +76,11 @@ class LearningTopicsPage extends StatelessWidget {
             children: [
               _buildHeader(context, deviceType),
               SizedBox(height: deviceType == DeviceType.mobile ? 20.0 : 24.0),
-              _buildTopicsList(context, deviceType),
-              if (QuizIntegrationService.isSectionQuizImplemented(
-                  section.id)) ...[
-                SizedBox(height: deviceType == DeviceType.mobile ? 24.0 : 32.0),
-                _buildSectionQuizCard(context, deviceType),
-              ],
+              _buildSectionStats(context, deviceType),
+              SizedBox(height: deviceType == DeviceType.mobile ? 20.0 : 24.0),
+              _buildTopicsList(context, deviceType, isLandscape),
+              SizedBox(height: deviceType == DeviceType.mobile ? 20.0 : 24.0),
+              _buildSectionQuizCard(context, deviceType),
             ],
           ),
         ),
@@ -76,62 +103,156 @@ class LearningTopicsPage extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          section.title,
+          'Topics',
           style: TextStyle(
             fontSize: titleFontSize,
             fontWeight: FontWeight.bold,
-            color: _getLevelColor(section.level),
+            color: Theme.of(context).colorScheme.secondary,
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          section.description,
+          widget.section.description,
           style: TextStyle(
             fontSize: subtitleFontSize,
             color: Colors.grey.shade600,
             height: 1.4,
           ),
         ),
-        if (QuizIntegrationService.isSectionQuizImplemented(section.id)) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.green.withOpacity(0.3)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+      ],
+    );
+  }
+
+  Widget _buildSectionStats(BuildContext context, DeviceType deviceType) {
+    return Consumer<AppState>(
+      builder: (context, appState, child) {
+        // ENHANCED: Real-time progress calculation
+        int completedTopics = 0;
+        int totalTopics = widget.section.topics.length;
+
+        if (appState.currentUser != null) {
+          for (final topic in widget.section.topics) {
+            if (appState.currentUser!.progress.completedTopics
+                .contains(topic.id)) {
+              completedTopics++;
+            }
+          }
+        }
+
+        final progressPercentage =
+            totalTopics > 0 ? completedTopics / totalTopics : 0.0;
+
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding:
+                EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.quiz, size: 16, color: Colors.green.shade700),
-                const SizedBox(width: 6),
-                Text(
-                  'Interactive quizzes available',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.green.shade700,
-                    fontWeight: FontWeight.w600,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Section Progress',
+                      style: TextStyle(
+                        fontSize: deviceType == DeviceType.mobile ? 16.0 : 18.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    // ENHANCED: Real-time completion badge
+                    if (completedTopics == totalTopics && totalTopics > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.check_circle,
+                                color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'COMPLETE',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '$completedTopics / $totalTopics topics completed',
+                      style: TextStyle(
+                        fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    Text(
+                      '${(progressPercentage * 100).round()}%',
+                      style: TextStyle(
+                        fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                        fontWeight: FontWeight.bold,
+                        color: progressPercentage == 1.0
+                            ? Colors.green
+                            : Theme.of(context).primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 8,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: Colors.grey.shade300,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progressPercentage,
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        progressPercentage == 1.0
+                            ? Colors.green
+                            : Theme.of(context).primaryColor,
+                      ),
+                      minHeight: 8,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ],
+        );
+      },
     );
   }
 
-  Widget _buildTopicsList(BuildContext context, DeviceType deviceType) {
+  Widget _buildTopicsList(
+      BuildContext context, DeviceType deviceType, bool isLandscape) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
         return Column(
-          children: section.topics.asMap().entries.map((entry) {
-            final index = entry.key;
-            final topic = entry.value;
-            final isCompleted =
-                appState.currentUser?.progress.isTopicCompleted(topic.id) ??
-                    false;
+          children: widget.section.topics.map((topic) {
+            // ENHANCED: Real-time completion status
+            final isCompleted = appState.currentUser?.progress.completedTopics
+                    .contains(topic.id) ??
+                false;
 
             return Padding(
               padding: EdgeInsets.only(
@@ -149,291 +270,287 @@ class LearningTopicsPage extends StatelessWidget {
       bool isCompleted, DeviceType deviceType) {
     final titleFontSize = deviceType == DeviceType.mobile ? 16.0 : 18.0;
     final bodyFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
-    final hasQuiz =
-        QuizIntegrationService.isTopicQuizImplemented(section.id, topic.id);
+    final hasQuiz = QuizIntegrationService.isTopicQuizImplemented(
+        widget.section.id, topic.id);
 
     return Card(
-      elevation: isCompleted ? 3 : 1,
+      elevation: 1,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         side: BorderSide(
           color: isCompleted
-              ? Colors.green.withOpacity(0.5)
-              : _getLevelColor(section.level).withOpacity(0.2),
-          width: isCompleted ? 2 : 1,
+              ? Colors.green.withOpacity(0.3)
+              : Colors.grey.withOpacity(0.3),
+          width: 1,
         ),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _navigateToTopicDetail(context, topic),
-        child: Padding(
-          padding:
-              EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header row
+      child: Padding(
+        padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 12.0 : 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Topic header with completion status
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    topic.title,
+                    style: TextStyle(
+                      fontSize: titleFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: isCompleted ? Colors.green.shade700 : null,
+                    ),
+                  ),
+                ),
+                // ENHANCED: Real-time completion indicator
+                if (isCompleted)
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Topic description
+            Text(
+              topic.description,
+              style: TextStyle(
+                fontSize: bodyFontSize,
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+
+            // Topic metadata
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.schedule, size: 14, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Text(
+                  '${topic.estimatedReadTime.inMinutes} min read',
+                  style: TextStyle(
+                    fontSize: bodyFontSize - 2,
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                if (hasQuiz) ...[
+                  const SizedBox(width: 16),
+                  Icon(Icons.quiz, size: 14, color: Colors.blue.shade600),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Quiz available',
+                    style: TextStyle(
+                      fontSize: bodyFontSize - 2,
+                      color: Colors.blue.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+
+            // Action buttons
+            if (hasQuiz) ...[
+              const SizedBox(height: 12),
               Row(
                 children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: isCompleted
-                          ? Colors.green
-                          : _getLevelColor(section.level).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Center(
-                      child: isCompleted
-                          ? const Icon(Icons.check,
-                              color: Colors.white, size: 20)
-                          : Text(
-                              '${topic.order}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _getLevelColor(section.level),
-                              ),
-                            ),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _navigateToTopicQuiz(context, topic),
+                      icon: const Icon(Icons.quiz, size: 16),
+                      label: Text(
+                        isCompleted ? 'Retake Quiz' : 'Take Quiz',
+                        style: TextStyle(fontSize: bodyFontSize - 2),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor:
+                            isCompleted ? Colors.green : Colors.blue,
+                        side: BorderSide(
+                            color: isCompleted ? Colors.green : Colors.blue),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          topic.title,
-                          style: TextStyle(
-                            fontSize: titleFontSize,
-                            fontWeight: FontWeight.bold,
-                            color: isCompleted ? Colors.green.shade700 : null,
-                          ),
-                        ),
-                        Text(
-                          '${topic.estimatedReadTime.inMinutes} min read',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Quiz availability indicator
-                  if (hasQuiz)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _navigateToTopicDetail(context, topic),
+                      icon: const Icon(Icons.book, size: 16),
+                      label: Text(
+                        'Read Topic',
+                        style: TextStyle(fontSize: bodyFontSize - 2),
                       ),
-                      child: Icon(Icons.quiz,
-                          size: 14, color: Colors.blue.shade700),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _getLevelColor(widget.section.level),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
                     ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: 16,
-                    color: Colors.grey.shade400,
                   ),
                 ],
               ),
-
+            ] else ...[
               const SizedBox(height: 12),
-
-              // Description
-              Text(
-                topic.description,
-                style: TextStyle(
-                  fontSize: bodyFontSize,
-                  color: Colors.grey.shade700,
-                  height: 1.4,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-
-              // Key points preview
-              if (topic.keyPoints.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Key concepts: ${topic.keyPoints.take(2).join(', ')}${topic.keyPoints.length > 2 ? '...' : ''}',
-                  style: TextStyle(
-                    fontSize: bodyFontSize - 2,
-                    color: _getLevelColor(section.level),
-                    fontStyle: FontStyle.italic,
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _navigateToTopicDetail(context, topic),
+                  icon: const Icon(Icons.book, size: 16),
+                  label: Text(
+                    'Read Topic',
+                    style: TextStyle(fontSize: bodyFontSize - 2),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-
-              // Action buttons row
-              if (hasQuiz) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _navigateToTopicQuiz(context, topic),
-                        icon: const Icon(Icons.quiz, size: 16),
-                        label: const Text('Topic Quiz'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.blue,
-                          side: const BorderSide(color: Colors.blue),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _navigateToTopicDetail(context, topic),
-                        icon: const Icon(Icons.book, size: 16),
-                        label: const Text('Read Topic'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _getLevelColor(section.level),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionQuizCard(BuildContext context, DeviceType deviceType) {
-    final stats = QuizIntegrationService.getSectionQuizStats(section.id);
-    final totalQuestions = stats['totalQuestions'] as int;
-
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: _getLevelColor(section.level).withOpacity(0.3),
-          width: 2,
-        ),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              _getLevelColor(section.level).withOpacity(0.1),
-              _getLevelColor(section.level).withOpacity(0.05),
-            ],
-          ),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _getLevelColor(section.level),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.quiz,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${section.title} Section Quiz',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: _getLevelColor(section.level),
-                            ),
-                      ),
-                      Text(
-                        'Test your knowledge of all topics',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey.shade600,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child:
-                      _buildQuizStat(context, 'Questions', '$totalQuestions'),
-                ),
-                Expanded(
-                  child: _buildQuizStat(context, 'Time Limit', '15 min'),
-                ),
-                Expanded(
-                  child: _buildQuizStat(context, 'Pass Score', '70%'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _navigateToSectionQuiz(context),
-                icon: const Icon(Icons.play_arrow, size: 20),
-                label: const Text('Start Section Quiz'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _getLevelColor(section.level),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _getLevelColor(widget.section.level),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildQuizStat(BuildContext context, String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: _getLevelColor(section.level),
-              ),
-        ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey.shade600,
-              ),
-        ),
-      ],
+  Widget _buildSectionQuizCard(BuildContext context, DeviceType deviceType) {
+    final hasQuiz =
+        QuizIntegrationService.isSectionQuizImplemented(widget.section.id);
+
+    return Consumer<AppState>(
+      builder: (context, appState, child) {
+        // ENHANCED: Check if section quiz is completed
+        final sectionCompleted = appState
+                .currentUser?.progress.completedSections
+                .contains(widget.section.id) ??
+            false;
+
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: sectionCompleted
+                  ? Colors.green.withOpacity(0.3)
+                  : Theme.of(context).primaryColor.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding:
+                EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.quiz,
+                      color: _getLevelColor(widget.section.level),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Section Quiz',
+                        style: TextStyle(
+                          fontSize:
+                              deviceType == DeviceType.mobile ? 18.0 : 20.0,
+                          fontWeight: FontWeight.bold,
+                          color:
+                              sectionCompleted ? Colors.green.shade700 : null,
+                        ),
+                      ),
+                    ),
+                    // ENHANCED: Section completion indicator
+                    if (sectionCompleted)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.check_circle,
+                                color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'PASSED',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Test your knowledge of all topics in this section.',
+                  style: TextStyle(
+                    fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        hasQuiz ? () => _navigateToSectionQuiz(context) : null,
+                    icon: Icon(
+                      hasQuiz ? Icons.play_arrow : Icons.construction,
+                      size: 20,
+                    ),
+                    label: Text(
+                      hasQuiz
+                          ? (sectionCompleted
+                              ? 'Retake Section Quiz'
+                              : 'Take Section Quiz')
+                          : 'Coming Soon',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: hasQuiz
+                          ? (sectionCompleted
+                              ? Colors.green
+                              : _getLevelColor(widget.section.level))
+                          : Colors.grey.shade300,
+                      foregroundColor:
+                          hasQuiz ? Colors.white : Colors.grey.shade600,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -463,7 +580,7 @@ class LearningTopicsPage extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => TopicDetailPage(
           topic: topic,
-          section: section,
+          section: widget.section,
         ),
       ),
     );
@@ -475,9 +592,12 @@ class LearningTopicsPage extends StatelessWidget {
     QuizIntegrationService.navigateToTopicQuiz(
       context: context,
       topic: topic,
-      section: section,
+      section: widget.section,
       quizController: quizController,
-    );
+    ).then((_) {
+      // Progress will be automatically updated via the listener
+      // No need for manual refresh here
+    });
   }
 
   void _navigateToSectionQuiz(BuildContext context) {
@@ -485,8 +605,11 @@ class LearningTopicsPage extends StatelessWidget {
 
     QuizIntegrationService.navigateToSectionQuiz(
       context: context,
-      section: section,
+      section: widget.section,
       quizController: quizController,
-    );
+    ).then((_) {
+      // Progress will be automatically updated via the listener
+      // No need for manual refresh here
+    });
   }
 }

@@ -5,6 +5,7 @@ import '../models/quiz/quiz_question.dart';
 import '../models/quiz/quiz_session.dart';
 import '../models/quiz/quiz_result.dart';
 import '../models/quiz/multiple_choice_question.dart';
+import '../services/progress_tracking_service.dart';
 
 /// Exception thrown when quiz controller operations fail
 class QuizControllerException implements Exception {
@@ -28,11 +29,11 @@ class QuizController extends ChangeNotifier {
 
   // Private state
   QuizSession? _currentSession;
-  QuizResult? _lastResult; // ADDED: Store completed quiz results
+  QuizResult? _lastResult;
   final Map<String, int> _questionStartTimes = {};
   bool _isProcessingAnswer = false;
 
-  // ADDED: Quiz context for future progress tracking
+  // FIXED: Quiz context for progress tracking
   String? _currentTopicId;
   String? _currentSectionId;
 
@@ -57,13 +58,12 @@ class QuizController extends ChangeNotifier {
   bool get isTimeExpired => _currentSession?.isTimeExpired ?? false;
 
   /// Creates and starts a new quiz session
-  ///
-  /// UPDATED: Added optional topicId and sectionId for future progress tracking
+  /// FIXED: Added topicId and sectionId for progress tracking
   Future<void> startQuiz({
     required List<QuizQuestion> questions,
     required QuizType quizType,
-    String? topicId, // ADDED: For future progress tracking
-    String? sectionId, // ADDED: For future progress tracking
+    String? topicId, // FIXED: For progress tracking
+    String? sectionId, // FIXED: For progress tracking
     String? title,
     String? description,
     bool allowReview = true,
@@ -80,11 +80,11 @@ class QuizController extends ChangeNotifier {
     }
 
     try {
-      // ADDED: Store context for future progress tracking
+      // FIXED: Store context for progress tracking
       _currentTopicId = topicId;
       _currentSectionId = sectionId;
 
-      // ADDED: Clear any previous results when starting new quiz
+      // Clear any previous results when starting new quiz
       _lastResult = null;
 
       // Generate unique session ID
@@ -122,44 +122,39 @@ class QuizController extends ChangeNotifier {
   }
 
   /// Submits an answer for the current question
-  ///
-  /// [answer] - The user's answer
-  /// [autoAdvance] - Whether to automatically advance to next question
-  Future<QuestionResult> submitAnswer(
-    dynamic answer, {
-    bool autoAdvance = true,
-  }) async {
+  /// FIXED: Updated to use existing QuizSession methods
+  Future<bool> submitAnswer(dynamic answer, {bool autoAdvance = true}) async {
     if (_currentSession == null) {
       throw QuizControllerException('No active quiz session');
     }
 
     if (_isProcessingAnswer) {
-      throw QuizControllerException('Already processing an answer');
+      return false; // Prevent double submission
     }
 
-    _isProcessingAnswer = true;
-    notifyListeners();
-
     try {
-      final question = _currentSession!.currentQuestion;
-      final timeSpent = _calculateQuestionTime();
+      _isProcessingAnswer = true;
+      notifyListeners();
 
-      // Validate the answer
-      final result = question.validateAnswer(answer);
+      final questionTime = _calculateQuestionTime();
 
-      // Submit to session - FIXED: Use existing session method signature
+      // FIXED: Use existing session method signature
       _currentSession!.submitAnswer(
         answer,
-        timeSpent: timeSpent,
-        hintsUsed: 0, // TODO: Implement hint tracking
+        timeSpent: questionTime,
+        hintsUsed: 0, // TODO: Implement hint tracking if needed
       );
 
-      // Auto-advance if enabled and not on last question
+      // Validate answer for return value
+      final question = _currentSession!.currentQuestion;
+      final result = question.validateAnswer(answer);
+
       if (autoAdvance && _currentSession!.hasNextQuestion) {
-        await nextQuestion();
+        _currentSession!.nextQuestion();
+        _recordQuestionStartTime();
       }
 
-      return result;
+      return result.isCorrect;
     } catch (e) {
       throw QuizControllerException('Failed to submit answer: $e');
     } finally {
@@ -168,29 +163,8 @@ class QuizController extends ChangeNotifier {
     }
   }
 
-  /// Skips the current question
-  Future<void> skipQuestion({bool autoAdvance = true}) async {
-    if (_currentSession == null) {
-      throw QuizControllerException('No active quiz session');
-    }
-
-    if (!_currentSession!.allowSkip) {
-      throw QuizControllerException('Skipping is not allowed for this quiz');
-    }
-
-    try {
-      _currentSession!.skipQuestion(); // FIXED: Use existing method name
-
-      // Auto-advance if enabled and not on last question
-      if (autoAdvance && _currentSession!.hasNextQuestion) {
-        await nextQuestion();
-      }
-    } catch (e) {
-      throw QuizControllerException('Failed to skip question: $e');
-    }
-  }
-
-  /// Navigates to the next question
+  /// Moves to the next question
+  /// FIXED: Updated to use existing QuizSession methods
   Future<void> nextQuestion() async {
     if (_currentSession == null) {
       throw QuizControllerException('No active quiz session');
@@ -201,16 +175,15 @@ class QuizController extends ChangeNotifier {
     }
 
     try {
-      final success = _currentSession!.nextQuestion();
-      if (success) {
-        _recordQuestionStartTime();
-      }
+      _currentSession!.nextQuestion();
+      _recordQuestionStartTime();
     } catch (e) {
-      throw QuizControllerException('Failed to navigate to next question: $e');
+      throw QuizControllerException('Failed to go to next question: $e');
     }
   }
 
-  /// Navigates to the previous question
+  /// Moves to the previous question
+  /// FIXED: Updated to use existing QuizSession methods
   Future<void> previousQuestion() async {
     if (_currentSession == null) {
       throw QuizControllerException('No active quiz session');
@@ -221,17 +194,37 @@ class QuizController extends ChangeNotifier {
     }
 
     try {
-      final success = _currentSession!.previousQuestion();
-      if (success) {
-        _recordQuestionStartTime();
-      }
+      _currentSession!.previousQuestion();
+      _recordQuestionStartTime();
     } catch (e) {
-      throw QuizControllerException(
-          'Failed to navigate to previous question: $e');
+      throw QuizControllerException('Failed to go to previous question: $e');
     }
   }
 
-  /// Navigates directly to a specific question
+  /// Skips the current question
+  /// FIXED: Updated to use existing QuizSession methods
+  Future<void> skipQuestion({bool autoAdvance = true}) async {
+    if (_currentSession == null) {
+      throw QuizControllerException('No active quiz session');
+    }
+
+    if (!_currentSession!.allowSkip) {
+      throw QuizControllerException('Skipping is not allowed for this quiz');
+    }
+
+    try {
+      _currentSession!.skipQuestion();
+
+      if (autoAdvance && _currentSession!.hasNextQuestion) {
+        _currentSession!.nextQuestion();
+        _recordQuestionStartTime();
+      }
+    } catch (e) {
+      throw QuizControllerException('Failed to skip question: $e');
+    }
+  }
+
+  /// Jumps to a specific question by index
   Future<void> goToQuestion(int index) async {
     if (_currentSession == null) {
       throw QuizControllerException('No active quiz session');
@@ -278,6 +271,7 @@ class QuizController extends ChangeNotifier {
   }
 
   /// Completes the quiz and returns the result
+  /// FIXED: Now properly handles progress tracking for both topic and section quizzes
   Future<QuizResult> completeQuiz() async {
     if (_currentSession == null) {
       throw QuizControllerException('No active quiz session');
@@ -286,22 +280,50 @@ class QuizController extends ChangeNotifier {
     try {
       final result = _currentSession!.complete();
 
-      // ADDED: Store the result for display - THIS IS THE KEY FIX
+      // FIXED: Store the result for display
       _lastResult = QuizResult.fromSession(_currentSession!);
 
-      // TODO: Add progress tracking here once we resolve import conflicts
-      // if (_currentTopicId != null) {
-      //   await ProgressTrackingService.instance.recordQuizCompletion(...);
-      // }
+      // FIXED: Record progress based on quiz type
+      if (_currentTopicId != null) {
+        // Topic quiz - track topic completion
+        try {
+          debugPrint(
+              'Recording topic quiz completion for topic: $_currentTopicId, section: $_currentSectionId');
+          await ProgressTrackingService.instance.recordQuizCompletion(
+            result: _lastResult!,
+            topicId: _currentTopicId!,
+            sectionId: _currentSectionId, // Optional section context
+            passingScore: _currentSession!.passingScore,
+          );
+          debugPrint('Topic progress tracking completed successfully');
+        } catch (e) {
+          debugPrint('Error in topic progress tracking: $e');
+          // Don't throw here - quiz completion should still work even if progress tracking fails
+        }
+      } else if (_currentSectionId != null) {
+        // Section quiz - track section completion
+        try {
+          debugPrint(
+              'Recording section quiz completion for section: $_currentSectionId');
+          await ProgressTrackingService.instance.recordSectionQuizCompletion(
+            result: _lastResult!,
+            sectionId: _currentSectionId!,
+            passingScore: _currentSession!.passingScore,
+          );
+          debugPrint('Section progress tracking completed successfully');
+        } catch (e) {
+          debugPrint('Error in section progress tracking: $e');
+          // Don't throw here - quiz completion should still work even if progress tracking fails
+        }
+      } else {
+        debugPrint(
+            'Warning: No topicId or sectionId provided, progress will not be tracked');
+      }
 
-      // Clean up
+      // Clean up session
       _currentSession!.removeListener(_onSessionChanged);
       _currentSession = null;
       _questionStartTimes.clear();
-
-      // Keep context for potential future use
-      // _currentTopicId = null;
-      // _currentSectionId = null;
 
       notifyListeners();
       return _lastResult!;
@@ -320,11 +342,11 @@ class QuizController extends ChangeNotifier {
 
   /// Gets quiz statistics for display
   Map<String, dynamic> getQuizStatistics() {
-    if (_currentSession == null) {
+    if (_currentSession == null && _lastResult == null) {
       return <String, dynamic>{};
     }
 
-    // FIXED: Calculate stats from session's QuizResult if available
+    // If we have completed results, use those
     if (_lastResult != null) {
       return <String, dynamic>{
         'answered': _lastResult!.questionsAnswered,
@@ -333,6 +355,8 @@ class QuizController extends ChangeNotifier {
         'accuracy': _lastResult!.accuracy,
         'progress': 1.0, // Completed
         'timeElapsed': _lastResult!.timeSpent.inSeconds,
+        'scorePercentage': _lastResult!.scorePercentage,
+        'passed': _lastResult!.passed,
       };
     }
 
@@ -347,6 +371,8 @@ class QuizController extends ChangeNotifier {
       'accuracy': 0.0,
       'progress': _currentSession!.progress,
       'timeElapsed': _currentSession!.timeElapsed?.inSeconds ?? 0,
+      'scorePercentage': 0.0,
+      'passed': false,
     };
   }
 

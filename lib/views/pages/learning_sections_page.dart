@@ -7,11 +7,54 @@ import '../../models/user/user.dart';
 import '../../constants/ui_constants.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../services/quiz_integration_service.dart';
+import '../../services/progress_tracking_service.dart'; // ADDED: For progress initialization
 import '../widgets/common/app_bar.dart';
 import 'learning_topics_page.dart';
 
-class LearningSectionsPage extends StatelessWidget {
+class LearningSectionsPage extends StatefulWidget {
+  // CHANGED: StatefulWidget for progress initialization
   const LearningSectionsPage({super.key});
+
+  @override
+  State<LearningSectionsPage> createState() =>
+      _LearningSectionsPageState(); // ADDED: State class
+}
+
+class _LearningSectionsPageState extends State<LearningSectionsPage> {
+  // ADDED: State implementation
+  @override
+  void initState() {
+    super.initState();
+    // ADDED: Initialize progress tracking when page loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ProgressTrackingService.instance.initializeSectionProgress();
+    });
+
+    // ADDED: Listen to progress changes for real-time updates
+    ProgressTrackingService.instance.addListener(_onProgressChanged);
+  }
+
+  @override
+  void dispose() {
+    // ADDED: Clean up progress listener
+    ProgressTrackingService.instance.removeListener(_onProgressChanged);
+    super.dispose();
+  }
+
+  /// ADDED: Handle progress changes and refresh UI
+  void _onProgressChanged() {
+    if (mounted) {
+      // Force AppState to refresh user data
+      final appState = context.read<AppState>();
+      appState.refreshUserProgress().then((_) {
+        if (mounted) {
+          setState(() {
+            // This will trigger a rebuild with updated progress
+          });
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,13 +130,35 @@ class LearningSectionsPage extends StatelessWidget {
       builder: (context, appState, child) {
         return Column(
           children: sections.map((section) {
-            final progress =
-                appState.currentUser?.progress.getSectionProgress(section.id) ??
-                    SectionProgress(
-                      topicsCompleted: 0,
-                      totalTopics: section.totalTopics,
-                      sectionQuizCompleted: false,
-                    );
+            // ENHANCED: Better progress calculation with fallback
+            SectionProgress progress;
+            if (appState.currentUser != null) {
+              progress =
+                  appState.currentUser!.progress.getSectionProgress(section.id);
+
+              // ADDED: If progress shows 0 total topics, calculate from section data
+              if (progress.totalTopics == 0 && section.totalTopics > 0) {
+                final completedCount = section.topics
+                    .where((topic) => appState
+                        .currentUser!.progress.completedTopics
+                        .contains(topic.id))
+                    .length;
+
+                progress = SectionProgress(
+                  topicsCompleted: completedCount,
+                  totalTopics: section.totalTopics,
+                  sectionQuizCompleted: appState
+                      .currentUser!.progress.completedSections
+                      .contains(section.id),
+                );
+              }
+            } else {
+              progress = SectionProgress(
+                topicsCompleted: 0,
+                totalTopics: section.totalTopics,
+                sectionQuizCompleted: false,
+              );
+            }
 
             return Padding(
               padding: EdgeInsets.only(
@@ -127,7 +192,7 @@ class LearningSectionsPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with level indicator
+            // Header with level badge
             Row(
               children: [
                 Container(
@@ -138,7 +203,7 @@ class LearningSectionsPage extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    'Level ${section.order}',
+                    section.level.displayName.toUpperCase(),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -146,71 +211,90 @@ class LearningSectionsPage extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    section.title,
-                    style: TextStyle(
-                      fontSize: titleFontSize,
-                      fontWeight: FontWeight.bold,
-                      color: _getLevelColor(section.level),
-                    ),
-                  ),
-                ),
-                // Quiz availability indicator
-                if (QuizIntegrationService.isSectionQuizImplemented(section.id))
+                const Spacer(),
+                // ENHANCED: Better completion indicators
+                if (progress.topicsCompleted == progress.totalTopics &&
+                    progress.totalTopics > 0) ...[
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.withOpacity(0.3)),
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.quiz,
-                            size: 12, color: Colors.green.shade700),
-                        const SizedBox(width: 4),
+                      children: const [
+                        Icon(Icons.check_circle, color: Colors.white, size: 12),
+                        SizedBox(width: 4),
                         Text(
-                          'Quiz Ready',
+                          'ALL TOPICS COMPLETE',
                           style: TextStyle(
+                            color: Colors.white,
                             fontSize: 10,
-                            color: Colors.green.shade700,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
                     ),
                   ),
+                ] else if (progress.topicsCompleted > 0) ...[
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.trending_up,
+                            color: Colors.white, size: 12),
+                        const SizedBox(width: 4),
+                        Text(
+                          'IN PROGRESS',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
-
             const SizedBox(height: 12),
 
-            // Description
+            // Title and description
+            Text(
+              section.title,
+              style: TextStyle(
+                fontSize: titleFontSize,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
             Text(
               section.description,
               style: TextStyle(
                 fontSize: bodyFontSize,
-                color: Colors.grey.shade700,
+                color: Colors.grey.shade600,
                 height: 1.4,
               ),
             ),
-
             const SizedBox(height: 16),
 
-            // Progress indicator
-            if (hasTopics)
-              _buildProgressIndicator(context, progress, deviceType),
-
+            // Progress indicator with enhanced styling
+            _buildProgressIndicator(context, progress, deviceType),
             const SizedBox(height: 16),
 
             // Action buttons
             _buildActionButtons(context, section, hasTopics, deviceType),
 
-            // Coming soon indicator for sections without topics
+            // Coming soon message for sections without topics
             if (!hasTopics) ...[
               const SizedBox(height: 12),
               Container(
@@ -262,25 +346,75 @@ class LearningSectionsPage extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            Text(
-              '$completedTopics / $totalTopics topics',
-              style: TextStyle(
-                fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
-                color: Colors.grey.shade600,
-              ),
+            // ENHANCED: Better progress text with percentage
+            Row(
+              children: [
+                Text(
+                  '$completedTopics / $totalTopics topics',
+                  style: TextStyle(
+                    fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                if (totalTopics > 0) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '(${(progressPercentage * 100).round()}%)',
+                    style: TextStyle(
+                      fontSize: deviceType == DeviceType.mobile ? 11.0 : 13.0,
+                      color: progressPercentage == 1.0
+                          ? Colors.green
+                          : Theme.of(context).primaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
         const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: progressPercentage,
-          backgroundColor: Colors.grey.shade300,
-          valueColor: AlwaysStoppedAnimation<Color>(
-            progressPercentage == 1.0
-                ? Colors.green
-                : Theme.of(context).primaryColor,
+        // ENHANCED: Better progress bar styling
+        Container(
+          height: 8,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            color: Colors.grey.shade300,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progressPercentage,
+              backgroundColor: Colors.transparent,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                progressPercentage == 1.0
+                    ? Colors.green
+                    : Theme.of(context).primaryColor,
+              ),
+              minHeight: 8,
+            ),
           ),
         ),
+        // ADDED: Progress status text
+        if (totalTopics > 0) ...[
+          const SizedBox(height: 4),
+          Text(
+            progressPercentage == 1.0
+                ? 'All topics completed! 🎉'
+                : completedTopics > 0
+                    ? 'Keep going! You\'re making progress 💪'
+                    : 'Start your learning journey 🚀',
+            style: TextStyle(
+              fontSize: deviceType == DeviceType.mobile ? 11.0 : 12.0,
+              color: progressPercentage == 1.0
+                  ? Colors.green
+                  : completedTopics > 0
+                      ? Colors.blue
+                      : Colors.grey.shade600,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
       ],
     );
   }

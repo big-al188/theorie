@@ -36,7 +36,7 @@ class QuizIntegrationService {
   }
 
   /// Navigate to topic quiz
-  /// FIXED: Updated to match the calling signature
+  /// FIXED: Updated to match the calling signature and ensure sectionId is passed
   static Future<void> navigateToTopicQuiz({
     required BuildContext context,
     required LearningTopic topic,
@@ -52,6 +52,7 @@ class QuizIntegrationService {
         title: '${topic.title} Quiz',
         description: topic.description,
         topicId: topic.id,
+        sectionId: section.id, // ADDED: Pass section ID for progress tracking
       );
     }
   }
@@ -80,12 +81,11 @@ class QuizIntegrationService {
         config: config,
       );
 
-      // UPDATED: Start the quiz with section context for future progress tracking
+      // UPDATED: Start the quiz with section context for progress tracking
       await quizController.startQuiz(
         questions: session.questions,
         quizType: session.quizType,
-        sectionId:
-            section.id, // ADDED: Pass section ID for future progress tracking
+        sectionId: section.id, // FIXED: Pass section ID for progress tracking
         title: session.title,
         description: session.description,
         allowSkip: session.allowSkip,
@@ -138,11 +138,11 @@ class QuizIntegrationService {
       final questionCount =
           _generator.getTopicQuestionCount(section.id, topic.id);
       final config = QuizGenerationConfig(
-        questionCount: questionCount, // Use all available questions
+        questionCount: questionCount,
         timeLimit: _getTopicTimeLimit(questionCount),
         allowSkip: true,
         allowReview: true,
-        passingScore: 0.75, // Higher passing score for topic quizzes
+        passingScore: 0.75, // Slightly higher for individual topics
       );
 
       final session = _generator.createTopicQuizSession(
@@ -151,13 +151,12 @@ class QuizIntegrationService {
         config: config,
       );
 
-      // UPDATED: Start the quiz with topic and section context for future progress tracking
+      // UPDATED: Start the quiz with both topic and section context
       await quizController.startQuiz(
         questions: session.questions,
         quizType: session.quizType,
-        topicId: topic.id, // ADDED: Pass topic ID for future progress tracking
-        sectionId:
-            section.id, // ADDED: Pass section ID for future progress tracking
+        topicId: topic.id, // FIXED: Pass topic ID for progress tracking
+        sectionId: section.id, // FIXED: Pass section ID for progress tracking
         title: session.title,
         description: session.description,
         allowSkip: session.allowSkip,
@@ -195,12 +194,13 @@ class QuizIntegrationService {
     }
   }
 
-  /// Navigate to placeholder quiz page (for non-implemented sections)
+  /// Navigate to placeholder quiz for non-implemented content
   static Future<void> _navigateToPlaceholderQuiz({
     required BuildContext context,
     required String title,
     required String description,
     String? topicId,
+    String? sectionId, // ADDED: Support for section ID
   }) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -208,38 +208,29 @@ class QuizIntegrationService {
           title: title,
           description: description,
           topicId: topicId,
+          sectionId: sectionId, // ADDED: Pass section ID
         ),
       ),
     );
   }
 
-  /// Show loading dialog
+  /// Shows loading dialog during quiz preparation
   static void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(
-              'Preparing your quiz...',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-        ),
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
       ),
     );
   }
 
-  /// Show error dialog
+  /// Shows error dialog for quiz failures
   static void _showErrorDialog(BuildContext context, String message) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Quiz Error'),
+        title: const Text('Error'),
         content: Text(message),
         actions: [
           TextButton(
@@ -307,12 +298,14 @@ class QuizPlaceholderPage extends StatelessWidget {
   final String title;
   final String description;
   final String? topicId;
+  final String? sectionId; // ADDED: Support for section ID
 
   const QuizPlaceholderPage({
     super.key,
     required this.title,
     required this.description,
     this.topicId,
+    this.sectionId, // ADDED: Support for section ID
   });
 
   @override
@@ -337,11 +330,10 @@ class QuizPlaceholderPage extends StatelessWidget {
               const SizedBox(height: 24),
               Text(
                 'Coming Soon!',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Colors.orange,
                     ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
               Text(
@@ -351,22 +343,17 @@ class QuizPlaceholderPage extends StatelessWidget {
               ),
               const SizedBox(height: 32),
               Text(
-                'The quiz system will include:\n'
-                '• Interactive questions\n'
-                '• Progress tracking\n'
-                '• Detailed feedback\n'
-                '• Adaptive difficulty',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.orange.shade800,
-                  height: 1.4,
-                ),
+                'This quiz is currently under development. '
+                'Check back soon for interactive music theory questions!',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey.shade600,
+                    ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Back to Learning'),
+                child: const Text('Go Back'),
               ),
             ],
           ),
