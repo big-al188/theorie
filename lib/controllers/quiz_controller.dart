@@ -28,6 +28,7 @@ class QuizController extends ChangeNotifier {
 
   // Private state
   QuizSession? _currentSession;
+  QuizResult? _lastResult; // ADDED: Store completed quiz results
   final Map<String, int> _questionStartTimes = {};
   bool _isProcessingAnswer = false;
 
@@ -35,6 +36,10 @@ class QuizController extends ChangeNotifier {
   QuizSession? get currentSession => _currentSession;
   bool get hasActiveSession => _currentSession != null;
   bool get isProcessingAnswer => _isProcessingAnswer;
+
+  // ADDED: Getters for results display
+  bool get isShowingResults => _lastResult != null;
+  QuizResult? get lastResult => _lastResult;
 
   /// Convenience getters that delegate to current session
   QuizQuestion? get currentQuestion => _currentSession?.currentQuestion;
@@ -72,6 +77,9 @@ class QuizController extends ChangeNotifier {
     }
 
     try {
+      // ADDED: Clear any previous results when starting new quiz
+      _lastResult = null;
+
       // Generate unique session ID
       final sessionId = 'quiz_${DateTime.now().millisecondsSinceEpoch}';
 
@@ -269,13 +277,16 @@ class QuizController extends ChangeNotifier {
     try {
       final result = _currentSession!.complete();
 
+      // ADDED: Store the result for display - THIS IS THE KEY FIX
+      _lastResult = QuizResult.fromSession(_currentSession!);
+
       // Clean up
       _currentSession!.removeListener(_onSessionChanged);
       _currentSession = null;
       _questionStartTimes.clear();
 
       notifyListeners();
-      return result;
+      return _lastResult!; // Return the stored result
     } catch (e) {
       throw QuizControllerException('Failed to complete quiz: $e');
     }
@@ -294,11 +305,19 @@ class QuizController extends ChangeNotifier {
       _currentSession!.removeListener(_onSessionChanged);
       _currentSession = null;
       _questionStartTimes.clear();
+      _lastResult = null; // ADDED: Clear results when abandoning
 
       notifyListeners();
     } catch (e) {
       throw QuizControllerException('Failed to abandon quiz: $e');
     }
+  }
+
+  // ADDED: Method to clear results when starting new quiz
+  /// Clears the last quiz result (when user wants to start a new quiz)
+  void clearResults() {
+    _lastResult = null;
+    notifyListeners();
   }
 
   /// Returns the user's answer for a specific question

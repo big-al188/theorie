@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../models/quiz/quiz_question.dart';
 import '../../models/quiz/quiz_session.dart';
-import '../../models/quiz/multiple_choice_question.dart'; // Add this import
+import '../../models/quiz/multiple_choice_question.dart';
 import '../widgets/quiz/quiz_progress_bar.dart';
 import '../widgets/quiz/multiple_choice_widget.dart';
 import '../widgets/quiz/quiz_results_widget.dart';
@@ -101,165 +101,165 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
+  // FIXED: Updated to show proper title when showing results
   PreferredSizeWidget _buildAppBar(
       BuildContext context, QuizController controller) {
     String title = widget.title ?? 'Quiz';
 
-    if (controller.hasActiveSession) {
+    // Show results title when displaying results - THIS FIXES THE TITLE
+    if (controller.isShowingResults) {
+      title = 'Quiz Results';
+    } else if (controller.hasActiveSession) {
       final session = controller.currentSession!;
       title = session.title ?? 'Quiz';
     }
 
     return AppBar(
       title: Text(title),
+      backgroundColor: Colors.transparent,
       elevation: 0,
-      leading: _showingResults
-          ? null
-          : IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => _handleQuizExit(context, controller),
-            ),
-      actions: _buildAppBarActions(context, controller),
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        onPressed: () => _handleBackAction(context, controller),
+      ),
     );
   }
 
-  List<Widget> _buildAppBarActions(
-      BuildContext context, QuizController controller) {
-    if (_showingResults || !controller.hasActiveSession) return [];
-
-    return [
-      if (controller.currentSession?.allowReview == true)
-        IconButton(
-          icon: const Icon(Icons.list_alt),
-          onPressed: () => _showQuestionOverview(context, controller),
-          tooltip: 'Question Overview',
-        ),
-      IconButton(
-        icon: Icon(controller.currentSession?.status == QuizSessionStatus.paused
-            ? Icons.play_arrow
-            : Icons.pause),
-        onPressed: () => _togglePause(context, controller),
-        tooltip: controller.currentSession?.status == QuizSessionStatus.paused
-            ? 'Resume Quiz'
-            : 'Pause Quiz',
-      ),
-    ];
-  }
-
+  // FIXED: Now checks for results display - THIS IS THE KEY FIX
   Widget _buildBody(BuildContext context, QuizController controller) {
-    if (_showingResults) {
-      return FadeTransition(
-        opacity: _fadeAnimation,
-        child: const QuizResultsWidget(),
+    // Show results if quiz is completed - THIS IS THE KEY FIX
+    if (controller.isShowingResults) {
+      return QuizResultsWidget(
+        onRetakeQuiz: () => _handleRetakeQuiz(context, controller),
+        onBackToMenu: () => _handleBackToMenu(context, controller),
       );
     }
 
+    // Existing logic for active session
     if (!controller.hasActiveSession) {
-      return _buildNoActiveQuiz(context);
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Setting up quiz...'),
+          ],
+        ),
+      );
     }
 
     final session = controller.currentSession!;
-
-    if (session.status == QuizSessionStatus.paused) {
-      return _buildPausedState(context, controller);
+    if (_showingResults) {
+      return QuizResultsWidget(
+        onRetakeQuiz: () => _handleRetakeQuiz(context, controller),
+        onBackToMenu: () => _handleBackToMenu(context, controller),
+      );
     }
 
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: Column(
-          children: [
-            _buildProgressSection(context, controller),
-            Expanded(
+    return _buildActiveQuizInterface(context, controller, session);
+  }
+
+  Widget _buildActiveQuizInterface(
+      BuildContext context, QuizController controller, QuizSession session) {
+    return Column(
+      children: [
+        // Progress bar
+        if (session.totalQuestions > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: QuizProgressBar(
+              current: session.currentQuestionIndex + 1,
+              total: session.totalQuestions,
+              timeRemaining: session.timeRemaining,
+            ),
+          ),
+
+        // Feedback message
+        if (_lastFeedback != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: _buildFeedbackCard(context, _lastFeedback!),
+          ),
+
+        // Main question area
+        Expanded(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
               child: _buildQuestionSection(context, controller),
             ),
-            _buildNavigationSection(context, controller),
-          ],
+          ),
         ),
-      ),
+
+        // Navigation controls
+        _buildNavigationControls(context, controller, session),
+      ],
     );
   }
 
-  Widget _buildNoActiveQuiz(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.quiz_outlined,
-            size: 64,
-            color: Theme.of(context).primaryColor.withOpacity(0.6),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No Active Quiz',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Start a quiz to begin learning!',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
-                ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Back to Menu'),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildNavigationControls(
+      BuildContext context, QuizController controller, QuizSession session) {
+    final isAnswered =
+        controller.isQuestionAnswered(session.currentQuestion.id);
+    final hasNext = session.hasNextQuestion;
+    final hasPrevious = session.hasPreviousQuestion;
 
-  Widget _buildPausedState(BuildContext context, QuizController controller) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.pause_circle_outline,
-            size: 64,
-            color: Theme.of(context).primaryColor,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Quiz Paused',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Tap resume to continue',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
-                ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () => _resumeQuiz(controller),
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Resume Quiz'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProgressSection(
-      BuildContext context, QuizController controller) {
     return Container(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          QuizProgressBar(
-            current: controller.currentQuestionIndex + 1,
-            total: controller.totalQuestions,
-            timeRemaining: controller.timeRemaining,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(
+          top: BorderSide(
+            color: Theme.of(context).dividerColor,
+            width: 1,
           ),
-          if (_lastFeedback != null) ...[
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Main action buttons
+          Row(
+            children: [
+              // Skip button (if allowed)
+              if (session.allowSkip) ...[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _handleSkip(controller),
+                    child: const Text('Skip'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+
+              // Next/Complete button
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: isAnswered
+                      ? () => _handleNext(context, controller)
+                      : null,
+                  child: Text(
+                    hasNext ? 'Next Question' : 'Complete Quiz',
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // Previous button (if available)
+          if (hasPrevious) ...[
             const SizedBox(height: 12),
-            _buildFeedbackCard(context, _lastFeedback!),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: () => _handlePrevious(controller),
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Previous Question'),
+              ),
+            ),
           ],
         ],
       ),
@@ -353,192 +353,137 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildNavigationSection(
-      BuildContext context, QuizController controller) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            offset: const Offset(0, -2),
-            blurRadius: 4,
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Previous button
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: controller.hasPreviousQuestion
-                  ? () => _previousQuestion(controller)
-                  : null,
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('Previous'),
-            ),
-          ),
-          const SizedBox(width: 16),
-
-          // Skip button (if allowed)
-          if (controller.currentSession?.allowSkip == true)
-            OutlinedButton(
-              onPressed: () => _skipQuestion(controller),
-              child: const Text('Skip'),
-            ),
-          if (controller.currentSession?.allowSkip == true)
-            const SizedBox(width: 16),
-
-          // Next/Finish button
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () => _handleNextAction(controller),
-              icon: Icon(controller.hasNextQuestion
-                  ? Icons.arrow_forward
-                  : Icons.check),
-              label: Text(controller.hasNextQuestion ? 'Next' : 'Finish'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // Event handlers
-  Future<void> _handleAnswerSubmission(
+  void _handleAnswerSubmission(
       QuizController controller, dynamic answer) async {
     try {
-      final result = await controller.submitAnswer(answer, autoAdvance: false);
+      await controller.submitAnswer(answer, autoAdvance: false);
+      _restartTransitionAnimations();
+
       setState(() {
-        _lastFeedback = result.feedback;
+        _lastFeedback = 'Answer submitted successfully!';
       });
 
-      // Clear feedback after a delay
-      if (_lastFeedback != null) {
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) {
-            setState(() => _lastFeedback = null);
-          }
-        });
+      // Clear feedback after delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _lastFeedback = null;
+          });
+        }
+      });
+    } catch (e) {
+      _showErrorSnackbar(context, 'Failed to submit answer: $e');
+    }
+  }
+
+  // FIXED: Now properly handles quiz completion
+  void _handleNext(BuildContext context, QuizController controller) async {
+    try {
+      if (controller.hasNextQuestion) {
+        await controller.nextQuestion();
+        _restartTransitionAnimations();
+      } else {
+        // Complete the quiz - the UI will automatically switch to results
+        await controller.completeQuiz();
+        // No need to manually set _showingResults since controller.isShowingResults handles this
       }
     } catch (e) {
-      _showErrorMessage(context, 'Failed to submit answer: $e');
+      _showErrorSnackbar(context, 'Failed to proceed: $e');
     }
   }
 
-  Future<void> _handleNextAction(QuizController controller) async {
-    if (controller.hasNextQuestion) {
-      await _nextQuestion(controller);
-    } else {
-      await _finishQuiz(controller);
-    }
-  }
-
-  Future<void> _nextQuestion(QuizController controller) async {
-    try {
-      await controller.nextQuestion();
-      _resetAnimations();
-    } catch (e) {
-      _showErrorMessage(context, 'Failed to go to next question: $e');
-    }
-  }
-
-  Future<void> _previousQuestion(QuizController controller) async {
+  void _handlePrevious(QuizController controller) async {
     try {
       await controller.previousQuestion();
-      _resetAnimations();
+      _restartTransitionAnimations();
     } catch (e) {
-      _showErrorMessage(context, 'Failed to go to previous question: $e');
+      _showErrorSnackbar(context, 'Failed to go to previous question: $e');
     }
   }
 
-  Future<void> _skipQuestion(QuizController controller) async {
+  void _handleSkip(QuizController controller) async {
     try {
       await controller.skipQuestion(autoAdvance: false);
       setState(() {
         _lastFeedback = 'Question skipped';
       });
-    } catch (e) {
-      _showErrorMessage(context, 'Failed to skip question: $e');
-    }
-  }
 
-  Future<void> _finishQuiz(QuizController controller) async {
-    try {
-      final result = await controller.completeQuiz();
-      setState(() {
-        _showingResults = true;
-        _lastFeedback = null;
+      // Clear feedback after delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _lastFeedback = null;
+          });
+        }
       });
-      _resetAnimations();
     } catch (e) {
-      _showErrorMessage(context, 'Failed to finish quiz: $e');
+      _showErrorSnackbar(context, 'Failed to skip question: $e');
     }
   }
 
-  Future<void> _togglePause(
-      BuildContext context, QuizController controller) async {
-    try {
-      if (controller.currentSession?.status == QuizSessionStatus.paused) {
-        await controller.resumeQuiz();
-      } else {
-        await controller.pauseQuiz();
-      }
-    } catch (e) {
-      _showErrorMessage(context, 'Failed to toggle pause: $e');
+  // ADDED: Helper methods for result navigation
+  void _handleRetakeQuiz(BuildContext context, QuizController controller) {
+    // Clear results and navigate back to allow starting a new quiz
+    controller.clearResults();
+    Navigator.of(context).pop();
+  }
+
+  void _handleBackToMenu(BuildContext context, QuizController controller) {
+    controller.clearResults();
+    Navigator.of(context).pop();
+  }
+
+  void _handleBackAction(BuildContext context, QuizController controller) {
+    if (controller.isShowingResults) {
+      _handleBackToMenu(context, controller);
+    } else if (controller.hasActiveSession) {
+      _showAbandonQuizDialog(context, controller);
+    } else {
+      Navigator.of(context).pop();
     }
   }
 
-  Future<void> _resumeQuiz(QuizController controller) async {
-    try {
-      await controller.resumeQuiz();
-    } catch (e) {
-      _showErrorMessage(context, 'Failed to resume quiz: $e');
-    }
-  }
-
-  void _handleQuizExit(BuildContext context, QuizController controller) {
+  void _showAbandonQuizDialog(BuildContext context, QuizController controller) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Exit Quiz?'),
-        content: const Text('Your progress will be lost if you exit now.'),
+        title: const Text('Abandon Quiz?'),
+        content: const Text(
+          'Are you sure you want to abandon this quiz? Your progress will be lost.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: const Text('Continue Quiz'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              controller.abandonQuiz();
-              Navigator.of(context).pop();
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop(); // Close dialog
+              try {
+                await controller.abandonQuiz();
+                if (mounted) {
+                  Navigator.of(context).pop(); // Close quiz page
+                }
+              } catch (e) {
+                _showErrorSnackbar(context, 'Failed to abandon quiz: $e');
+              }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Exit'),
+            child: const Text('Abandon'),
           ),
         ],
       ),
     );
   }
 
-  void _showQuestionOverview(BuildContext context, QuizController controller) {
-    // TODO: Implement question overview dialog
-    _showErrorMessage(context, 'Question overview not yet implemented');
-  }
-
-  void _resetAnimations() {
+  void _restartTransitionAnimations() {
     _fadeController.reset();
     _slideController.reset();
     _fadeController.forward();
     _slideController.forward();
   }
 
-  void _showErrorMessage(BuildContext context, String message) {
+  void _showErrorSnackbar(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),

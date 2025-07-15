@@ -276,6 +276,7 @@ class QuizResult {
     double pointsEarned = 0;
     int questionsCorrect = 0;
     int questionsSkipped = 0;
+    int questionsAnswered = 0;
     int totalHintsUsed = 0;
 
     // Process each question and calculate detailed results
@@ -283,7 +284,10 @@ class QuizResult {
       totalPossiblePoints += question.pointValue;
 
       final userAnswer = session.getAnswerForQuestion(question.id);
-      if (userAnswer == null) continue; // Question not attempted
+      if (userAnswer == null) {
+        // Question was not attempted at all
+        continue;
+      }
 
       final timeSpent = userAnswer.timeSpent ?? Duration.zero;
       final wasSkipped = userAnswer.isSkipped;
@@ -304,6 +308,7 @@ class QuizResult {
           wasSkipped: true,
         ));
       } else {
+        questionsAnswered++;
         final questionResult = question.validateAnswer(userAnswer.answer);
         final questionPoints =
             question.calculateScore(userAnswer.answer, timeTaken: timeSpent) *
@@ -358,7 +363,7 @@ class QuizResult {
       quizType: session.quizType,
       completedAt: session.endTime!,
       totalQuestions: session.totalQuestions,
-      questionsAnswered: session.questionsAnswered - questionsSkipped,
+      questionsAnswered: questionsAnswered,
       questionsCorrect: questionsCorrect,
       questionsSkipped: questionsSkipped,
       totalPossiblePoints: totalPossiblePoints,

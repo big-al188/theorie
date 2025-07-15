@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../controllers/quiz_controller.dart';
 import '../../../models/quiz/quiz_result.dart';
 import '../../../models/quiz/quiz_question.dart';
+import '../../../constants/quiz_constants.dart'; // ADDED: Import constants
 import 'dart:math' as math;
 
 /// Widget that displays comprehensive quiz results
@@ -122,8 +123,6 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
   Widget build(BuildContext context) {
     return Consumer<QuizController>(
       builder: (context, controller, child) {
-        // For this MVP, we'll simulate a result since we don't have
-        // access to the actual QuizResult from the completed quiz
         return FadeTransition(
           opacity: _fadeAnimation,
           child: SlideTransition(
@@ -178,8 +177,137 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
     );
   }
 
+  // FIXED: This method now uses actual quiz results instead of mock data
   Widget _buildScoreCard(BuildContext context, QuizController controller) {
-    // Calculate mock results based on current performance
+    // Try to get actual results first
+    final result = controller.lastResult;
+
+    if (result != null) {
+      // Use actual quiz result data - THIS FIXES THE BUGS
+      final scorePercentage = result.scorePercentage;
+      final letterGrade = result.letterGrade;
+      final passed = result.passed;
+
+      return Card(
+        elevation: 8,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              // Score circle with actual data
+              AnimatedBuilder(
+                animation: _scoreAnimation,
+                builder: (context, child) {
+                  return CustomPaint(
+                    size: const Size(120, 120),
+                    painter: CircularScorePainter(
+                      progress: _scoreAnimation.value * scorePercentage,
+                      color: passed ? Colors.green : Colors.orange,
+                      backgroundColor: Colors.grey.shade200,
+                    ),
+                    child: Container(
+                      width: 120,
+                      height: 120,
+                      alignment: Alignment.center,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '${(_scoreAnimation.value * scorePercentage * 100).round()}%',
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: passed ? Colors.green : Colors.orange,
+                                ),
+                          ),
+                          Text(
+                            letterGrade,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: passed ? Colors.green : Colors.orange,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+
+              // Pass/Fail status
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: passed
+                      ? Colors.green.withOpacity(0.1)
+                      : Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: passed ? Colors.green : Colors.orange,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      passed ? Icons.check_circle : Icons.warning,
+                      color: passed ? Colors.green : Colors.orange,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      passed ? 'PASSED' : 'NEEDS IMPROVEMENT',
+                      style: TextStyle(
+                        color: passed ? Colors.green : Colors.orange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Quick stats with actual result data - THIS FIXES THE null/null ISSUE
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildStatItem(
+                    context,
+                    'Correct',
+                    '${result.questionsCorrect} / ${result.questionsAnswered}',
+                    Icons.check_circle,
+                    Colors.green,
+                  ),
+                  _buildStatItem(
+                    context,
+                    'Time',
+                    _formatDuration(result.timeSpent),
+                    Icons.schedule,
+                    Colors.blue,
+                  ),
+                  _buildStatItem(
+                    context,
+                    'Accuracy',
+                    '${(result.accuracy * 100).round()}%',
+                    Icons.precision_manufacturing,
+                    Colors.purple,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Fallback to current performance stats if no result yet (shouldn't happen in normal flow)
     final stats = controller.getCurrentPerformanceStats();
     final accuracy = (stats['accuracy'] as double? ?? 0.0);
     final scorePercentage = accuracy;
@@ -304,6 +432,17 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
     );
   }
 
+  // ADDED: Helper method for formatting duration from QuizResult
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
+    }
+  }
+
   Widget _buildStatItem(BuildContext context, String label, String value,
       IconData icon, Color color) {
     return Column(
@@ -372,8 +511,8 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
             ),
             const SizedBox(height: 16),
 
-            // Topic performance (mock data for MVP)
-            _buildTopicPerformance(context),
+            // Topic performance - now uses real data when available
+            _buildTopicPerformance(context, controller),
             const SizedBox(height: 16),
 
             // Recommendations
@@ -384,8 +523,37 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
     );
   }
 
-  Widget _buildTopicPerformance(BuildContext context) {
-    // Mock topic data for MVP
+  // FIXED: Now uses actual topic performance data when available
+  Widget _buildTopicPerformance(
+      BuildContext context, QuizController controller) {
+    final result = controller.lastResult;
+
+    if (result != null && result.topicPerformance.isNotEmpty) {
+      // Use actual topic performance data - THIS FIXES THE PLACEHOLDER DATA
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'By Topic',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 12),
+          ...result.topicPerformance.map((topic) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _buildTopicBar(
+                  context,
+                  topic.topic.displayName, // Use the extension from constants
+                  topic.scorePercentage,
+                  topic.questionsAttempted,
+                ),
+              )),
+        ],
+      );
+    }
+
+    // Fallback to mock data for quizzes without topic breakdown
     final topics = [
       {'name': 'Notes', 'score': 0.85, 'questions': 3},
       {'name': 'Intervals', 'score': 0.70, 'questions': 2},
@@ -498,12 +666,14 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
                   title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
+                        color: color,
                       ),
                 ),
+                const SizedBox(height: 2),
                 Text(
                   description,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
+                        color: Colors.grey[700],
                       ),
                 ),
               ],
