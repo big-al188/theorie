@@ -1,55 +1,56 @@
 // lib/services/quiz_integration_service.dart
 
 import 'package:flutter/material.dart';
-import '../models/quiz/quiz_session.dart';
-import '../models/learning/learning_content.dart';
-import '../controllers/unified_quiz_generator.dart';
+import 'package:provider/provider.dart';
 import '../controllers/quiz_controller.dart';
+import '../controllers/unified_quiz_generator.dart';
+import '../models/learning/learning_content.dart';
+import '../models/quiz/quiz_question.dart';
+import '../models/quiz/quiz_session.dart';
 import '../views/pages/quiz_page.dart';
 
-/// Service that integrates the quiz system with the learning content
+/// Service for integrating quiz functionality with learning content
 ///
-/// This service handles:
-/// - Creating appropriate quizzes based on learning sections/topics
-/// - Navigation to quiz interfaces
-/// - Unified quiz generation for all sections
-/// - Placeholder handling for non-implemented sections
+/// This service provides a bridge between the learning system and quiz system,
+/// handling navigation, session management, and quiz configuration.
 class QuizIntegrationService {
   static final UnifiedQuizGenerator _generator = UnifiedQuizGenerator();
 
-  /// Navigate to a section quiz
+  /// Navigate to section quiz
+  /// FIXED: Updated to match the calling signature
   static Future<void> navigateToSectionQuiz({
     required BuildContext context,
     required LearningSection section,
     required QuizController quizController,
   }) async {
-    if (_generator.isSectionImplemented(section.id)) {
+    if (isSectionQuizImplemented(section.id)) {
       await _navigateToImplementedSectionQuiz(context, section, quizController);
     } else {
       await _navigateToPlaceholderQuiz(
         context: context,
         title: '${section.title} Section Quiz',
         description:
-            'Test your knowledge of all topics in the ${section.title} section.',
+            'A comprehensive quiz covering all topics in ${section.title}',
       );
     }
   }
 
-  /// Navigate to a topic quiz
+  /// Navigate to topic quiz
+  /// FIXED: Updated to match the calling signature
   static Future<void> navigateToTopicQuiz({
     required BuildContext context,
     required LearningTopic topic,
     required LearningSection section,
     required QuizController quizController,
   }) async {
-    if (_generator.isTopicImplemented(section.id, topic.id)) {
+    if (isTopicQuizImplemented(section.id, topic.id)) {
       await _navigateToImplementedTopicQuiz(
           context, topic, section, quizController);
     } else {
       await _navigateToPlaceholderQuiz(
         context: context,
         title: '${topic.title} Quiz',
-        description: 'Test your understanding of "${topic.title}" concepts.',
+        description: topic.description,
         topicId: topic.id,
       );
     }
@@ -79,10 +80,12 @@ class QuizIntegrationService {
         config: config,
       );
 
-      // Start the quiz
+      // UPDATED: Start the quiz with section context for future progress tracking
       await quizController.startQuiz(
         questions: session.questions,
         quizType: session.quizType,
+        sectionId:
+            section.id, // ADDED: Pass section ID for future progress tracking
         title: session.title,
         description: session.description,
         allowSkip: session.allowSkip,
@@ -148,10 +151,13 @@ class QuizIntegrationService {
         config: config,
       );
 
-      // Start the quiz
+      // UPDATED: Start the quiz with topic and section context for future progress tracking
       await quizController.startQuiz(
         questions: session.questions,
         quizType: session.quizType,
+        topicId: topic.id, // ADDED: Pass topic ID for future progress tracking
+        sectionId:
+            section.id, // ADDED: Pass section ID for future progress tracking
         title: session.title,
         description: session.description,
         allowSkip: session.allowSkip,
@@ -333,6 +339,7 @@ class QuizPlaceholderPage extends StatelessWidget {
                 'Coming Soon!',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
+                      color: Colors.orange,
                     ),
                 textAlign: TextAlign.center,
               ),
@@ -343,51 +350,23 @@ class QuizPlaceholderPage extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              Text(
+                'The quiz system will include:\n'
+                '• Interactive questions\n'
+                '• Progress tracking\n'
+                '• Detailed feedback\n'
+                '• Adaptive difficulty',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.orange.shade800,
+                  height: 1.4,
                 ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Colors.blue,
-                      size: 24,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Quiz Available for Introduction Section',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.bold,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Try the Introduction section to experience the full quiz system with questions based on the learning content.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.blue.shade700,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('Back to Learning'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Back to Learning'),
               ),
             ],
           ),

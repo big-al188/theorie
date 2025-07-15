@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'models/app_state.dart';
-import 'controllers/quiz_controller.dart'; // Add QuizController import
+import 'controllers/quiz_controller.dart';
 import 'services/user_service.dart';
+// COMMENTED OUT: Don't import progress service until we fix the type conflicts
+// import 'services/progress_tracking_service.dart';
 import 'views/pages/login_page.dart';
 import 'views/pages/welcome_page.dart';
 
@@ -26,8 +28,11 @@ class TheorieApp extends StatelessWidget {
         // Existing app state provider
         ChangeNotifierProvider(create: (_) => AppState()),
 
-        // Add QuizController provider for quiz system
+        // Existing quiz controller provider
         ChangeNotifierProvider(create: (_) => QuizController()),
+
+        // TODO: Add progress tracking service once we fix type conflicts
+        // ChangeNotifierProvider(create: (_) => ProgressTrackingService.instance),
       ],
       child: Consumer<AppState>(
         builder: (context, appState, child) {
@@ -86,31 +91,28 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   Future<void> _checkAuthStatus() async {
     try {
-      // Check if there's an existing current user
+      // Check if there's a current user
       final user = await UserService.instance.getCurrentUser();
 
-      if (user != null && mounted) {
-        // Load user preferences into app state
-        final appState = context.read<AppState>();
-        await appState.setCurrentUser(user);
-
+      if (mounted) {
         setState(() {
-          _isLoggedIn = true;
+          _isLoggedIn = user != null;
           _isLoading = false;
         });
-      } else {
-        // No current user - show login page
+
+        // Update app state if user found
+        if (user != null) {
+          final appState = context.read<AppState>();
+          await appState.setCurrentUser(user);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
           _isLoggedIn = false;
           _isLoading = false;
         });
       }
-    } catch (e) {
-      // On any error, show login page
-      setState(() {
-        _isLoggedIn = false;
-        _isLoading = false;
-      });
     }
   }
 
@@ -119,14 +121,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
     if (_isLoading) {
       return const Scaffold(
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading Theorie...'),
-            ],
-          ),
+          child: CircularProgressIndicator(),
         ),
       );
     }

@@ -1,11 +1,13 @@
 // lib/views/pages/quiz_page.dart
 
+import 'dart:async'; // ADDED: For Timer
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../models/quiz/quiz_question.dart';
 import '../../models/quiz/quiz_session.dart';
 import '../../models/quiz/multiple_choice_question.dart';
+import '../../constants/ui_constants.dart'; // ADDED: For responsive design
 import '../widgets/quiz/quiz_progress_bar.dart';
 import '../widgets/quiz/multiple_choice_widget.dart';
 import '../widgets/quiz/quiz_results_widget.dart';
@@ -38,6 +40,10 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
+  // ADDED: Timer for real-time updates and scroll controller for mobile
+  Timer? _timer;
+  final ScrollController _scrollController = ScrollController();
+
   bool _showingResults = false;
   String? _lastFeedback;
 
@@ -45,6 +51,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _initializeAnimations();
+    _startPeriodicTimer(); // ADDED: Start timer for real-time updates
   }
 
   void _initializeAnimations() {
@@ -79,10 +86,77 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     _slideController.forward();
   }
 
+  // ADDED: Real-time timer for quiz updates
+  void _startPeriodicTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        final controller = context.read<QuizController>();
+
+        // Only update if we have an active session with time limit
+        if (controller.hasActiveSession &&
+            controller.currentSession?.timeLimit != null) {
+          // Force a rebuild to update timer display
+          setState(() {});
+
+          // Check if time expired
+          if (controller.isTimeExpired) {
+            _handleTimeExpired();
+          }
+        }
+      }
+    });
+  }
+
+  // ADDED: Handle time expiration
+  void _handleTimeExpired() async {
+    _timer?.cancel();
+
+    final controller = context.read<QuizController>();
+    if (controller.hasActiveSession) {
+      await controller.completeQuiz();
+    }
+
+    if (mounted) {
+      _showTimeExpiredDialog();
+    }
+  }
+
+  // ADDED: Show time expired dialog
+  void _showTimeExpiredDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.timer_off, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Time\'s Up!'),
+          ],
+        ),
+        content: const Text(
+          'The quiz time limit has been reached. Your answers have been submitted automatically.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {}); // Trigger rebuild to show results
+            },
+            child: const Text('View Results'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _fadeController.dispose();
     _slideController.dispose();
+    _timer?.cancel(); // ADDED: Clean up timer
+    _scrollController.dispose(); // ADDED: Clean up scroll controller
     super.dispose();
   }
 
@@ -160,54 +234,157 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     return _buildActiveQuizInterface(context, controller, session);
   }
 
+  // UPDATED: Made responsive for mobile with scrolling
   Widget _buildActiveQuizInterface(
       BuildContext context, QuizController controller, QuizSession session) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
+    final isMobile = deviceType == DeviceType.mobile;
+
     return Column(
       children: [
         // Progress bar
         if (session.totalQuestions > 1)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 12 : 16, // ADDED: Mobile-specific padding
+              vertical: 8,
+            ),
             child: QuizProgressBar(
               current: session.currentQuestionIndex + 1,
               total: session.totalQuestions,
-              timeRemaining: session.timeRemaining,
+              timeRemaining:
+                  session.timeRemaining, // FIXED: Real-time timer updates
+              showPercentage: !isMobile, // ADDED: Hide percentage on mobile
             ),
           ),
 
         // Feedback message
         if (_lastFeedback != null)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 12 : 16, // ADDED: Mobile-specific padding
+              vertical: 8,
+            ),
             child: _buildFeedbackCard(context, _lastFeedback!),
           ),
 
-        // Main question area
+        // UPDATED: Main question area with scrolling for mobile
         Expanded(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: _buildQuestionSection(context, controller),
+          child: SingleChildScrollView(
+            // ADDED: Scrollable for mobile
+            controller: _scrollController,
+            padding:
+                EdgeInsets.all(isMobile ? 12 : 16), // ADDED: Responsive padding
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: _buildQuestionSection(context, controller),
+              ),
             ),
           ),
         ),
 
         // Navigation controls
-        _buildNavigationControls(context, controller, session),
+        Container(
+          padding: EdgeInsets.all(
+              isMobile ? 12 : 16), // ADDED: Mobile-specific padding
+          child: _buildNavigationControls(context, controller, session),
+        ),
       ],
     );
   }
 
+  Widget _buildQuestionSection(
+      BuildContext context, QuizController controller) {
+    final session = controller.currentSession!;
+    final question = session.currentQuestion;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Question counter
+        Text(
+          'Question ${session.currentQuestionIndex + 1} of ${session.totalQuestions}',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+              ),
+        ),
+        const SizedBox(height: 16),
+
+        // Question text - FIXED: Use correct property name
+        Text(
+          question.questionText, // FIXED: Use existing property name
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+
+        // Question description/explanation - FIXED: Use correct property
+        if (question.explanation?.isNotEmpty == true) ...[
+          const SizedBox(height: 12),
+          Text(
+            question.explanation!,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Colors.grey[700],
+                ),
+          ),
+        ],
+
+        const SizedBox(height: 24),
+
+        // Question widget
+        _buildQuestionWidget(context, question, controller),
+      ],
+    );
+  }
+
+  Widget _buildQuestionWidget(
+      BuildContext context, QuizQuestion question, QuizController controller) {
+    if (question is MultipleChoiceQuestion) {
+      return MultipleChoiceWidget(
+        question: question,
+        selectedAnswer: controller.currentSession
+            ?.getAnswerForQuestion(question.id)
+            ?.answer,
+        onAnswerSelected: (answer) =>
+            _handleAnswerSubmission(controller, answer),
+        enabled: !controller.isProcessingAnswer,
+      );
+    }
+
+    // Handle other question types
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'Question type ${question.runtimeType} not yet supported',
+        style: TextStyle(
+          color: Colors.grey[600],
+          fontStyle: FontStyle.italic,
+        ),
+      ),
+    );
+  }
+
+  // UPDATED: Make navigation responsive
   Widget _buildNavigationControls(
       BuildContext context, QuizController controller, QuizSession session) {
-    final isAnswered =
-        controller.isQuestionAnswered(session.currentQuestion.id);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
+    final isMobile = deviceType == DeviceType.mobile;
+
+    final isAnswered = controller.currentSession
+            ?.isQuestionAnswered(session.currentQuestion.id) ??
+        false;
     final hasNext = session.hasNextQuestion;
     final hasPrevious = session.hasPreviousQuestion;
 
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
         border: Border(
@@ -226,9 +403,18 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
               // Skip button (if allowed)
               if (session.allowSkip) ...[
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => _handleSkip(controller),
-                    child: const Text('Skip'),
+                  child: SizedBox(
+                    height: isMobile ? 44 : 48, // ADDED: Mobile-specific height
+                    child: OutlinedButton(
+                      onPressed: () => _handleSkip(controller),
+                      child: Text(
+                        'Skip',
+                        style: TextStyle(
+                            fontSize: isMobile
+                                ? 14
+                                : 16), // ADDED: Mobile-specific font
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -237,27 +423,39 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
               // Next/Complete button
               Expanded(
                 flex: 2,
-                child: ElevatedButton(
-                  onPressed: isAnswered
-                      ? () => _handleNext(context, controller)
-                      : null,
-                  child: Text(
-                    hasNext ? 'Next Question' : 'Complete Quiz',
+                child: SizedBox(
+                  height: isMobile ? 44 : 48, // ADDED: Mobile-specific height
+                  child: ElevatedButton(
+                    onPressed: isAnswered
+                        ? () => _handleNext(context, controller)
+                        : null,
+                    child: Text(
+                      hasNext ? 'Next Question' : 'Complete Quiz',
+                      style: TextStyle(
+                          fontSize: isMobile
+                              ? 14
+                              : 16), // ADDED: Mobile-specific font
+                    ),
                   ),
                 ),
               ),
             ],
           ),
 
-          // Previous button (if available)
+          // Previous button row (if has previous)
           if (hasPrevious) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: TextButton.icon(
+              height: isMobile ? 40 : 44, // ADDED: Mobile-specific height
+              child: OutlinedButton(
                 onPressed: () => _handlePrevious(controller),
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('Previous Question'),
+                child: Text(
+                  'Previous Question',
+                  style: TextStyle(
+                      fontSize:
+                          isMobile ? 13 : 15), // ADDED: Mobile-specific font
+                ),
               ),
             ),
           ],
@@ -267,88 +465,37 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   }
 
   Widget _buildFeedbackCard(BuildContext context, String feedback) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).primaryColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Theme.of(context).primaryColor.withOpacity(0.3),
+    return Card(
+      color: Colors.blue[50],
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.blue[700]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                feedback,
+                style: TextStyle(color: Colors.blue[700]),
+              ),
+            ),
+          ],
         ),
       ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.info_outline,
-            size: 20,
-            color: Theme.of(context).primaryColor,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              feedback,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).primaryColor,
-                  ),
-            ),
-          ),
-          IconButton(
-            onPressed: () => setState(() => _lastFeedback = null),
-            icon: const Icon(Icons.close, size: 16),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _buildQuestionSection(
-      BuildContext context, QuizController controller) {
-    final question = controller.currentQuestion!;
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: _buildQuestionWidget(context, question, controller),
-    );
+  void _restartTransitionAnimations() {
+    _slideController.reset();
+    _slideController.forward();
   }
 
-  Widget _buildQuestionWidget(
-      BuildContext context, QuizQuestion question, QuizController controller) {
-    switch (question.type) {
-      case QuestionType.multipleChoice:
-        return MultipleChoiceWidget(
-          question: question as MultipleChoiceQuestion,
-          selectedAnswer: controller.getUserAnswerForQuestion(question.id),
-          onAnswerSelected: (answer) =>
-              _handleAnswerSubmission(controller, answer),
-          enabled: !controller.isProcessingAnswer,
-        );
-      default:
-        return _buildUnsupportedQuestionType(context, question);
-    }
-  }
-
-  Widget _buildUnsupportedQuestionType(
-      BuildContext context, QuizQuestion question) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.orange),
-          const SizedBox(height: 16),
-          Text(
-            'Unsupported Question Type',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Question type "${question.type.name}" is not yet implemented.',
-            style: Theme.of(context).textTheme.bodyMedium,
-            textAlign: TextAlign.center,
-          ),
-        ],
+  void _showErrorSnackbar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            Theme.of(context).colorScheme.error, // FIXED: Use colorScheme.error
       ),
     );
   }
@@ -450,45 +597,20 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       builder: (context) => AlertDialog(
         title: const Text('Abandon Quiz?'),
         content: const Text(
-          'Are you sure you want to abandon this quiz? Your progress will be lost.',
-        ),
+            'Are you sure you want to exit? Your progress will be lost.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Continue Quiz'),
+            child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () async {
-              Navigator.of(context).pop(); // Close dialog
-              try {
-                await controller.abandonQuiz();
-                if (mounted) {
-                  Navigator.of(context).pop(); // Close quiz page
-                }
-              } catch (e) {
-                _showErrorSnackbar(context, 'Failed to abandon quiz: $e');
-              }
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
             },
-            child: const Text('Abandon'),
+            child: const Text('Exit'),
           ),
         ],
-      ),
-    );
-  }
-
-  void _restartTransitionAnimations() {
-    _fadeController.reset();
-    _slideController.reset();
-    _fadeController.forward();
-    _slideController.forward();
-  }
-
-  void _showErrorSnackbar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
       ),
     );
   }
