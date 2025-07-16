@@ -36,11 +36,13 @@ class FirebaseDatabaseService {
   /// Create a new user document
   Future<void> createUser(String userId, app_user.User user) async {
     try {
+      print('Creating user with ID: $userId');
+
       final batch = _firestore.batch();
 
       // Create user document
       final userData = user.toJson();
-      userData['firebaseUid'] = userId;
+      userData['firebaseUid'] = userId; // Ensure Firebase UID is stored
       userData['createdAt'] = FieldValue.serverTimestamp();
       userData['lastLoginAt'] = FieldValue.serverTimestamp();
 
@@ -52,12 +54,150 @@ class FirebaseDatabaseService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
+      print('Committing user creation batch...');
       await batch.commit();
 
-      // Also create initial user preferences and progress documents
+      // Create initial user data documents (preferences, progress, etc.)
+      print('Creating initial user data documents...');
       await _createInitialUserData(userId, user);
+
+      print('User creation completed successfully');
     } catch (e) {
+      print('Error in createUser: $e');
       throw DatabaseException('Failed to create user: ${e.toString()}');
+    }
+  }
+
+  /// Repair missing user data for existing Firebase Auth users
+  /// This handles cases where Firebase Auth succeeded but Firestore creation failed
+  Future<app_user.User> repairUserData({
+    required String firebaseUid,
+    required String email,
+    String? displayName,
+  }) async {
+    try {
+      print('Attempting to repair user data for: $firebaseUid');
+
+      // Check if user document already exists
+      final existingDoc = await _usersCollection.doc(firebaseUid).get();
+      if (existingDoc.exists) {
+        print('User document already exists, no repair needed');
+        final data = existingDoc.data() as Map<String, dynamic>;
+
+        // Convert timestamps if needed
+        if (data['createdAt'] is Timestamp) {
+          data['createdAt'] =
+              (data['createdAt'] as Timestamp).toDate().toIso8601String();
+        }
+        if (data['lastLoginAt'] is Timestamp) {
+          data['lastLoginAt'] =
+              (data['lastLoginAt'] as Timestamp).toDate().toIso8601String();
+        }
+
+        return app_user.User.fromJson(data);
+      }
+
+      // Extract username from email or use display name
+      String baseUsername = displayName ?? email.split('@').first;
+
+      // Ensure username is valid and unique
+      String username = await _generateUniqueUsername(baseUsername);
+
+      print('Generated unique username: $username');
+
+      // Create new user object with Firebase UID as the ID
+      final newUser = app_user.User.fromRegistration(
+        username: username,
+        email: email.toLowerCase().trim(),
+      );
+
+      // IMPORTANT: Create a copy with the Firebase UID as the user ID
+      final repairedUser = newUser.copyWith();
+
+      print('Creating repaired user document...');
+
+      // Create user document with Firebase UID as document ID
+      await createUser(firebaseUid, repairedUser);
+
+      print('User data repaired successfully for: $username');
+      return repairedUser;
+    } catch (e) {
+      print('Failed to repair user data: $e');
+      throw DatabaseException('Failed to repair user data: ${e.toString()}');
+    }
+  }
+
+  /// Generate a unique username by appending numbers if needed
+  Future<String> _generateUniqueUsername(String baseUsername) async {
+    // Clean up the base username
+    String cleanUsername =
+        baseUsername.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
+    if (cleanUsername.length < 3) {
+      cleanUsername = 'user${DateTime.now().millisecondsSinceEpoch % 10000}';
+    }
+    if (cleanUsername.length > 20) {
+      cleanUsername = cleanUsername.substring(0, 20);
+    }
+
+    String currentUsername = cleanUsername;
+    int counter = 1;
+
+    // Check if username is available, append numbers if needed
+    while (await isUsernameTaken(currentUsername)) {
+      if (counter == 1) {
+        currentUsername = '${cleanUsername}_$counter';
+      } else {
+        // Remove previous number and add new one
+        currentUsername = '${cleanUsername}_$counter';
+      }
+      counter++;
+
+      // Prevent infinite loop
+      if (counter > 999) {
+        currentUsername =
+            'user${DateTime.now().millisecondsSinceEpoch % 10000}';
+        break;
+      }
+    }
+
+    return currentUsername;
+  }
+
+  /// Health check method to verify database setup
+  Future<Map<String, bool>> checkDatabaseHealth(String userId) async {
+    try {
+      final results = <String, bool>{};
+
+      // Check user document
+      final userDoc = await _usersCollection.doc(userId).get();
+      results['userDocument'] = userDoc.exists;
+
+      // Check preferences document
+      final prefsDoc = await _userPreferencesCollection.doc(userId).get();
+      results['preferencesDocument'] = prefsDoc.exists;
+
+      // Check progress document
+      final progressDoc = await _userProgressCollection.doc(userId).get();
+      results['progressDocument'] = progressDoc.exists;
+
+      // Check quiz results document
+      final quizDoc = await _quizResultsCollection.doc(userId).get();
+      results['quizResultsDocument'] = quizDoc.exists;
+
+      // Check username document if user exists
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        final username = userData['username'] as String?;
+        if (username != null) {
+          final usernameDoc = await _usernamesCollection.doc(username).get();
+          results['usernameDocument'] = usernameDoc.exists;
+        }
+      }
+
+      return results;
+    } catch (e) {
+      print('Error checking database health: $e');
+      return {'error': false};
     }
   }
 
@@ -349,33 +489,49 @@ class FirebaseDatabaseService {
 
   /// Helper Methods
 
-  /// Create initial user data documents
+  /// Create initial user data documents - Improved with better error handling
   Future<void> _createInitialUserData(String userId, app_user.User user) async {
-    final batch = _firestore.batch();
+    try {
+      print('Creating initial data for user: $userId');
 
-    // Create preferences document
-    batch.set(
-      _userPreferencesCollection.doc(userId),
-      user.preferences.toJson(),
-    );
+      final batch = _firestore.batch();
 
-    // Create progress document
-    batch.set(
-      _userProgressCollection.doc(userId),
-      user.progress.toJson(),
-    );
+      // Create preferences document
+      batch.set(
+        _userPreferencesCollection.doc(userId),
+        {
+          ...user.preferences.toJson(),
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+      );
 
-    // Create quiz results document (empty initially)
-    batch.set(
-      _quizResultsCollection.doc(userId),
-      {
-        'createdAt': FieldValue.serverTimestamp(),
-        'totalQuizzesTaken': 0,
-        'averageScore': 0.0,
-      },
-    );
+      // Create progress document
+      batch.set(
+        _userProgressCollection.doc(userId),
+        {
+          ...user.progress.toJson(),
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+      );
 
-    await batch.commit();
+      // Create quiz results document (empty initially)
+      batch.set(
+        _quizResultsCollection.doc(userId),
+        {
+          'createdAt': FieldValue.serverTimestamp(),
+          'totalQuizzesTaken': 0,
+          'averageScore': 0.0,
+          'lastQuizDate': null,
+        },
+      );
+
+      await batch.commit();
+      print('Initial user data created successfully');
+    } catch (e) {
+      print('Error creating initial user data: $e');
+      throw DatabaseException(
+          'Failed to create initial user data: ${e.toString()}');
+    }
   }
 
   /// Temporary method to create QuizResult from data

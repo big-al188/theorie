@@ -41,7 +41,7 @@ class FirebaseUserService {
   Stream<firebase_auth.User?> get authStateChanges =>
       _authService.authStateChanges;
 
-  /// Get current user (prioritize Firebase, fallback to local)
+  /// Get current user (prioritize Firebase, fallback to local, auto-repair if needed)
   Future<app_user.User?> getCurrentUser() async {
     await initialize();
 
@@ -52,8 +52,10 @@ class FirebaseUserService {
       if (_authService.isLoggedIn) {
         print('Firebase user detected, loading app user data...');
 
-        // Get the app user data from Firestore
         final firebaseUser = _authService.currentFirebaseUser!;
+        print('Loading Firebase user data for: ${firebaseUser.uid}');
+
+        // Try to get existing app user data
         final appUser = await _dbService.getUser(firebaseUser.uid);
 
         if (appUser != null) {
@@ -63,9 +65,37 @@ class FirebaseUserService {
         } else {
           print(
               'No app user data found for Firebase user: ${firebaseUser.uid}');
-          // User exists in Firebase but not in Firestore - this shouldn't happen
-          // but let's handle it gracefully
-          return null;
+
+          // Auto-repair: Create missing user data
+          try {
+            print('Attempting to repair missing user data...');
+
+            final repairedUser = await _dbService.repairUserData(
+              firebaseUid: firebaseUser.uid,
+              email: firebaseUser.email ?? 'unknown@email.com',
+              displayName: firebaseUser.displayName,
+            );
+
+            print('User data repaired successfully: ${repairedUser.username}');
+            _cachedUser = repairedUser;
+
+            // Update last login time
+            final updatedUser =
+                repairedUser.copyWith(lastLoginAt: DateTime.now());
+            await _dbService.updateUser(firebaseUser.uid, updatedUser);
+            _cachedUser = updatedUser;
+
+            return updatedUser;
+          } catch (repairError) {
+            print('Failed to repair user data: $repairError');
+
+            // If repair fails, we need to sign out the user
+            print('Logging out...');
+            await logout();
+            print('Logout successful');
+            print('Signed out user due to unrecoverable data issue');
+            return null;
+          }
         }
       }
 
@@ -77,11 +107,46 @@ class FirebaseUserService {
 
       // If Firebase fails, try local service as fallback
       try {
+        print('Attempting local service fallback...');
         return await _localService.getCurrentUser();
       } catch (localError) {
         print('Local service also failed: $localError');
         return null;
       }
+    }
+  }
+
+  /// Add diagnostic method to help troubleshoot database issues
+  Future<void> diagnoseDatabaseIssues(String userId) async {
+    try {
+      print('=== Database Diagnosis for User: $userId ===');
+
+      final health = await _dbService.checkDatabaseHealth(userId);
+
+      print('Database Health Check Results:');
+      health.forEach((document, exists) {
+        print('  $document: ${exists ? "✓ EXISTS" : "✗ MISSING"}');
+      });
+
+      // If main user document is missing, this confirms the repair is needed
+      if (health['userDocument'] == false) {
+        print('>>> ISSUE IDENTIFIED: User document is missing in Firestore');
+        print('>>> SOLUTION: Auto-repair will create missing documents');
+      }
+
+      // Check for partial data
+      final missingDocs = health.entries
+          .where((entry) => entry.value == false && entry.key != 'error')
+          .map((entry) => entry.key)
+          .toList();
+
+      if (missingDocs.isNotEmpty) {
+        print('>>> MISSING DOCUMENTS: ${missingDocs.join(", ")}');
+      }
+
+      print('=== End Database Diagnosis ===');
+    } catch (e) {
+      print('Error during database diagnosis: $e');
     }
   }
 

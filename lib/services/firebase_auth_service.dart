@@ -38,12 +38,15 @@ class FirebaseAuthService {
   /// Auth state stream
   Stream<firebase_auth.User?> get authStateChanges => _auth.authStateChanges();
 
-  /// Register new user with email and password
+  /// Register new user with email and password - improved with better rollback
   Future<app_user.User> registerWithEmailAndPassword({
     required String email,
     required String password,
     required String username,
   }) async {
+    firebase_auth.UserCredential? anonymousCredential;
+    firebase_auth.UserCredential? finalCredential;
+
     try {
       // Validate inputs
       if (email.isEmpty || password.isEmpty || username.isEmpty) {
@@ -63,21 +66,24 @@ class FirebaseAuthService {
             'Username must be 3-20 characters and contain only letters, numbers, and underscores');
       }
 
+      print('Starting registration process for: $username');
+
       // Step 1: Sign in anonymously to check username availability
-      firebase_auth.UserCredential? anonymousCredential;
       try {
         anonymousCredential = await _auth.signInAnonymously();
+        print('Anonymous authentication successful');
       } catch (e) {
-        throw AuthException('Failed to initialize registration process');
+        throw AuthException(
+            'Failed to initialize registration process: ${e.toString()}');
       }
 
       // Step 2: Check if username is already taken (now authenticated)
       final isUsernameTaken = await _dbService.isUsernameTaken(username);
       if (isUsernameTaken) {
-        // Clean up anonymous user
-        await anonymousCredential.user?.delete();
         throw AuthException('Username is already taken');
       }
+
+      print('Username available, proceeding with account creation');
 
       // Step 3: Create email/password credential
       final emailCredential = firebase_auth.EmailAuthProvider.credential(
@@ -86,15 +92,26 @@ class FirebaseAuthService {
       );
 
       // Step 4: Link the anonymous account to email/password
-      final linkedCredential =
-          await anonymousCredential.user!.linkWithCredential(emailCredential);
+      try {
+        finalCredential =
+            await anonymousCredential.user!.linkWithCredential(emailCredential);
+        print('Email/password credential linked successfully');
+      } catch (e) {
+        throw AuthException('Failed to create account: ${e.toString()}');
+      }
 
-      if (linkedCredential.user == null) {
+      if (finalCredential.user == null) {
         throw AuthException('Failed to create user account');
       }
 
       // Step 5: Update Firebase user profile
-      await linkedCredential.user!.updateDisplayName(username);
+      try {
+        await finalCredential.user!.updateDisplayName(username);
+        print('Firebase user profile updated');
+      } catch (e) {
+        print('Warning: Failed to update display name: $e');
+        // Continue anyway, this is not critical
+      }
 
       // Step 6: Create app user
       final appUser = app_user.User.fromRegistration(
@@ -103,17 +120,63 @@ class FirebaseAuthService {
       );
 
       // Step 7: Save user to Firestore with Firebase UID as document ID
-      await _dbService.createUser(linkedCredential.user!.uid, appUser);
+      try {
+        await _dbService.createUser(finalCredential.user!.uid, appUser);
+        print('User document created in Firestore');
+      } catch (e) {
+        print('Critical error: Failed to create user document: $e');
 
-      // Step 8: Send email verification
-      await linkedCredential.user!.sendEmailVerification();
+        // This is a critical failure - we need to clean up the Firebase Auth user
+        try {
+          await finalCredential.user!.delete();
+          print('Cleaned up Firebase Auth user due to Firestore failure');
+        } catch (deleteError) {
+          print('Warning: Failed to clean up Firebase Auth user: $deleteError');
+        }
 
+        throw AuthException('Failed to complete registration: ${e.toString()}');
+      }
+
+      // Step 8: Send email verification (non-critical)
+      try {
+        await finalCredential.user!.sendEmailVerification();
+        print('Email verification sent');
+      } catch (e) {
+        print('Warning: Failed to send email verification: $e');
+        // Don't throw here, registration was successful
+      }
+
+      print('Registration completed successfully for: $username');
       return appUser.copyWith();
     } on firebase_auth.FirebaseAuthException catch (e) {
+      await _cleanupOnError(anonymousCredential, finalCredential);
       throw AuthException(_getAuthErrorMessage(e));
     } catch (e) {
+      await _cleanupOnError(anonymousCredential, finalCredential);
       if (e is AuthException) rethrow;
       throw AuthException('Registration failed: ${e.toString()}');
+    }
+  }
+
+  /// Clean up Firebase Auth users on registration error
+  Future<void> _cleanupOnError(
+    firebase_auth.UserCredential? anonymousCredential,
+    firebase_auth.UserCredential? finalCredential,
+  ) async {
+    try {
+      // Try to delete the final credential first (linked account)
+      if (finalCredential?.user != null) {
+        await finalCredential!.user!.delete();
+        print('Cleaned up linked account');
+      }
+      // If no final credential, clean up anonymous user
+      else if (anonymousCredential?.user != null) {
+        await anonymousCredential!.user!.delete();
+        print('Cleaned up anonymous account');
+      }
+    } catch (e) {
+      print('Warning: Failed to cleanup during error handling: $e');
+      // Don't throw - we're already handling an error
     }
   }
 
