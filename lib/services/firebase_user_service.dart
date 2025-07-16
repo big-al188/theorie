@@ -1,10 +1,9 @@
 // lib/services/firebase_user_service.dart
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user/user.dart' as app_user;
-import '../models/user/user_progress.dart'; // Import the correct UserProgress class
 import './firebase_auth_service.dart';
 import './firebase_database_service.dart';
-import './user_service.dart'; // Import existing service for migration
+import './user_service.dart';
 
 /// Enhanced User Service with Firebase integration
 /// Provides a unified interface for user management with Firebase backend
@@ -17,8 +16,7 @@ class FirebaseUserService {
 
   final FirebaseAuthService _authService = FirebaseAuthService.instance;
   final FirebaseDatabaseService _dbService = FirebaseDatabaseService.instance;
-  final UserService _localService =
-      UserService.instance; // For migration and fallback
+  final UserService _localService = UserService.instance;
 
   bool _isInitialized = false;
   app_user.User? _cachedUser;
@@ -28,38 +26,62 @@ class FirebaseUserService {
     if (_isInitialized) return;
 
     try {
-      // Initialize local service for migration purposes
+      // Initialize local service for fallback
       await _localService.initialize();
-
-      // Check for existing user and migration
-      await _checkForMigration();
-
       _isInitialized = true;
+      print('Firebase User Service initialized successfully');
     } catch (e) {
       print('Error initializing Firebase User Service: $e');
-      // Fallback to local service if Firebase fails
-      await _localService.initialize();
+      // Still mark as initialized to prevent infinite loops
       _isInitialized = true;
     }
   }
+
+  /// Auth state stream - delegate to Firebase Auth Service
+  Stream<firebase_auth.User?> get authStateChanges =>
+      _authService.authStateChanges;
 
   /// Get current user (prioritize Firebase, fallback to local)
   Future<app_user.User?> getCurrentUser() async {
     await initialize();
 
     try {
-      // Try Firebase first
+      print('Getting current user...');
+
+      // Check if we have a Firebase user
       if (_authService.isLoggedIn) {
-        _cachedUser = await _authService.currentUser;
-        return _cachedUser;
+        print('Firebase user detected, loading app user data...');
+
+        // Get the app user data from Firestore
+        final firebaseUser = _authService.currentFirebaseUser!;
+        final appUser = await _dbService.getUser(firebaseUser.uid);
+
+        if (appUser != null) {
+          print('App user loaded successfully: ${appUser.username}');
+          _cachedUser = appUser;
+          return appUser;
+        } else {
+          print(
+              'No app user data found for Firebase user: ${firebaseUser.uid}');
+          // User exists in Firebase but not in Firestore - this shouldn't happen
+          // but let's handle it gracefully
+          return null;
+        }
       }
 
+      print('No Firebase user, checking local storage...');
       // Fallback to local service for guest users
       return await _localService.getCurrentUser();
     } catch (e) {
       print('Error getting current user: $e');
-      // Fallback to local service
-      return await _localService.getCurrentUser();
+
+      // If Firebase fails, try local service as fallback
+      try {
+        return await _localService.getCurrentUser();
+      } catch (localError) {
+        print('Local service also failed: $localError');
+        return null;
+      }
     }
   }
 
@@ -72,282 +94,256 @@ class FirebaseUserService {
     await initialize();
 
     try {
-      // Register with Firebase
+      print('Starting user registration...');
+
+      // Register with Firebase using the new anonymous auth flow
       final user = await _authService.registerWithEmailAndPassword(
         email: email,
         username: username,
         password: password,
       );
 
+      print('User registered successfully: ${user.username}');
       _cachedUser = user;
       return user;
     } catch (e) {
-      // Don't fallback to local service for registration
-      // Registration should always use Firebase
+      print('Registration failed: $e');
       rethrow;
     }
   }
 
   /// Login user with Firebase
   Future<app_user.User?> loginUser({
-    String? username,
     String? email,
     String? password,
   }) async {
     await initialize();
 
     try {
-      // Handle guest login (local storage)
-      if ((username?.isEmpty ?? true) &&
-          (email?.isEmpty ?? true) &&
-          (password?.isEmpty ?? true)) {
-        return await loginAsGuest();
+      if (email != null && password != null) {
+        print('Logging in with email/password...');
+
+        // Sign in with Firebase
+        final user = await _authService.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+
+        print('Login successful: ${user.username}');
+        _cachedUser = user;
+        return user;
+      } else {
+        print('Logging in as guest...');
+        // Guest login - use local service
+        return await _localService.loginUser();
       }
-
-      // Firebase login requires email and password
-      if (email == null || password == null) {
-        throw ArgumentError(
-            'Email and password are required for Firebase login');
-      }
-
-      final user = await _authService.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      _cachedUser = user;
-      return user;
     } catch (e) {
-      print('Error logging in user: $e');
-      // For login failures, don't fallback automatically
-      // Let the UI handle the error
+      print('Login failed: $e');
       rethrow;
     }
   }
 
-  /// Login as guest (uses local storage)
+  /// Login as guest (local only)
   Future<app_user.User> loginAsGuest() async {
     await initialize();
 
     try {
-      final user = await _localService.loginAsGuest();
-      _cachedUser = user;
-      return user;
+      print('Logging in as guest...');
+      final user = await _localService.loginUser();
+      return user ?? app_user.User.defaultUser();
     } catch (e) {
-      throw Exception('Failed to login as guest: ${e.toString()}');
+      print('Guest login failed, creating default user: $e');
+      return app_user.User.defaultUser();
     }
   }
 
-  /// Save current user
-  Future<void> saveCurrentUser(app_user.User user) async {
+  /// Update user data
+  Future<void> updateUser(app_user.User user) async {
     await initialize();
 
     try {
-      if (_authService.isLoggedIn && _authService.currentFirebaseUser != null) {
-        // Save to Firebase
-        await _dbService.updateUser(
-            _authService.currentFirebaseUser!.uid, user);
+      if (_authService.isLoggedIn) {
+        // Update in Firebase
+        final firebaseUser = _authService.currentFirebaseUser!;
+        await _dbService.updateUser(firebaseUser.uid, user);
+        _cachedUser = user;
       } else {
-        // Save to local storage for guest users
+        // Update locally for guest users
         await _localService.saveCurrentUser(user);
       }
-
-      _cachedUser = user;
     } catch (e) {
-      print('Error saving current user: $e');
-      // Always try to save locally as fallback
-      await _localService.saveCurrentUser(user);
-      _cachedUser = user;
+      print('Error updating user: $e');
+      rethrow;
     }
   }
 
-  /// Save user preferences
-  Future<void> saveUserPreferences(app_user.UserPreferences preferences) async {
-    await initialize();
-
-    try {
-      if (_authService.isLoggedIn && _authService.currentFirebaseUser != null) {
-        // Save to Firebase
-        await _dbService.saveUserPreferences(
-            _authService.currentFirebaseUser!.uid, preferences);
-      }
-
-      // Always save locally for caching/fallback
-      final currentUser = await getCurrentUser();
-      if (currentUser != null) {
-        final updatedUser = currentUser.copyWith(preferences: preferences);
-        await _localService.saveCurrentUser(updatedUser);
-        _cachedUser = updatedUser;
-      }
-    } catch (e) {
-      print('Error saving user preferences: $e');
-      // Fallback to local only
-      final currentUser = await getCurrentUser();
-      if (currentUser != null) {
-        final updatedUser = currentUser.copyWith(preferences: preferences);
-        await _localService.saveCurrentUser(updatedUser);
-        _cachedUser = updatedUser;
-      }
-    }
-  }
-
-  /// Save user progress
-  Future<void> saveUserProgress(app_user.UserProgress progress) async {
-    await initialize();
-
-    try {
-      if (_authService.isLoggedIn && _authService.currentFirebaseUser != null) {
-        // Save to Firebase
-        await _dbService.saveUserProgress(
-            _authService.currentFirebaseUser!.uid, progress);
-      }
-
-      // Always save locally for caching/fallback
-      final currentUser = await getCurrentUser();
-      if (currentUser != null) {
-        final updatedUser = currentUser.copyWith(progress: progress);
-        await _localService.saveCurrentUser(updatedUser);
-        _cachedUser = updatedUser;
-      }
-    } catch (e) {
-      print('Error saving user progress: $e');
-      // Fallback to local only
-      final currentUser = await getCurrentUser();
-      if (currentUser != null) {
-        final updatedUser = currentUser.copyWith(progress: progress);
-        await _localService.saveCurrentUser(updatedUser);
-        _cachedUser = updatedUser;
-      }
-    }
-  }
-
-  /// Logout user
+  /// Logout current user
   Future<void> logout() async {
-    await initialize();
-
     try {
-      // Sign out from Firebase if logged in
+      print('Logging out...');
+
       if (_authService.isLoggedIn) {
         await _authService.signOut();
       }
 
-      // Clear local cache
       _cachedUser = null;
-
-      // Note: We don't clear local storage entirely
-      // This allows guest users to maintain their data
+      print('Logout successful');
     } catch (e) {
       print('Error during logout: $e');
-      // Still clear cache even if Firebase signout fails
-      _cachedUser = null;
-    }
-  }
-
-  /// Delete account (Firebase users only)
-  Future<void> deleteAccount() async {
-    await initialize();
-
-    if (!_authService.isLoggedIn) {
-      throw Exception('No authenticated user to delete');
-    }
-
-    try {
-      await _authService.deleteAccount();
-      _cachedUser = null;
-    } catch (e) {
-      throw Exception('Failed to delete account: ${e.toString()}');
+      rethrow;
     }
   }
 
   /// Send password reset email
   Future<void> sendPasswordResetEmail(String email) async {
-    await initialize();
-    await _authService.sendPasswordResetEmail(email);
+    try {
+      await _authService.sendPasswordResetEmail(email);
+    } catch (e) {
+      print('Error sending password reset email: $e');
+      rethrow;
+    }
   }
 
   /// Send email verification
   Future<void> sendEmailVerification() async {
-    await initialize();
-    await _authService.sendEmailVerification();
+    try {
+      await _authService.sendEmailVerification();
+    } catch (e) {
+      print('Error sending email verification: $e');
+      rethrow;
+    }
   }
 
-  /// Check if email is verified
+  /// Check if current user's email is verified
   bool get isEmailVerified => _authService.isEmailVerified;
 
   /// Check if user is logged in with Firebase
-  bool get isFirebaseUser => _authService.isLoggedIn;
+  bool get isLoggedIn => _authService.isLoggedIn;
 
-  /// Check if user is guest (local only)
-  Future<bool> get isGuestUser async {
-    final user = await getCurrentUser();
-    return user?.isDefaultUser ?? false;
+  /// Get current Firebase user
+  firebase_auth.User? get currentFirebaseUser =>
+      _authService.currentFirebaseUser;
+
+  /// Clear cached user data
+  void clearCache() {
+    _cachedUser = null;
   }
 
-  /// Export user data
-  Future<Map<String, dynamic>> exportUserData() async {
-    await initialize();
-
+  /// Get user preferences
+  Future<app_user.UserPreferences?> getUserPreferences() async {
     try {
-      if (_authService.isLoggedIn && _authService.currentFirebaseUser != null) {
-        // Export from Firebase
-        return await _dbService
-            .exportUserData(_authService.currentFirebaseUser!.uid);
+      if (_authService.isLoggedIn) {
+        final firebaseUser = _authService.currentFirebaseUser!;
+        return await _dbService.getUserPreferences(firebaseUser.uid);
       } else {
-        // Export from local storage
-        return await _localService.exportUserData();
+        // For guest users, return preferences from current user
+        final user = await getCurrentUser();
+        return user?.preferences;
       }
     } catch (e) {
-      // Fallback to local export
-      return await _localService.exportUserData();
+      print('Error getting user preferences: $e');
+      return null;
     }
   }
 
-  /// Import user data
-  Future<void> importUserData(Map<String, dynamic> data) async {
-    await initialize();
-
+  /// Save user preferences
+  Future<void> saveUserPreferences(app_user.UserPreferences preferences) async {
     try {
-      if (_authService.isLoggedIn && _authService.currentFirebaseUser != null) {
-        // For Firebase users, we would need to implement import to Firebase
-        // For now, just import to local storage
-        await _localService.importUserData(data);
+      if (_authService.isLoggedIn) {
+        final firebaseUser = _authService.currentFirebaseUser!;
+        await _dbService.saveUserPreferences(firebaseUser.uid, preferences);
+
+        // Update cached user
+        if (_cachedUser != null) {
+          _cachedUser = _cachedUser!.copyWith(preferences: preferences);
+        }
       } else {
-        await _localService.importUserData(data);
+        // For guest users, update the current user and save locally
+        final currentUser = await getCurrentUser();
+        if (currentUser != null) {
+          final updatedUser = currentUser.copyWith(preferences: preferences);
+          await _localService.saveCurrentUser(updatedUser);
+          _cachedUser = updatedUser;
+        }
       }
     } catch (e) {
-      throw Exception('Failed to import user data: ${e.toString()}');
+      print('Error saving user preferences: $e');
+      rethrow;
     }
   }
 
-  /// Check for local data migration to Firebase
+  /// Get user progress
+  Future<app_user.UserProgress?> getUserProgress() async {
+    try {
+      if (_authService.isLoggedIn) {
+        final firebaseUser = _authService.currentFirebaseUser!;
+        return await _dbService.getUserProgress(firebaseUser.uid);
+      } else {
+        // For guest users, return progress from current user
+        final user = await getCurrentUser();
+        return user?.progress;
+      }
+    } catch (e) {
+      print('Error getting user progress: $e');
+      return null;
+    }
+  }
+
+  /// Save user progress
+  Future<void> saveUserProgress(app_user.UserProgress progress) async {
+    try {
+      if (_authService.isLoggedIn) {
+        final firebaseUser = _authService.currentFirebaseUser!;
+        await _dbService.saveUserProgress(firebaseUser.uid, progress);
+
+        // Update cached user
+        if (_cachedUser != null) {
+          _cachedUser = _cachedUser!.copyWith(progress: progress);
+        }
+      } else {
+        // For guest users, update the current user and save locally
+        final currentUser = await getCurrentUser();
+        if (currentUser != null) {
+          final updatedUser = currentUser.copyWith(progress: progress);
+          await _localService.saveCurrentUser(updatedUser);
+          _cachedUser = updatedUser;
+        }
+      }
+    } catch (e) {
+      print('Error saving user progress: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete user account
+  Future<void> deleteAccount() async {
+    try {
+      if (_authService.isLoggedIn) {
+        await _authService.deleteAccount();
+        _cachedUser = null;
+      }
+    } catch (e) {
+      print('Error deleting account: $e');
+      rethrow;
+    }
+  }
+
+  /// Check for migration from local storage to Firebase
   Future<void> _checkForMigration() async {
     try {
-      // If user is logged in with Firebase but has local data,
-      // we could implement migration logic here
-
+      // If user is logged in to Firebase but we have local data, we might need to migrate
       if (_authService.isLoggedIn) {
         final localUser = await _localService.getCurrentUser();
+        final firebaseUser = await getCurrentUser();
 
-        // If local user has significant data and is not just default user,
-        // we could offer to migrate it to Firebase
-        if (localUser != null &&
-            !localUser.isDefaultUser &&
-            localUser.progress.totalTopicsCompleted > 0) {
-          print('Local user data found for potential migration');
-          // TODO: Implement migration UI and logic
+        if (localUser != null && firebaseUser == null) {
+          print('Found local user data that might need migration');
+          // TODO: Implement migration logic if needed
         }
       }
     } catch (e) {
       print('Error checking for migration: $e');
+      // Don't throw here - migration is optional
     }
-  }
-
-  /// Get auth state stream
-  Stream<firebase_auth.User?> get authStateChanges =>
-      _authService.authStateChanges;
-
-  /// Clear cache (useful for testing)
-  void clearCache() {
-    _cachedUser = null;
   }
 }

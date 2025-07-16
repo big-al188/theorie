@@ -1,4 +1,4 @@
-// lib/main.dart
+// lib/main.dart - Updated authentication wrapper
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -15,7 +15,6 @@ import 'views/pages/welcome_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   runApp(const TheorieApp());
 }
 
@@ -33,7 +32,6 @@ class TheorieApp extends StatelessWidget {
     );
   }
 
-  /// Build light theme with simplified theming
   ThemeData _buildLightTheme() {
     return ThemeData(
       useMaterial3: true,
@@ -42,7 +40,6 @@ class TheorieApp extends StatelessWidget {
     );
   }
 
-  /// Build dark theme with simplified theming
   ThemeData _buildDarkTheme() {
     return ThemeData(
       useMaterial3: true,
@@ -74,6 +71,8 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
 
   Future<void> _initializeFirebase() async {
     try {
+      print('Initializing Firebase...');
+
       // Initialize Firebase
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -94,6 +93,8 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
           _errorMessage = null;
         });
       }
+
+      print('Firebase initialized successfully');
     } catch (e) {
       print('Firebase initialization error: $e');
 
@@ -140,6 +141,119 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
     }
   }
 
+  @override
+  Widget build(BuildContext context) {
+    if (_error) {
+      return _buildErrorScreen();
+    }
+
+    if (!_initialized) {
+      return _buildLoadingScreen();
+    }
+
+    // Firebase initialized successfully - show main app
+    return const MainApp();
+  }
+
+  Widget _buildErrorScreen() {
+    return MaterialApp(
+      title: 'Theorie',
+      home: Scaffold(
+        backgroundColor: Colors.grey[100],
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  color: Colors.red.shade600,
+                  size: 64,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Failed to initialize Theorie',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'There was a problem connecting to our services. Please check your internet connection and try again.',
+                  style: TextStyle(color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _isRetrying ? null : _retryInitialization,
+                  icon: _isRetrying
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                  label: Text(_isRetrying ? 'Retrying...' : 'Try Again'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingScreen() {
+    return MaterialApp(
+      title: 'Theorie',
+      home: Scaffold(
+        backgroundColor: Colors.indigo.shade50,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.music_note,
+                size: 64,
+                color: Colors.indigo.shade600,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Theorie',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.indigo.shade800,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Loading your music theory workspace...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: 200,
+                child: LinearProgressIndicator(
+                  backgroundColor: Colors.grey.shade300,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.indigo.shade600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _retryInitialization() async {
     if (_isRetrying) return;
 
@@ -155,143 +269,6 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
         _isRetrying = false;
       });
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Show error screen with retry option
-    if (_error) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Colors.red.shade600,
-                  size: 64,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Failed to initialize Theorie',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'There was a problem connecting to our services. Please check your internet connection and try again.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: _isRetrying ? null : _retryInitialization,
-                  icon: _isRetrying
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh),
-                  label: Text(_isRetrying ? 'Retrying...' : 'Try Again'),
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (_) => const OfflineModeApp(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.wifi_off),
-                  label: const Text('Continue Offline'),
-                ),
-                if (kDebugMode) ...[
-                  const SizedBox(height: 24),
-                  ExpansionTile(
-                    title: const Text('Error Details'),
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: SelectableText(
-                          _errorMessage ?? 'Unknown error',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    fontFamily: 'monospace',
-                                  ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Show loading screen during initialization
-    if (!_initialized) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.music_note,
-                size: 64,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Theorie',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Loading your music theory workspace...',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: 200,
-                child: LinearProgressIndicator(
-                  backgroundColor:
-                      Theme.of(context).colorScheme.surfaceContainerHighest,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Firebase initialized successfully - show main app
-    return const MainApp();
   }
 }
 
@@ -320,8 +297,6 @@ class MainApp extends StatelessWidget {
           return MaterialApp(
             title: 'Theorie',
             debugShowCheckedModeBanner: false,
-
-            // Theme configuration
             themeMode: appState.themeMode,
             theme: ThemeData(
               useMaterial3: true,
@@ -333,7 +308,6 @@ class MainApp extends StatelessWidget {
               colorSchemeSeed: Colors.indigo,
               brightness: Brightness.dark,
             ),
-
             home: const AuthWrapper(),
           );
         },
@@ -342,7 +316,7 @@ class MainApp extends StatelessWidget {
   }
 }
 
-/// Authentication wrapper with Firebase integration
+/// Authentication wrapper with improved error handling
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -354,6 +328,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
+  int _loadingAttempts = 0;
+  static const int _maxLoadingAttempts = 3;
 
   @override
   void initState() {
@@ -363,29 +339,44 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   Future<void> _initializeAuth() async {
     try {
+      print('Initializing auth wrapper...');
+      _loadingAttempts++;
+
       // Check for existing user session
       final currentUser = await FirebaseUserService.instance.getCurrentUser();
+      print('Current user: ${currentUser?.username ?? 'None'}');
 
       // Update app state with current user
       if (mounted && currentUser != null) {
         final appState = context.read<AppState>();
         await appState.setCurrentUser(currentUser);
+        print('App state updated with user: ${currentUser.username}');
       }
 
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _hasError = false;
         });
       }
     } catch (e) {
       print('Error initializing auth: $e');
 
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-          _errorMessage = e.toString();
-        });
+        // If we've tried multiple times and still failing, show error
+        if (_loadingAttempts >= _maxLoadingAttempts) {
+          setState(() {
+            _isLoading = false;
+            _hasError = true;
+            _errorMessage = e.toString();
+          });
+        } else {
+          // Try again after a short delay
+          await Future.delayed(const Duration(milliseconds: 1000));
+          if (mounted) {
+            _initializeAuth();
+          }
+        }
       }
     }
   }
@@ -394,14 +385,25 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Widget build(BuildContext context) {
     // Show loading screen during auth initialization
     if (_isLoading) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Setting up your session...'),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                  'Setting up your session... (${_loadingAttempts}/$_maxLoadingAttempts)'),
+              if (_loadingAttempts > 1) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'This is taking longer than expected...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -437,6 +439,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
                   setState(() {
                     _isLoading = true;
                     _hasError = false;
+                    _loadingAttempts = 0;
                   });
                   _initializeAuth();
                 },
@@ -464,27 +467,64 @@ class _AuthWrapperState extends State<AuthWrapper> {
           builder: (context, appState, child) {
             final currentUser = appState.currentUser;
 
+            print(
+                'Auth state - Firebase: ${firebaseUser?.uid}, App: ${currentUser?.username}');
+
             // If we have a current user (either Firebase or guest), show welcome page
             if (currentUser != null) {
               return const WelcomePage();
             }
 
-            // If Firebase user exists but no app user, there might be a sync issue
+            // If Firebase user exists but no app user, load the user data
             if (firebaseUser != null && currentUser == null) {
-              // Try to load the user from Firebase
-              _loadFirebaseUser(firebaseUser);
-
-              return const Scaffold(
-                body: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text('Loading user data...'),
-                    ],
-                  ),
-                ),
+              // Use a FutureBuilder for better error handling
+              return FutureBuilder<void>(
+                future: _loadFirebaseUser(firebaseUser),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Scaffold(
+                      body: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text('Loading user data...'),
+                          ],
+                        ),
+                      ),
+                    );
+                  } else if (snapshot.hasError) {
+                    return Scaffold(
+                      body: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline,
+                                color: Colors.red, size: 48),
+                            const SizedBox(height: 16),
+                            const Text('Failed to load user data'),
+                            const SizedBox(height: 8),
+                            Text(
+                              snapshot.error.toString(),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () => setState(() {}), // Retry
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  } else {
+                    // Loading completed, but still no user - show login
+                    return const LoginPage();
+                  }
+                },
               );
             }
 
@@ -496,141 +536,56 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
+  // Replace just this method in your existing AuthWrapper class
   Future<void> _loadFirebaseUser(User firebaseUser) async {
     try {
+      print('Loading Firebase user data for: ${firebaseUser.uid}');
+
       final userService = FirebaseUserService.instance;
       final appUser = await userService.getCurrentUser();
 
       if (appUser != null && mounted) {
+        print('User data loaded successfully: ${appUser.username}');
         final appState = context.read<AppState>();
         await appState.setCurrentUser(appUser);
+      } else {
+        print('No app user data found for Firebase user: ${firebaseUser.uid}');
+
+        // If user exists in Firebase but not in Firestore, sign them out
+        // This prevents infinite loading
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _errorMessage =
+                'User data not found in database. Please try registering again.';
+          });
+        }
+
+        try {
+          await FirebaseUserService.instance.logout();
+          print('Signed out user due to missing data');
+        } catch (signOutError) {
+          print('Error signing out after load failure: $signOutError');
+        }
       }
     } catch (e) {
       print('Error loading Firebase user: $e');
 
+      // Update UI state to show error instead of infinite loading
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = 'Failed to load user data: ${e.toString()}';
+        });
+      }
+
       // If there's an issue loading the user, sign them out
       try {
         await FirebaseUserService.instance.logout();
+        print('Signed out user due to loading error');
       } catch (signOutError) {
         print('Error signing out after load failure: $signOutError');
       }
     }
-  }
-}
-
-/// Offline mode app for when Firebase initialization fails
-class OfflineModeApp extends StatelessWidget {
-  const OfflineModeApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        // Core app state provider
-        ChangeNotifierProvider(create: (_) => AppState()),
-
-        // Quiz controller provider
-        ChangeNotifierProvider(create: (_) => QuizController()),
-      ],
-      child: Consumer<AppState>(
-        builder: (context, appState, child) {
-          return MaterialApp(
-            title: 'Theorie - Offline Mode',
-            debugShowCheckedModeBanner: false,
-
-            // Theme configuration
-            themeMode: appState.themeMode,
-            theme: ThemeData(
-              useMaterial3: true,
-              colorSchemeSeed: Colors.indigo,
-              brightness: Brightness.light,
-            ),
-            darkTheme: ThemeData(
-              useMaterial3: true,
-              colorSchemeSeed: Colors.indigo,
-              brightness: Brightness.dark,
-            ),
-
-            home: const OfflineAuthWrapper(),
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Offline-only authentication wrapper
-class OfflineAuthWrapper extends StatefulWidget {
-  const OfflineAuthWrapper({super.key});
-
-  @override
-  State<OfflineAuthWrapper> createState() => _OfflineAuthWrapperState();
-}
-
-class _OfflineAuthWrapperState extends State<OfflineAuthWrapper> {
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeOfflineMode();
-  }
-
-  Future<void> _initializeOfflineMode() async {
-    try {
-      // Initialize only local user service
-      await UserService.instance.initialize();
-
-      final currentUser = await UserService.instance.getCurrentUser();
-
-      if (mounted && currentUser != null) {
-        final appState = context.read<AppState>();
-        await appState.setCurrentUser(currentUser);
-      }
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      print('Error initializing offline mode: $e');
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Starting offline mode...'),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Consumer<AppState>(
-      builder: (context, appState, child) {
-        final currentUser = appState.currentUser;
-
-        if (currentUser != null) {
-          return const WelcomePage();
-        }
-
-        return const LoginPage();
-      },
-    );
   }
 }
