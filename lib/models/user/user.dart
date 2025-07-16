@@ -77,7 +77,8 @@ class User {
       email: json['email'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastLoginAt: DateTime.parse(json['lastLoginAt'] as String),
-      preferences: UserPreferences.fromJson(json['preferences'] as Map<String, dynamic>),
+      preferences:
+          UserPreferences.fromJson(json['preferences'] as Map<String, dynamic>),
       progress: UserProgress.fromJson(json['progress'] as Map<String, dynamic>),
       isDefaultUser: json['isDefaultUser'] as bool? ?? false,
     );
@@ -172,7 +173,8 @@ class UserPreferences {
       defaultRoot: json['defaultRoot'] as String,
       defaultViewMode: ViewMode.values[json['defaultViewMode'] as int],
       defaultScale: json['defaultScale'] as String,
-      defaultSelectedOctaves: Set<int>.from(json['defaultSelectedOctaves'] as List),
+      defaultSelectedOctaves:
+          Set<int>.from(json['defaultSelectedOctaves'] as List),
     );
   }
 
@@ -196,7 +198,8 @@ class UserPreferences {
       defaultRoot: defaultRoot ?? this.defaultRoot,
       defaultViewMode: defaultViewMode ?? this.defaultViewMode,
       defaultScale: defaultScale ?? this.defaultScale,
-      defaultSelectedOctaves: defaultSelectedOctaves ?? this.defaultSelectedOctaves,
+      defaultSelectedOctaves:
+          defaultSelectedOctaves ?? this.defaultSelectedOctaves,
     );
   }
 }
@@ -228,6 +231,11 @@ class UserProgress {
     );
   }
 
+  /// Gets total topics completed across all sections
+  int get totalTopicsCompleted {
+    return completedTopics.length;
+  }
+
   /// Convert to JSON
   Map<String, dynamic> toJson() {
     return {
@@ -241,13 +249,16 @@ class UserProgress {
 
   /// Create from JSON
   factory UserProgress.fromJson(Map<String, dynamic> json) {
-    final sectionProgressMap = json['sectionProgress'] as Map<String, dynamic>? ?? {};
+    final sectionProgressMap =
+        json['sectionProgress'] as Map<String, dynamic>? ?? {};
     return UserProgress(
       sectionProgress: sectionProgressMap.map(
-        (k, v) => MapEntry(k, SectionProgress.fromJson(v as Map<String, dynamic>)),
+        (k, v) =>
+            MapEntry(k, SectionProgress.fromJson(v as Map<String, dynamic>)),
       ),
       completedTopics: Set<String>.from(json['completedTopics'] as List? ?? []),
-      completedSections: Set<String>.from(json['completedSections'] as List? ?? []),
+      completedSections:
+          Set<String>.from(json['completedSections'] as List? ?? []),
       totalQuizzesTaken: json['totalQuizzesTaken'] as int? ?? 0,
       totalQuizzesPassed: json['totalQuizzesPassed'] as int? ?? 0,
     );
@@ -323,10 +334,11 @@ class SectionProgress {
     );
   }
 
-  double get progressPercentage => 
+  double get progressPercentage =>
       totalTopics > 0 ? topicsCompleted / totalTopics : 0.0;
 
-  bool get isCompleted => topicsCompleted == totalTopics && sectionQuizCompleted;
+  bool get isCompleted =>
+      topicsCompleted == totalTopics && sectionQuizCompleted;
 
   Map<String, dynamic> toJson() {
     return {
@@ -342,7 +354,7 @@ class SectionProgress {
       topicsCompleted: json['topicsCompleted'] as int,
       totalTopics: json['totalTopics'] as int,
       sectionQuizCompleted: json['sectionQuizCompleted'] as bool,
-      lastAccessed: json['lastAccessed'] != null 
+      lastAccessed: json['lastAccessed'] != null
           ? DateTime.parse(json['lastAccessed'] as String)
           : null,
     );

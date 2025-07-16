@@ -2,9 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
-import '../../services/user_service.dart';
-import '../../constants/ui_constants.dart';
-import 'welcome_page.dart';
+import '../../services/firebase_user_service.dart';
+import '../../services/firebase_auth_service.dart';
+import '../pages/welcome_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -15,323 +15,329 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameEmailController = TextEditingController(); // For login (username OR email)
-  final _usernameController = TextEditingController(); // For registration username
-  final _emailController = TextEditingController(); // For registration email
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  
+  final _usernameController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
   bool _isLogin = true;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+  bool _rememberMe = false;
 
   @override
   void dispose() {
-    _usernameEmailController.dispose();
-    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _usernameController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
-    final orientation = MediaQuery.of(context).orientation;
-    final isLandscape = orientation == Orientation.landscape;
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: EdgeInsets.symmetric(
-                horizontal: _getHorizontalPadding(deviceType, isLandscape),
-                vertical: _getVerticalPadding(deviceType, isLandscape),
-              ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              theme.colorScheme.primary.withOpacity(0.1),
+              theme.colorScheme.secondary.withOpacity(0.1),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight - _getVerticalPadding(deviceType, isLandscape) * 2,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _buildHeader(deviceType, isLandscape),
-                    SizedBox(height: isLandscape ? 24 : 48),
-                    _buildLoginForm(deviceType),
-                    SizedBox(height: isLandscape ? 16 : 32),
-                    _buildGuestLoginButton(deviceType),
-                    SizedBox(height: isLandscape ? 16 : 24),
-                    _buildToggleButton(deviceType),
-                  ],
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildHeader(theme),
+                          const SizedBox(height: 32),
+                          _buildAuthForm(),
+                          const SizedBox(height: 24),
+                          _buildAuthButton(),
+                          const SizedBox(height: 16),
+                          _buildToggleAuthMode(),
+                          if (_isLogin) ...[
+                            const SizedBox(height: 16),
+                            _buildForgotPassword(),
+                          ],
+                          const SizedBox(height: 24),
+                          _buildDivider(),
+                          const SizedBox(height: 24),
+                          _buildGuestButton(),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
   }
 
-  double _getHorizontalPadding(DeviceType deviceType, bool isLandscape) {
-    if (isLandscape && deviceType == DeviceType.mobile) {
-      return 32.0; // More padding in landscape
-    }
-    return deviceType == DeviceType.mobile ? 24.0 : 48.0;
-  }
-
-  double _getVerticalPadding(DeviceType deviceType, bool isLandscape) {
-    if (isLandscape && deviceType == DeviceType.mobile) {
-      return 16.0; // Less vertical padding in landscape
-    }
-    return deviceType == DeviceType.mobile ? 24.0 : 48.0;
-  }
-
-  Widget _buildHeader(DeviceType deviceType, bool isLandscape) {
-    final titleFontSize = isLandscape
-        ? (deviceType == DeviceType.mobile ? 28.0 : 36.0)
-        : (deviceType == DeviceType.mobile ? 32.0 : 48.0);
-    
-    final subtitleFontSize = isLandscape
-        ? (deviceType == DeviceType.mobile ? 14.0 : 16.0)
-        : (deviceType == DeviceType.mobile ? 16.0 : 18.0);
-
+  Widget _buildHeader(ThemeData theme) {
     return Column(
       children: [
         Icon(
           Icons.music_note,
-          size: isLandscape ? 60 : 80,
-          color: Theme.of(context).primaryColor,
+          size: 64,
+          color: theme.colorScheme.primary,
         ),
-        SizedBox(height: isLandscape ? 16 : 24),
+        const SizedBox(height: 16),
         Text(
           'Theorie',
-          style: TextStyle(
-            fontSize: titleFontSize,
+          style: theme.textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.bold,
-            color: Theme.of(context).primaryColor,
+            color: theme.colorScheme.primary,
           ),
-          textAlign: TextAlign.center,
         ),
-        SizedBox(height: isLandscape ? 8 : 16),
+        const SizedBox(height: 8),
         Text(
-          'Learn Music Theory & Guitar Fretboard',
-          style: TextStyle(
-            fontSize: subtitleFontSize,
-            color: Colors.grey.shade600,
-            fontWeight: FontWeight.w500,
-          ),
+          _isLogin
+              ? 'Welcome back! Sign in to continue your music theory journey.'
+              : 'Create your account to start learning music theory.',
           textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildLoginForm(DeviceType deviceType) {
-    return Center(
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: deviceType == DeviceType.mobile ? double.infinity : 400.0,
+  Widget _buildAuthForm() {
+    return Column(
+      children: [
+        if (!_isLogin) ...[
+          TextFormField(
+            controller: _usernameController,
+            decoration: const InputDecoration(
+              labelText: 'Username',
+              prefixIcon: Icon(Icons.person_outline),
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              if (!_isLogin && (value?.isEmpty ?? true)) {
+                return 'Username is required';
+              }
+              if (!_isLogin && value!.length < 3) {
+                return 'Username must be at least 3 characters';
+              }
+              if (!_isLogin && !RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value!)) {
+                return 'Username can only contain letters, numbers, and underscores';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+        TextFormField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            labelText: 'Email',
+            prefixIcon: Icon(Icons.email_outlined),
+            border: OutlineInputBorder(),
+          ),
+          validator: (value) {
+            if (value?.isEmpty ?? true) {
+              return 'Email is required';
+            }
+            if (!_isValidEmail(value!)) {
+              return 'Please enter a valid email address';
+            }
+            return null;
+          },
         ),
-        child: Form(
-          key: _formKey,
-          child: Card(
-            elevation: 8,
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _isLogin ? 'Sign In' : 'Create Account',
-                    style: TextStyle(
-                      fontSize: deviceType == DeviceType.mobile ? 20.0 : 24.0,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 24),
-
-                  // Login: Single field for username OR email
-                  if (_isLogin) ...[
-                    _buildTextField(
-                      controller: _usernameEmailController,
-                      label: 'Username or Email',
-                      icon: Icons.person,
-                      required: false, // Optional for login (can use guest)
-                    ),
-                    const SizedBox(height: 16),
-                  ] else ...[
-                    // Registration: Separate fields for username and email
-                    _buildTextField(
-                      controller: _usernameController,
-                      label: 'Username',
-                      icon: Icons.person,
-                      required: true,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _emailController,
-                      label: 'Email',
-                      icon: Icons.email,
-                      keyboardType: TextInputType.emailAddress,
-                      required: true,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Password field
-                  _buildTextField(
-                    controller: _passwordController,
-                    label: 'Password (coming soon)',
-                    icon: Icons.lock,
-                    obscureText: _obscurePassword,
-                    required: false, // Not required yet
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Auth button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleAuth,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              _isLogin ? 'Sign In' : 'Create Account',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Info text about password
-                  Text(
-                    'Note: Password authentication will be added in a future update. For now, leave password empty.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                      fontStyle: FontStyle.italic,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          decoration: InputDecoration(
+            labelText: 'Password',
+            prefixIcon: const Icon(Icons.lock_outline),
+            suffixIcon: IconButton(
+              icon: Icon(
+                  _obscurePassword ? Icons.visibility : Icons.visibility_off),
+              onPressed: () {
+                setState(() {
+                  _obscurePassword = !_obscurePassword;
+                });
+              },
+            ),
+            border: const OutlineInputBorder(),
+          ),
+          validator: (value) {
+            if (value?.isEmpty ?? true) {
+              return 'Password is required';
+            }
+            if (!_isLogin && value!.length < 6) {
+              return 'Password must be at least 6 characters';
+            }
+            return null;
+          },
+        ),
+        if (!_isLogin) ...[
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _confirmPasswordController,
+            obscureText: _obscureConfirmPassword,
+            decoration: InputDecoration(
+              labelText: 'Confirm Password',
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                icon: Icon(_obscureConfirmPassword
+                    ? Icons.visibility
+                    : Icons.visibility_off),
+                onPressed: () {
+                  setState(() {
+                    _obscureConfirmPassword = !_obscureConfirmPassword;
+                  });
+                },
               ),
+              border: const OutlineInputBorder(),
             ),
+            validator: (value) {
+              if (!_isLogin && value != _passwordController.text) {
+                return 'Passwords do not match';
+              }
+              return null;
+            },
+          ),
+        ],
+        if (_isLogin) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Checkbox(
+                value: _rememberMe,
+                onChanged: (value) {
+                  setState(() {
+                    _rememberMe = value ?? false;
+                  });
+                },
+              ),
+              const Text('Remember me'),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAuthButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _handleAuth,
+        style: ElevatedButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
           ),
         ),
+        child: _isLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(
+                _isLogin ? 'Sign In' : 'Create Account',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
       ),
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    bool obscureText = false,
-    bool required = false,
-    TextInputType? keyboardType,
-    Widget? suffixIcon,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      keyboardType: keyboardType,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        suffixIcon: suffixIcon,
-        border: const OutlineInputBorder(),
-        filled: true,
-        fillColor: Theme.of(context).colorScheme.surface,
-      ),
-      validator: required ? (value) {
-        if (value == null || value.trim().isEmpty) {
-          return 'This field is required';
-        }
-        if (label.contains('Email') && !_isValidEmail(value)) {
-          return 'Please enter a valid email';
-        }
-        if (label == 'Username or Email' && value.isNotEmpty) {
-          // For combined field, check if it's a valid email OR username
-          if (value.contains('@') && !_isValidEmail(value)) {
-            return 'Please enter a valid email or username';
-          }
-        }
-        return null;
-      } : null,
-    );
-  }
-
-  Widget _buildGuestLoginButton(DeviceType deviceType) {
-    return Center(
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: deviceType == DeviceType.mobile ? double.infinity : 400.0,
+  Widget _buildToggleAuthMode() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          _isLogin ? "Don't have an account? " : "Already have an account? ",
         ),
-        child: OutlinedButton.icon(
-          onPressed: _isLoading ? null : _handleGuestLogin,
-          icon: const Icon(Icons.login),
-          label: const Text('Continue as Guest'),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-            side: BorderSide(
-              color: Theme.of(context).primaryColor,
-              width: 2,
-            ),
-          ),
+        TextButton(
+          onPressed: _isLoading
+              ? null
+              : () {
+                  setState(() {
+                    _isLogin = !_isLogin;
+                    _formKey.currentState?.reset();
+                    _emailController.clear();
+                    _passwordController.clear();
+                    _usernameController.clear();
+                    _confirmPasswordController.clear();
+                  });
+                },
+          child: Text(_isLogin ? 'Create Account' : 'Sign In'),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildToggleButton(DeviceType deviceType) {
+  Widget _buildForgotPassword() {
     return TextButton(
-      onPressed: () {
-        setState(() {
-          _isLogin = !_isLogin;
-          // Clear form when switching modes
-          _usernameEmailController.clear();
-          _usernameController.clear();
-          _emailController.clear();
-          _passwordController.clear();
-        });
-      },
-      child: Text(
-        _isLogin 
-            ? "Don't have an account? Create one"
-            : "Already have an account? Sign in",
-        style: TextStyle(
-          fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+      onPressed: _isLoading ? null : _handleForgotPassword,
+      child: const Text('Forgot Password?'),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Row(
+      children: [
+        const Expanded(child: Divider()),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'OR',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    );
+  }
+
+  Widget _buildGuestButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: _isLoading ? null : _handleGuestLogin,
+        icon: const Icon(Icons.person_outline),
+        label: const Text('Continue as Guest'),
+        style: OutlinedButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
         ),
       ),
     );
@@ -351,48 +357,48 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      final userService = FirebaseUserService.instance;
+
       if (_isLogin) {
-        // Login: Use combined username/email field
-        final usernameOrEmail = _usernameEmailController.text.trim();
-        
-        if (usernameOrEmail.isEmpty) {
-          _showError('Please enter your username or email to sign in.');
-          return;
-        }
-        
-        // Determine if input is email or username
-        final isEmail = usernameOrEmail.contains('@');
-        
-        final user = await UserService.instance.loginUser(
-          username: isEmail ? null : usernameOrEmail,
-          email: isEmail ? usernameOrEmail : null,
+        // Sign in
+        final user = await userService.loginUser(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
         );
-        
+
         if (user == null) {
-          _showError('User not found. Please check your credentials or create an account.');
+          _showError('Login failed. Please check your credentials.');
           return;
         }
-        
+
         await _loginSuccess(user);
       } else {
-        // Registration: Use separate username and email fields
-        final username = _usernameController.text.trim();
-        final email = _emailController.text.trim();
-        
-        if (username.isEmpty || email.isEmpty) {
-          _showError('Username and email are required for registration.');
-          return;
-        }
-        
-        final user = await UserService.instance.registerUser(
-          username: username,
-          email: email,
+        // Register
+        final user = await userService.registerUser(
+          username: _usernameController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
         );
-        
+
         await _loginSuccess(user);
+
+        // Show success message for registration
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Account created successfully! Please verify your email.'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
+    } on AuthException catch (e) {
+      _showError(e.message);
     } catch (e) {
-      _showError(e.toString().replaceAll('UserServiceException: ', ''));
+      _showError('An unexpected error occurred. Please try again.');
+      print('Auth error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -408,11 +414,11 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      // Use the explicit guest login method for clarity
-      final user = await UserService.instance.loginAsGuest();
+      final user = await FirebaseUserService.instance.loginAsGuest();
       await _loginSuccess(user);
     } catch (e) {
-      _showError('Failed to sign in as guest. Please try again.');
+      _showError('Failed to continue as guest. Please try again.');
+      print('Guest login error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -422,11 +428,42 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _handleForgotPassword() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      _showError('Please enter your email address first.');
+      return;
+    }
+
+    if (!_isValidEmail(email)) {
+      _showError('Please enter a valid email address.');
+      return;
+    }
+
+    try {
+      await FirebaseUserService.instance.sendPasswordResetEmail(email);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password reset email sent! Check your inbox.'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      _showError('Failed to send reset email. Please try again.');
+      print('Password reset error: $e');
+    }
+  }
+
   Future<void> _loginSuccess(user) async {
     // Update app state with user
     final appState = context.read<AppState>();
     await appState.setCurrentUser(user);
-    
+
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const WelcomePage()),
