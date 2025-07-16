@@ -1,9 +1,10 @@
-// lib/main.dart - Updated authentication wrapper
+// lib/main.dart - Updated authentication wrapper with Firebase progress loading
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart'
+    as firebase_auth; // CHANGED: Added alias
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'models/app_state.dart';
@@ -111,7 +112,8 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
   Future<void> _configureFirebaseForWeb() async {
     try {
       // Set authentication persistence for web
-      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      await firebase_auth.FirebaseAuth.instance.setPersistence(
+          firebase_auth.Persistence.LOCAL); // CHANGED: Added alias
 
       // Enable Firestore offline persistence for web
       await FirebaseFirestore.instance
@@ -287,7 +289,8 @@ class MainApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => QuizController()),
 
         // Firebase auth state stream provider
-        StreamProvider<User?>(
+        StreamProvider<firebase_auth.User?>(
+          // CHANGED: Added alias
           create: (_) => FirebaseUserService.instance.authStateChanges,
           initialData: null,
         ),
@@ -316,7 +319,7 @@ class MainApp extends StatelessWidget {
   }
 }
 
-/// Authentication wrapper with improved error handling
+/// Authentication wrapper with improved error handling and Firebase progress loading
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -461,7 +464,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     // Listen to Firebase auth state changes
-    return Consumer<User?>(
+    return Consumer<firebase_auth.User?>(
+      // CHANGED: Added alias
       builder: (context, firebaseUser, child) {
         return Consumer<AppState>(
           builder: (context, appState, child) {
@@ -536,23 +540,28 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
-  // Replace just this method in your existing AuthWrapper class
-  Future<void> _loadFirebaseUser(User firebaseUser) async {
+  /// ENHANCED: Load Firebase user with better progress integration
+  Future<void> _loadFirebaseUser(firebase_auth.User firebaseUser) async {
+    // CHANGED: Added alias
     try {
       print('Loading Firebase user data for: ${firebaseUser.uid}');
 
+      // Use FirebaseUserService directly for better integration
       final userService = FirebaseUserService.instance;
       final appUser = await userService.getCurrentUser();
 
       if (appUser != null && mounted) {
         print('User data loaded successfully: ${appUser.username}');
+
+        // CRITICAL: Set user in AppState which will trigger proper progress loading
         final appState = context.read<AppState>();
         await appState.setCurrentUser(appUser);
+
+        print('✅ User successfully loaded and progress restored');
       } else {
         print('No app user data found for Firebase user: ${firebaseUser.uid}');
 
         // If user exists in Firebase but not in Firestore, sign them out
-        // This prevents infinite loading
         if (mounted) {
           setState(() {
             _hasError = true;
