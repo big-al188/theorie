@@ -1,4 +1,4 @@
-// lib/models/app_state.dart - Updated with user management and progress tracking
+// lib/models/app_state.dart - Enhanced with offline progress tracking (Full Functionality Preserved)
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
@@ -10,9 +10,12 @@ import 'music/chord.dart';
 import 'music/note.dart';
 import 'user/user.dart';
 import '../services/user_service.dart';
-import '../services/progress_tracking_service.dart';
+import '../services/progress_tracking_service.dart'; // ENHANCED: Now uses enhanced service
 
 /// Central application state management
+///
+/// ENHANCED: Now includes offline-first progress tracking while preserving
+/// all existing fretboard, music theory, and user management functionality
 class AppState extends ChangeNotifier {
   // ===== USER MANAGEMENT =====
   User? _currentUser;
@@ -110,29 +113,72 @@ class AppState extends ChangeNotifier {
   // ===== INITIALIZATION =====
 
   /// Initialize the application state
-  /// FIXED: Now properly initializes progress tracking
+  /// ENHANCED: Now initializes enhanced progress tracking with offline support
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
+      debugPrint('🚀 [AppState] Initializing app state...');
+
+      // ENHANCED: Initialize progress tracking service first (includes offline storage)
+      await ProgressTrackingService.instance.initialize();
+
       // Load current user
       _currentUser = await UserService.instance.getCurrentUser();
 
-      // FIXED: Initialize progress tracking if user exists
+      // ENHANCED: Setup progress tracking for the user
       if (_currentUser != null) {
+        debugPrint('👤 [AppState] User found: ${_currentUser!.username}');
+
+        // Initialize section progress for user
         await ProgressTrackingService.instance.initializeSectionProgress();
 
-        // Listen to progress changes
+        // Listen to progress changes for real-time UI updates
         ProgressTrackingService.instance.addListener(_onProgressChanged);
 
         // Load user preferences
         await loadUserPreferences(_currentUser!.preferences);
+
+        // ENHANCED: Try to sync any pending progress to Firebase
+        // FIXED: Check if user is authenticated (has been saved with Firebase UID)
+        // Since User doesn't have firebaseUid property, we check if user is not default
+        if (!_currentUser!.isDefaultUser) {
+          ProgressTrackingService.instance
+              .forceSyncToFirebase()
+              .then((success) {
+            if (success) {
+              debugPrint('✅ [AppState] Pending progress synced to Firebase');
+            } else {
+              debugPrint('⚠️ [AppState] Could not sync progress to Firebase');
+            }
+          });
+        }
+
+        debugPrint(
+            '✅ [AppState] User initialized with enhanced progress tracking');
+      } else {
+        debugPrint('👤 [AppState] No user found, running in guest mode');
+
+        // ENHANCED: Even without a user, try to load any cached progress from local storage
+        try {
+          final localProgress =
+              await ProgressTrackingService.instance.getCurrentProgress();
+          if (localProgress.completedTopics.isNotEmpty ||
+              localProgress.sectionProgress.isNotEmpty) {
+            debugPrint(
+                '📱 [AppState] Found cached progress without user - preserving locally');
+          }
+        } catch (e) {
+          debugPrint('⚠️ [AppState] Could not check for cached progress: $e');
+        }
       }
 
       _isInitialized = true;
       notifyListeners();
+
+      debugPrint('✅ [AppState] App state initialization complete');
     } catch (e) {
-      debugPrint('Error initializing app state: $e');
+      debugPrint('❌ [AppState] Error initializing app state: $e');
       _isInitialized = true; // Mark as initialized to prevent infinite loops
       notifyListeners();
     }
@@ -141,16 +187,53 @@ class AppState extends ChangeNotifier {
   // ===== USER MANAGEMENT METHODS =====
 
   /// Set current user and load their preferences
-  /// FIXED: Initialize progress when user logs in
+  /// ENHANCED: Setup enhanced progress tracking with offline support
   Future<void> setCurrentUser(User user) async {
+    debugPrint('👤 [AppState] Setting current user: ${user.username}');
+
+    // Remove old progress listener if we had a different user
+    if (_currentUser != null) {
+      ProgressTrackingService.instance.removeListener(_onProgressChanged);
+    }
+
     _currentUser = user;
 
-    // FIXED: Initialize progress for the new user
+    // CRITICAL FIX: Ensure UserService also has this user for ProgressTrackingService
     try {
-      await ProgressTrackingService.instance.initializeSectionProgress();
-      ProgressTrackingService.instance.addListener(_onProgressChanged);
+      await UserService.instance.saveCurrentUser(user);
+      debugPrint('✅ [AppState] User synchronized with UserService');
     } catch (e) {
-      debugPrint('Error initializing progress for user: $e');
+      debugPrint(
+          '⚠️ [AppState] Warning: Could not sync user to UserService: $e');
+    }
+
+    // ENHANCED: Setup progress tracking for the new user
+    try {
+      // Initialize section progress
+      await ProgressTrackingService.instance.initializeSectionProgress();
+
+      // Listen to progress changes for real-time UI updates
+      ProgressTrackingService.instance.addListener(_onProgressChanged);
+
+      // ENHANCED: Immediately attempt sync if user is authenticated
+      if (!user.isDefaultUser) {
+        // Notify the progress service that a user is now authenticated
+        ProgressTrackingService.instance.onUserAuthenticated();
+
+        // Also try the original force sync as backup
+        ProgressTrackingService.instance.forceSyncToFirebase().then((success) {
+          if (success) {
+            debugPrint('✅ [AppState] User progress synced to Firebase');
+          } else {
+            debugPrint('⚠️ [AppState] Could not sync progress to Firebase');
+          }
+        });
+      }
+
+      debugPrint(
+          '✅ [AppState] Enhanced progress tracking setup for user: ${user.username}');
+    } catch (e) {
+      debugPrint('❌ [AppState] Error setting up progress tracking: $e');
     }
 
     await loadUserPreferences(user.preferences);
@@ -159,6 +242,8 @@ class AppState extends ChangeNotifier {
 
   /// Load user preferences into app state
   Future<void> loadUserPreferences(UserPreferences preferences) async {
+    debugPrint('⚙️ [AppState] Loading user preferences');
+
     _themeMode = preferences.themeMode;
     _defaultLayout = preferences.defaultLayout;
     _defaultStringCount = preferences.defaultStringCount;
@@ -199,11 +284,15 @@ class AppState extends ChangeNotifier {
   }
 
   /// Logout current user and optionally switch to guest
-  /// FIXED: Clean up progress listener
+  /// ENHANCED: Clean up enhanced progress listener
   Future<void> logout({bool switchToGuest = true}) async {
     try {
+      debugPrint('👤 [AppState] Logging out user...');
+
       // Clean up progress listener
-      ProgressTrackingService.instance.removeListener(_onProgressChanged);
+      if (_currentUser != null) {
+        ProgressTrackingService.instance.removeListener(_onProgressChanged);
+      }
 
       // Always logout from UserService first
       await UserService.instance.logout();
@@ -212,12 +301,15 @@ class AppState extends ChangeNotifier {
         // Switch to guest user to maintain app functionality
         final guestUser = await UserService.instance.loginAsGuest();
         await setCurrentUser(guestUser);
+        debugPrint('👤 [AppState] Switched to guest user');
       } else {
         // Complete logout - clear user and go to login page
         _currentUser = null;
         notifyListeners();
+        debugPrint('👤 [AppState] Complete logout - cleared user');
       }
     } catch (e) {
+      debugPrint('❌ [AppState] Error during logout: $e');
       // If logout fails, at least clear current user locally
       ProgressTrackingService.instance.removeListener(_onProgressChanged);
       _currentUser = null;
@@ -226,27 +318,111 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// ADDED: Handle progress changes
+  // ===== ENHANCED PROGRESS TRACKING METHODS =====
+
+  /// ENHANCED: Handle progress changes and update UI
   void _onProgressChanged() {
-    // When progress changes, immediately refresh user data from storage
+    debugPrint('📈 [AppState] Progress changed - updating UI');
+
+    // Force UI rebuild when progress changes
+    notifyListeners();
+
+    // Also refresh user progress data
     refreshUserProgress();
   }
 
-  /// ADDED: Force refresh user progress
+  /// ENHANCED: Force refresh user progress (now with offline-first support)
   Future<void> refreshUserProgress() async {
     if (_currentUser != null) {
       try {
-        // FIXED: Actually reload user data from UserService storage
-        final refreshedUser = await UserService.instance.getCurrentUser();
-        if (refreshedUser != null) {
-          _currentUser = refreshedUser;
-          notifyListeners();
-          debugPrint('User progress refreshed successfully');
-        }
+        debugPrint('🔄 [AppState] Refreshing user progress...');
+
+        // ENHANCED: Get fresh progress from enhanced service (offline-first)
+        final freshProgress =
+            await ProgressTrackingService.instance.getCurrentProgress();
+
+        // Update user with fresh progress
+        _currentUser = _currentUser!.copyWith(progress: freshProgress);
+
+        notifyListeners();
+        debugPrint('✅ [AppState] User progress refreshed');
       } catch (e) {
-        debugPrint('Error refreshing user progress: $e');
+        debugPrint('❌ [AppState] Error refreshing user progress: $e');
       }
     }
+  }
+
+  /// ENHANCED: Get current progress status (offline-first)
+  Future<UserProgress> getCurrentProgress() async {
+    try {
+      return await ProgressTrackingService.instance.getCurrentProgress();
+    } catch (e) {
+      debugPrint('❌ [AppState] Error getting current progress: $e');
+      // FIXED: Use UserProgress.empty() instead of const UserProgress()
+      return UserProgress.empty();
+    }
+  }
+
+  /// ENHANCED: Check if topic is completed (offline-first)
+  Future<bool> isTopicCompleted(String topicId) async {
+    try {
+      return await ProgressTrackingService.instance.isTopicCompleted(topicId);
+    } catch (e) {
+      debugPrint('❌ [AppState] Error checking topic completion: $e');
+      return false;
+    }
+  }
+
+  /// ENHANCED: Check if section is completed (offline-first)
+  Future<bool> isSectionCompleted(String sectionId) async {
+    try {
+      return await ProgressTrackingService.instance
+          .isSectionCompleted(sectionId);
+    } catch (e) {
+      debugPrint('❌ [AppState] Error checking section completion: $e');
+      return false;
+    }
+  }
+
+  /// ENHANCED: Get section progress (offline-first)
+  Future<SectionProgress?> getSectionProgress(String sectionId) async {
+    try {
+      return await ProgressTrackingService.instance
+          .getSectionProgress(sectionId);
+    } catch (e) {
+      debugPrint('❌ [AppState] Error getting section progress: $e');
+      return null;
+    }
+  }
+
+  /// ENHANCED: Force sync progress to Firebase
+  Future<bool> syncProgressToFirebase() async {
+    try {
+      debugPrint('☁️ [AppState] Force syncing progress to Firebase...');
+      final success =
+          await ProgressTrackingService.instance.forceSyncToFirebase();
+
+      if (success) {
+        debugPrint('✅ [AppState] Progress synced to Firebase successfully');
+      } else {
+        debugPrint('⚠️ [AppState] Progress sync failed or skipped');
+      }
+
+      return success;
+    } catch (e) {
+      debugPrint('❌ [AppState] Error syncing progress: $e');
+      return false;
+    }
+  }
+
+  /// ENHANCED: Get sync status for debugging
+  Map<String, dynamic> getSyncStatus() {
+    return ProgressTrackingService.instance.getDetailedSyncStatus();
+  }
+
+  /// ADDED: Manual sync debug method for troubleshooting
+  Future<Map<String, dynamic>> debugManualSync() async {
+    return await ProgressTrackingService.instance.manualSyncDebug();
   }
 
   // ===== FRETBOARD DEFAULTS SETTERS =====
@@ -607,7 +783,10 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
-    ProgressTrackingService.instance.removeListener(_onProgressChanged);
+    // Clean up progress listener
+    if (_currentUser != null) {
+      ProgressTrackingService.instance.removeListener(_onProgressChanged);
+    }
     super.dispose();
   }
 }

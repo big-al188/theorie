@@ -17,7 +17,7 @@ class QuizIntegrationService {
   static final UnifiedQuizGenerator _generator = UnifiedQuizGenerator();
 
   /// Navigate to section quiz
-  /// FIXED: Updated to match the calling signature
+  /// ENHANCED: Added proper error handling and cleanup
   static Future<void> navigateToSectionQuiz({
     required BuildContext context,
     required LearningSection section,
@@ -36,7 +36,7 @@ class QuizIntegrationService {
   }
 
   /// Navigate to topic quiz
-  /// FIXED: Updated to match the calling signature and ensure sectionId is passed
+  /// ENHANCED: Added proper error handling and cleanup
   static Future<void> navigateToTopicQuiz({
     required BuildContext context,
     required LearningTopic topic,
@@ -52,20 +52,27 @@ class QuizIntegrationService {
         title: '${topic.title} Quiz',
         description: topic.description,
         topicId: topic.id,
-        sectionId: section.id, // ADDED: Pass section ID for progress tracking
+        sectionId: section.id,
       );
     }
   }
 
   /// Navigate to an implemented section quiz
+  /// ENHANCED: Added comprehensive error handling and safe dialog operations
   static Future<void> _navigateToImplementedSectionQuiz(
     BuildContext context,
     LearningSection section,
     QuizController quizController,
   ) async {
+    bool dialogShown = false;
+
     try {
+      // Check if context is still valid before showing dialog
+      if (!context.mounted) return;
+
       // Show loading indicator
       _showLoadingDialog(context);
+      dialogShown = true;
 
       // Generate quiz session with appropriate configuration
       final config = QuizGenerationConfig(
@@ -81,11 +88,17 @@ class QuizIntegrationService {
         config: config,
       );
 
-      // UPDATED: Start the quiz with section context for progress tracking
+      // Check if context is still valid before starting quiz
+      if (!context.mounted) {
+        _safeCloseDialog(context, dialogShown);
+        return;
+      }
+
+      // Start the quiz with section context for progress tracking
       await quizController.startQuiz(
         questions: session.questions,
         quizType: session.quizType,
-        sectionId: section.id, // FIXED: Pass section ID for progress tracking
+        sectionId: section.id,
         title: session.title,
         description: session.description,
         allowSkip: session.allowSkip,
@@ -94,12 +107,11 @@ class QuizIntegrationService {
         passingScore: session.passingScore,
       );
 
-      // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
+      // Close loading dialog before navigation
+      _safeCloseDialog(context, dialogShown);
+      dialogShown = false;
 
-      // Navigate to quiz page
+      // Navigate to quiz page only if context is still valid
       if (context.mounted) {
         await Navigator.of(context).push(
           MaterialPageRoute(
@@ -111,28 +123,43 @@ class QuizIntegrationService {
         );
       }
     } catch (e) {
-      // Close loading dialog if open
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
+      // Always close loading dialog on error
+      _safeCloseDialog(context, dialogShown);
 
-      // Show error
+      // Show error only if context is still valid
       if (context.mounted) {
         _showErrorDialog(context, 'Failed to start quiz: $e');
+      }
+
+      // Clean up quiz controller state if needed
+      try {
+        if (quizController.hasActiveSession) {
+          await quizController.abandonQuiz();
+        }
+      } catch (cleanupError) {
+        // Log cleanup error but don't rethrow
+        print('Error during quiz cleanup: $cleanupError');
       }
     }
   }
 
   /// Navigate to an implemented topic quiz
+  /// ENHANCED: Added comprehensive error handling and safe dialog operations
   static Future<void> _navigateToImplementedTopicQuiz(
     BuildContext context,
     LearningTopic topic,
     LearningSection section,
     QuizController quizController,
   ) async {
+    bool dialogShown = false;
+
     try {
+      // Check if context is still valid before showing dialog
+      if (!context.mounted) return;
+
       // Show loading indicator
       _showLoadingDialog(context);
+      dialogShown = true;
 
       // Generate quiz session with appropriate configuration
       final questionCount =
@@ -151,12 +178,18 @@ class QuizIntegrationService {
         config: config,
       );
 
-      // UPDATED: Start the quiz with both topic and section context
+      // Check if context is still valid before starting quiz
+      if (!context.mounted) {
+        _safeCloseDialog(context, dialogShown);
+        return;
+      }
+
+      // Start the quiz with both topic and section context
       await quizController.startQuiz(
         questions: session.questions,
         quizType: session.quizType,
-        topicId: topic.id, // FIXED: Pass topic ID for progress tracking
-        sectionId: section.id, // FIXED: Pass section ID for progress tracking
+        topicId: topic.id,
+        sectionId: section.id,
         title: session.title,
         description: session.description,
         allowSkip: session.allowSkip,
@@ -165,12 +198,11 @@ class QuizIntegrationService {
         passingScore: session.passingScore,
       );
 
-      // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
+      // Close loading dialog before navigation
+      _safeCloseDialog(context, dialogShown);
+      dialogShown = false;
 
-      // Navigate to quiz page
+      // Navigate to quiz page only if context is still valid
       if (context.mounted) {
         await Navigator.of(context).push(
           MaterialPageRoute(
@@ -182,14 +214,22 @@ class QuizIntegrationService {
         );
       }
     } catch (e) {
-      // Close loading dialog if open
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
+      // Always close loading dialog on error
+      _safeCloseDialog(context, dialogShown);
 
-      // Show error
+      // Show error only if context is still valid
       if (context.mounted) {
         _showErrorDialog(context, 'Failed to start quiz: $e');
+      }
+
+      // Clean up quiz controller state if needed
+      try {
+        if (quizController.hasActiveSession) {
+          await quizController.abandonQuiz();
+        }
+      } catch (cleanupError) {
+        // Log cleanup error but don't rethrow
+        print('Error during quiz cleanup: $cleanupError');
       }
     }
   }
@@ -200,38 +240,104 @@ class QuizIntegrationService {
     required String title,
     required String description,
     String? topicId,
-    String? sectionId, // ADDED: Support for section ID
+    String? sectionId,
   }) async {
+    if (!context.mounted) return;
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => QuizPlaceholderPage(
           title: title,
           description: description,
           topicId: topicId,
-          sectionId: sectionId, // ADDED: Pass section ID
+          sectionId: sectionId,
         ),
       ),
     );
   }
 
-  /// Shows loading dialog during quiz preparation
+  /// ENHANCED: Safe loading dialog that prevents infinite loading
   static void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
+      builder: (dialogContext) => WillPopScope(
+        onWillPop: () async => false, // Prevent back button dismissal
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Theme.of(context).dialogBackgroundColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(
+                  'Loading Quiz...',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Please wait while we prepare your questions',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey[600],
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  /// Shows error dialog for quiz failures
+  /// ENHANCED: Safe dialog closure that prevents errors
+  static void _safeCloseDialog(BuildContext context, bool dialogShown) {
+    if (!dialogShown || !context.mounted) return;
+
+    try {
+      Navigator.of(context, rootNavigator: true).pop();
+    } catch (e) {
+      // Log error but don't rethrow - dialog might already be closed
+      print('Error closing dialog: $e');
+    }
+  }
+
+  /// ENHANCED: Enhanced error dialog with better UX
   static void _showErrorDialog(BuildContext context, String message) {
+    if (!context.mounted) return;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
+        title: const Row(
+          children: [
+            Icon(Icons.error, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Quiz Error'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Unable to start the quiz:'),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: const TextStyle(fontStyle: FontStyle.italic),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+                'Please try again or contact support if the problem persists.'),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -294,18 +400,19 @@ class QuizIntegrationService {
 }
 
 /// Placeholder quiz page for non-implemented sections
+/// ENHANCED: Improved styling to match current app theme
 class QuizPlaceholderPage extends StatelessWidget {
   final String title;
   final String description;
   final String? topicId;
-  final String? sectionId; // ADDED: Support for section ID
+  final String? sectionId;
 
   const QuizPlaceholderPage({
     super.key,
     required this.title,
     required this.description,
     this.topicId,
-    this.sectionId, // ADDED: Support for section ID
+    this.sectionId,
   });
 
   @override

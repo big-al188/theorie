@@ -5,7 +5,7 @@ import '../models/quiz/quiz_question.dart';
 import '../models/quiz/quiz_session.dart';
 import '../models/quiz/quiz_result.dart';
 import '../models/quiz/multiple_choice_question.dart';
-import '../services/progress_tracking_service.dart'; // ADDED: Only new import
+import '../services/progress_tracking_service.dart'; // SAME: Uses enhanced service
 
 /// Exception thrown when quiz controller operations fail
 class QuizControllerException implements Exception {
@@ -22,7 +22,7 @@ class QuizControllerException implements Exception {
 /// - Session creation and initialization
 /// - Navigation between questions
 /// - Answer submission and validation
-/// - Progress tracking and timing
+/// - Progress tracking and timing (now with enhanced offline support)
 /// - Quiz completion and result generation
 class QuizController extends ChangeNotifier {
   QuizController() : _currentSession = null;
@@ -33,14 +33,22 @@ class QuizController extends ChangeNotifier {
   final Map<String, int> _questionStartTimes = {};
   bool _isProcessingAnswer = false;
 
-  // ADDED: Quiz context for progress tracking
+  // Quiz context for progress tracking
   String? _currentTopicId;
   String? _currentSectionId;
 
+  // ADDED: Disposal state tracking for safety
+  bool _disposed = false;
+  String? _lastError;
+
   // Getters for accessing current state
   QuizSession? get currentSession => _currentSession;
-  bool get hasActiveSession => _currentSession != null;
+  bool get hasActiveSession => _currentSession != null && !_disposed;
   bool get isProcessingAnswer => _isProcessingAnswer;
+
+  // ADDED: Error state getters
+  bool get hasError => _lastError != null;
+  String? get error => _lastError;
 
   // Getters for results display
   bool get isShowingResults => _lastResult != null;
@@ -57,14 +65,21 @@ class QuizController extends ChangeNotifier {
   Duration? get timeRemaining => _currentSession?.timeRemaining;
   bool get isTimeExpired => _currentSession?.isTimeExpired ?? false;
 
+  /// ADDED: Safe notification method that checks disposal state
+  void _safeNotifyListeners() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
   /// Creates and starts a new quiz session
   ///
-  /// ENHANCED: Added context parameters for progress tracking
+  /// ENHANCED: Added context parameters for progress tracking and disposal safety
   Future<void> startQuiz({
     required List<QuizQuestion> questions,
     required QuizType quizType,
-    String? topicId, // ADDED
-    String? sectionId, // ADDED
+    String? topicId,
+    String? sectionId,
     String? title,
     String? description,
     bool allowReview = true,
@@ -72,6 +87,14 @@ class QuizController extends ChangeNotifier {
     int? timeLimit,
     double passingScore = 0.7,
   }) async {
+    // ADDED: Check if controller is disposed
+    if (_disposed) {
+      throw QuizControllerException('Controller has been disposed');
+    }
+
+    // Clear any previous errors
+    _lastError = null;
+
     // Clean up any existing session first
     if (_currentSession != null) {
       try {
@@ -87,7 +110,7 @@ class QuizController extends ChangeNotifier {
     }
 
     try {
-      // ADDED: Store context for progress tracking
+      // Store context for progress tracking
       _currentTopicId = topicId;
       _currentSectionId = sectionId;
 
@@ -119,9 +142,11 @@ class QuizController extends ChangeNotifier {
       // Record start time for first question
       _recordQuestionStartTime();
 
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      _lastError = e.toString();
       _forceCleanup();
+      _safeNotifyListeners();
       throw QuizControllerException('Failed to start quiz: $e');
     }
   }
@@ -134,6 +159,10 @@ class QuizController extends ChangeNotifier {
     dynamic answer, {
     bool autoAdvance = true,
   }) async {
+    if (_disposed) {
+      throw QuizControllerException('Controller has been disposed');
+    }
+
     if (_currentSession == null) {
       throw QuizControllerException('No active quiz session');
     }
@@ -143,7 +172,8 @@ class QuizController extends ChangeNotifier {
     }
 
     _isProcessingAnswer = true;
-    notifyListeners();
+    _lastError = null;
+    _safeNotifyListeners();
 
     try {
       final question = _currentSession!.currentQuestion;
@@ -166,22 +196,23 @@ class QuizController extends ChangeNotifier {
 
       return result;
     } catch (e) {
+      _lastError = 'Failed to submit answer: $e';
       throw QuizControllerException('Failed to submit answer: $e');
     } finally {
       _isProcessingAnswer = false;
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 
   /// Skips the current question
   Future<void> skipQuestion({bool autoAdvance = true}) async {
-    if (_currentSession == null) {
-      throw QuizControllerException('No active quiz session');
-    }
+    if (_disposed || _currentSession == null) return;
 
     if (!_currentSession!.allowSkip) {
       throw QuizControllerException('Skipping is not allowed for this quiz');
     }
+
+    _lastError = null;
 
     try {
       _currentSession!.skipQuestion();
@@ -191,63 +222,67 @@ class QuizController extends ChangeNotifier {
         await nextQuestion();
       }
     } catch (e) {
+      _lastError = 'Failed to skip question: $e';
       throw QuizControllerException('Failed to skip question: $e');
     }
   }
 
   /// Advances to the next question
   Future<void> nextQuestion() async {
-    if (_currentSession == null) {
-      throw QuizControllerException('No active quiz session');
-    }
+    if (_disposed || _currentSession == null) return;
 
     if (!_currentSession!.hasNextQuestion) {
       throw QuizControllerException('No next question available');
     }
 
+    _lastError = null;
+
     try {
       _currentSession!.nextQuestion();
       _recordQuestionStartTime();
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      _lastError = 'Failed to advance to next question: $e';
       throw QuizControllerException('Failed to advance to next question: $e');
     }
   }
 
   /// Goes to the previous question
   Future<void> previousQuestion() async {
-    if (_currentSession == null) {
-      throw QuizControllerException('No active quiz session');
-    }
+    if (_disposed || _currentSession == null) return;
 
     if (!_currentSession!.hasPreviousQuestion) {
       throw QuizControllerException('No previous question available');
     }
 
+    _lastError = null;
+
     try {
       _currentSession!.previousQuestion();
       _recordQuestionStartTime();
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      _lastError = 'Failed to go to previous question: $e';
       throw QuizControllerException('Failed to go to previous question: $e');
     }
   }
 
   /// Navigates to a specific question by index
   Future<void> goToQuestion(int index) async {
-    if (_currentSession == null) {
-      throw QuizControllerException('No active quiz session');
-    }
+    if (_disposed || _currentSession == null) return;
 
     if (index < 0 || index >= _currentSession!.totalQuestions) {
       throw QuizControllerException('Question index out of range: $index');
     }
 
+    _lastError = null;
+
     try {
       _currentSession!.goToQuestion(index);
       _recordQuestionStartTime();
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      _lastError = 'Failed to navigate to question $index: $e';
       throw QuizControllerException(
           'Failed to navigate to question $index: $e');
     }
@@ -255,39 +290,43 @@ class QuizController extends ChangeNotifier {
 
   /// Pauses the current quiz session
   Future<void> pauseQuiz() async {
-    if (_currentSession == null) {
-      throw QuizControllerException('No active quiz session');
-    }
+    if (_disposed || _currentSession == null) return;
+
+    _lastError = null;
 
     try {
       _currentSession!.pause();
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      _lastError = 'Failed to pause quiz: $e';
       throw QuizControllerException('Failed to pause quiz: $e');
     }
   }
 
   /// Resumes a paused quiz session
   Future<void> resumeQuiz() async {
-    if (_currentSession == null) {
-      throw QuizControllerException('No active quiz session');
-    }
+    if (_disposed || _currentSession == null) return;
+
+    _lastError = null;
 
     try {
       _currentSession!.resume();
       _recordQuestionStartTime(); // Reset question timer
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      _lastError = 'Failed to resume quiz: $e';
       throw QuizControllerException('Failed to resume quiz: $e');
     }
   }
 
   /// Completes the quiz and returns the result
-  /// ENHANCED: Added progress tracking integration
+  /// ENHANCED: Now uses enhanced progress tracking with offline support
   Future<QuizResult> completeQuiz() async {
-    if (_currentSession == null) {
+    if (_disposed || _currentSession == null) {
       throw QuizControllerException('No active quiz session');
     }
+
+    _lastError = null;
 
     try {
       final result = _currentSession!.complete();
@@ -295,22 +334,26 @@ class QuizController extends ChangeNotifier {
       // Store the result for display
       _lastResult = QuizResult.fromSession(_currentSession!);
 
-      // ADDED: Record progress based on quiz type
+      // ENHANCED: Record progress using enhanced service with offline support
       await _recordQuizProgress(_lastResult!);
 
       // Clean up session
       await _cleanupCurrentSession();
 
-      notifyListeners();
+      _safeNotifyListeners();
       return _lastResult!;
     } catch (e) {
+      _lastError = 'Failed to complete quiz: $e';
       throw QuizControllerException('Failed to complete quiz: $e');
     }
   }
 
-  /// ADDED: Records quiz progress based on quiz type (topic or section)
+  /// ENHANCED: Records quiz progress using enhanced service with offline-first approach
   Future<void> _recordQuizProgress(QuizResult result) async {
     try {
+      debugPrint(
+          '🎯 [QuizController] Recording quiz progress for ${_currentSession?.quizType}');
+
       if (_currentSession?.quizType == QuizType.section &&
           _currentSectionId != null) {
         // This is a section quiz - use section completion method
@@ -319,7 +362,7 @@ class QuizController extends ChangeNotifier {
           sectionId: _currentSectionId!,
         );
         debugPrint(
-            'Section quiz progress recorded for section: $_currentSectionId');
+            '✅ [QuizController] Section quiz progress recorded for section: $_currentSectionId');
       } else if (_currentSession?.quizType == QuizType.topic &&
           _currentTopicId != null) {
         // This is a topic quiz - use topic completion method
@@ -328,43 +371,49 @@ class QuizController extends ChangeNotifier {
           topicId: _currentTopicId!,
           sectionId: _currentSectionId, // Pass section ID if available
         );
-        debugPrint('Topic quiz progress recorded for topic: $_currentTopicId');
+        debugPrint(
+            '✅ [QuizController] Topic quiz progress recorded for topic: $_currentTopicId');
       } else {
         debugPrint(
-            'No progress tracking context available or unknown quiz type');
+            '⚠️ [QuizController] No progress tracking context available or unknown quiz type');
       }
     } catch (e) {
-      debugPrint('Error recording quiz progress: $e');
+      debugPrint('❌ [QuizController] Error recording quiz progress: $e');
       // Don't rethrow - progress tracking failures shouldn't prevent quiz completion
     }
   }
 
   /// Abandons the current quiz session
   Future<void> abandonQuiz() async {
-    if (_currentSession == null) {
-      return; // Nothing to abandon
-    }
+    if (_disposed) return;
+
+    _lastError = null;
 
     try {
-      // Mark session as abandoned if it has that capability
-      if (_currentSession!.status == QuizSessionStatus.inProgress ||
-          _currentSession!.status == QuizSessionStatus.paused) {
-        // Session was active, so we need to clean it up
-        await _cleanupCurrentSession();
+      // Clear any active session to prevent conflicts
+      if (_currentSession != null) {
+        if (_currentSession!.status == QuizSessionStatus.inProgress ||
+            _currentSession!.status == QuizSessionStatus.paused) {
+          // Session was active, so we need to clean it up
+          await _cleanupCurrentSession();
+        }
       }
     } catch (e) {
       // If cleanup fails, force cleanup
       _forceCleanup();
     }
 
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   /// Clears results and session state for new quiz
   void clearResults() {
+    if (_disposed) return;
+
     _lastResult = null;
-    _currentTopicId = null; // ADDED
-    _currentSectionId = null; // ADDED
+    _lastError = null;
+    _currentTopicId = null;
+    _currentSectionId = null;
 
     // Ensure no active session when clearing results
     if (_currentSession != null) {
@@ -375,7 +424,7 @@ class QuizController extends ChangeNotifier {
       }
     }
 
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   /// Gets quiz statistics for display
@@ -410,7 +459,7 @@ class QuizController extends ChangeNotifier {
     };
   }
 
-  /// ADDED: Method for quiz results widget compatibility
+  /// Method for quiz results widget compatibility
   Map<String, dynamic> getCurrentPerformanceStats() {
     return getQuizStatistics();
   }
@@ -450,8 +499,8 @@ class QuizController extends ChangeNotifier {
     _currentSession = null;
     _questionStartTimes.clear();
     _isProcessingAnswer = false;
-    _currentTopicId = null; // ADDED
-    _currentSectionId = null; // ADDED
+    _currentTopicId = null;
+    _currentSectionId = null;
   }
 
   /// Records the start time for the current question
@@ -477,11 +526,14 @@ class QuizController extends ChangeNotifier {
 
   /// Handles changes to the current session
   void _onSessionChanged() {
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   @override
   void dispose() {
+    // ADDED: Set disposed flag first to prevent any further operations
+    _disposed = true;
+
     // Proper cleanup on disposal
     try {
       if (_currentSession != null) {

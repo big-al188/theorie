@@ -43,11 +43,14 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   Timer? _timer;
   final ScrollController _scrollController = ScrollController();
 
-  // FIXED: Stable UI state management - prevent unnecessary rebuilds
+  // ADDED: Disposal state tracking for safety
+  bool _disposed = false;
+
+  // Stable UI state management - prevent unnecessary rebuilds
   String? _lastFeedback;
   bool _isTransitioning = false;
 
-  // FIXED: Store stable question data to prevent UI jumps
+  // Store stable question data to prevent UI jumps
   String? _currentQuestionId;
   Map<String, dynamic>? _stableAnswerState;
 
@@ -78,7 +81,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     ));
 
     _slideAnimation = Tween<Offset>(
-      // FIXED: Start with no offset for first question
+      // Start with no offset for first question
       begin: Offset.zero,
       end: Offset.zero,
     ).animate(CurvedAnimation(
@@ -86,33 +89,41 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       curve: Curves.easeOutCubic,
     ));
 
-    // FIXED: Start both animations immediately for first question
+    // Start both animations immediately for first question
     _fadeController.forward();
     _slideController.forward();
   }
 
   void _startPeriodicUpdates() {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      // Only update if mounted and not transitioning
-      if (mounted && !_isTransitioning) {
+      // ENHANCED: Check disposed state AND mounted state
+      if (_disposed || !mounted || _isTransitioning) return;
+
+      try {
         final controller = Provider.of<QuizController>(context, listen: false);
         // Only notify listeners if there are actual timing updates to show
         if (controller.hasActiveSession && controller.timeRemaining != null) {
-          setState(() {});
+          // ADDED: Additional safety check before setState
+          if (mounted && !_disposed) {
+            setState(() {});
+          }
         }
+      } catch (e) {
+        // Log error but don't crash
+        print('Error in periodic update: $e');
       }
     });
   }
 
-  // FIXED: Only restart animations during navigation, not answer selection
+  // Only restart animations during navigation, not answer selection
   void _restartTransitionAnimations() {
-    if (!mounted) return;
+    if (_disposed || !mounted) return;
 
     setState(() {
       _isTransitioning = true;
     });
 
-    // FIXED: Set up slide animation for navigation transitions
+    // Set up slide animation for navigation transitions
     _slideAnimation = Tween<Offset>(
       begin: const Offset(1.0, 0.0),
       end: Offset.zero,
@@ -126,7 +137,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
 
     _fadeController.forward();
     _slideController.forward().then((_) {
-      if (mounted) {
+      if (mounted && !_disposed) {
         setState(() {
           _isTransitioning = false;
         });
@@ -134,13 +145,13 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     });
   }
 
-  // FIXED: Stable answer submission that doesn't trigger page rebuilds
+  // Stable answer submission that doesn't trigger page rebuilds
   void _handleAnswerSubmission(
       QuizController controller, dynamic answer) async {
-    if (controller.isProcessingAnswer) return;
+    if (_disposed || controller.isProcessingAnswer) return;
 
     try {
-      // FIXED: Don't trigger state changes during answer submission
+      // Don't trigger state changes during answer submission
       final questionId = controller.currentQuestion?.id;
 
       // Store answer state locally for stable UI
@@ -153,35 +164,37 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       // Submit answer without auto-advance to prevent UI jumping
       await controller.submitAnswer(answer, autoAdvance: false);
 
-      // FIXED: Provide immediate feedback with fade in/out animation
-      if (mounted) {
+      // Provide immediate feedback with fade in/out animation
+      if (mounted && !_disposed) {
         setState(() {
           _lastFeedback = 'Answer submitted';
         });
 
-        // FIXED: Use animation for smoother feedback display
+        // Use animation for smoother feedback display
         await _showFeedbackWithAnimation();
       }
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to submit answer: $e');
+      if (mounted && !_disposed) {
+        _showErrorSnackbar(context, 'Failed to submit answer: $e');
+      }
     }
   }
 
-  // FIXED: Add smooth feedback animation
+  // Add smooth feedback animation
   Future<void> _showFeedbackWithAnimation() async {
     // Keep feedback visible for 2 seconds, then fade out
     await Future.delayed(const Duration(milliseconds: 1800));
 
-    if (mounted) {
+    if (mounted && !_disposed) {
       setState(() {
         _lastFeedback = null;
       });
     }
   }
 
-  // FIXED: Proper navigation handling that triggers animations only when needed
+  // Proper navigation handling that triggers animations only when needed
   void _handleNext(BuildContext context, QuizController controller) async {
-    if (_isTransitioning) return;
+    if (_disposed || _isTransitioning) return;
 
     try {
       if (controller.hasNextQuestion) {
@@ -192,51 +205,61 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
         // Results will show automatically via controller state
       }
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to proceed: $e');
+      if (mounted && !_disposed) {
+        _showErrorSnackbar(context, 'Failed to proceed: $e');
+      }
     }
   }
 
   void _handlePrevious(QuizController controller) async {
-    if (_isTransitioning) return;
+    if (_disposed || _isTransitioning) return;
 
     try {
       await controller.previousQuestion();
       _restartTransitionAnimations(); // Only animate on navigation
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to go to previous question: $e');
+      if (mounted && !_disposed) {
+        _showErrorSnackbar(context, 'Failed to go to previous question: $e');
+      }
     }
   }
 
   void _handleSkip(QuizController controller) async {
-    if (_isTransitioning) return;
+    if (_disposed || _isTransitioning) return;
 
     try {
       await controller.skipQuestion(autoAdvance: true);
-      if (mounted) {
+      if (mounted && !_disposed) {
         setState(() {
           _lastFeedback = 'Question skipped';
         });
 
-        // FIXED: Use same smooth feedback animation
+        // Use same smooth feedback animation
         await _showFeedbackWithAnimation();
       }
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to skip question: $e');
+      if (mounted && !_disposed) {
+        _showErrorSnackbar(context, 'Failed to skip question: $e');
+      }
     }
   }
 
   void _handleRetakeQuiz(BuildContext context, QuizController controller) {
+    if (_disposed) return;
     controller.clearResults();
     Navigator.of(context).pop();
   }
 
   void _handleBackToMenu(BuildContext context, QuizController controller) {
+    if (_disposed) return;
     controller.clearResults();
     Navigator.of(context).pop();
   }
 
-  // FIXED: Proper cleanup when exiting quiz early
+  // Proper cleanup when exiting quiz early
   void _handleBackAction(BuildContext context, QuizController controller) {
+    if (_disposed) return;
+
     if (controller.isShowingResults) {
       _handleBackToMenu(context, controller);
     } else if (controller.hasActiveSession) {
@@ -247,6 +270,8 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   }
 
   void _showAbandonQuizDialog(BuildContext context, QuizController controller) {
+    if (_disposed || !mounted) return;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -261,7 +286,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop(); // Close dialog
-              // FIXED: Properly clean up session before exiting
+              // Properly clean up session before exiting
               _cleanupAndExit(context, controller);
             },
             child: const Text('Exit Quiz'),
@@ -271,7 +296,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
-  // FIXED: Proper cleanup method to prevent session conflicts
+  // Proper cleanup method to prevent session conflicts
   void _cleanupAndExit(BuildContext context, QuizController controller) async {
     try {
       // Clear any active session to prevent conflicts
@@ -280,20 +305,20 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       }
       controller.clearResults();
 
-      if (mounted) {
+      if (mounted && !_disposed) {
         Navigator.of(context).pop();
       }
     } catch (e) {
       // If cleanup fails, force clear and exit
       controller.clearResults();
-      if (mounted) {
+      if (mounted && !_disposed) {
         Navigator.of(context).pop();
       }
     }
   }
 
   void _showErrorSnackbar(BuildContext context, String message) {
-    if (!mounted) return;
+    if (_disposed || !mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -305,6 +330,8 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
   }
 
   void _showTimeExpiredDialog() {
+    if (_disposed || !mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -323,7 +350,9 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              setState(() {}); // Trigger rebuild to show results
+              if (mounted && !_disposed) {
+                setState(() {}); // Trigger rebuild to show results
+              }
             },
             child: const Text('View Results'),
           ),
@@ -334,17 +363,34 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    // ADDED: Set disposed flag first
+    _disposed = true;
+
+    // Clean up resources
     _fadeController.dispose();
     _slideController.dispose();
     _timer?.cancel();
     _scrollController.dispose();
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // ADDED: Early return if disposed
+    if (_disposed) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Consumer<QuizController>(
       builder: (context, quizController, child) {
+        // ADDED: Handle controller errors gracefully
+        if (quizController.hasError) {
+          return _buildErrorScreen(context, quizController);
+        }
+
         return Scaffold(
           appBar:
               widget.showAppBar ? _buildAppBar(context, quizController) : null,
@@ -353,6 +399,61 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
           ),
         );
       },
+    );
+  }
+
+  /// ADDED: Error screen for quiz controller errors
+  Widget _buildErrorScreen(BuildContext context, QuizController controller) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Quiz Error'),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error,
+                size: 80,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Quiz Error',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'An error occurred while loading the quiz. Please try again.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Go Back'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      controller.clearResults();
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('Try Again'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -401,7 +502,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
 
     final session = controller.currentSession!;
 
-    // FIXED: Track question changes for stable UI
+    // Track question changes for stable UI
     final currentQuestionId = session.currentQuestion.id;
     if (_currentQuestionId != currentQuestionId) {
       _currentQuestionId = currentQuestionId;
@@ -411,7 +512,9 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     // Check for time expiration
     if (session.timeLimit != null && controller.isTimeExpired) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showTimeExpiredDialog();
+        if (mounted && !_disposed) {
+          _showTimeExpiredDialog();
+        }
       });
     }
 
@@ -425,7 +528,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
-  // FIXED: Stable quiz content that doesn't rebuild unnecessarily
+  // Stable quiz content that doesn't rebuild unnecessarily
   Widget _buildQuizContent(
     BuildContext context,
     QuizController controller,
@@ -463,7 +566,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
-  // FIXED: Stable header that shows progress without rebuilding content
+  // Stable header that shows progress without rebuilding content
   Widget _buildStableHeader(
       BuildContext context, QuizSession session, DeviceType deviceType) {
     return Container(
@@ -479,22 +582,21 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
       ),
       child: Column(
         children: [
-          // FIXED: Use correct QuizProgressBar parameters
+          // Use correct QuizProgressBar parameters
           QuizProgressBar(
             current: session.currentQuestionIndex + 1,
             total: session.totalQuestions,
             timeRemaining: session.timeRemaining,
           ),
 
-          // FIXED: Always reserve space for feedback to prevent layout shifts
+          // Always reserve space for feedback to prevent layout shifts
           SizedBox(
-            height: 40, // FIXED: Increased height to prevent text cutoff
+            height: 40, // Increased height to prevent text cutoff
             child: _lastFeedback != null
                 ? Container(
                     margin: const EdgeInsets.only(top: 8),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8), // FIXED: Increased padding
+                        horizontal: 16, vertical: 8), // Increased padding
                     decoration: BoxDecoration(
                       color: Theme.of(context).primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(16),
@@ -504,10 +606,10 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
                         _lastFeedback!,
                         style: TextStyle(
                           color: Theme.of(context).primaryColor,
-                          fontSize: 13, // FIXED: Slightly increased font size
+                          fontSize: 13, // Slightly increased font size
                           fontWeight: FontWeight.w500,
                         ),
-                        textAlign: TextAlign.center, // FIXED: Center align text
+                        textAlign: TextAlign.center, // Center align text
                       ),
                     ),
                   )
@@ -543,18 +645,15 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
               ),
         ),
 
-        // REMOVED: Question explanation (this was revealing the answer!)
-        // We only show explanations after the user answers in results
-
         const SizedBox(height: 24),
 
-        // FIXED: Question widget with stable answer state
+        // Question widget with stable answer state
         _buildStableQuestionWidget(context, question, controller),
       ],
     );
   }
 
-  // FIXED: Stable question widget that uses local state for selections
+  // Stable question widget that uses local state for selections
   Widget _buildStableQuestionWidget(
     BuildContext context,
     QuizQuestion question,
@@ -600,7 +699,7 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     );
   }
 
-  // FIXED: Stable footer that only updates for navigation state changes
+  // Stable footer that only updates for navigation state changes
   Widget _buildStableFooter(
     BuildContext context,
     QuizController controller,
