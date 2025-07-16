@@ -4,7 +4,7 @@ import '../learning_content.dart';
 
 class FundamentalsTier {
   static LearningSection getSection() {
-    return LearningSection(
+    return const LearningSection(
       id: 'fundamentals',
       title: 'Fundamentals',
       description: 'Build essential knowledge of music theory',
@@ -16,7 +16,7 @@ class FundamentalsTier {
           title: 'The Musical Alphabet',
           description: 'Learn the seven letters that make all music',
           order: 1,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 The musical alphabet is super simple - it only has 7 letters! These are: A, B, C, D, E, F, and G.
 
@@ -32,25 +32,24 @@ A → B → C → D → E → F → G → A → B → C... and so on!
 • When we sing, we're making these letter sounds with our voice
 
 **The Special Pattern:**
-Not all letters are the same distance apart. Some are like next-door neighbors (very close), and some have a little more space between them. We'll learn more about this in future lessons!
+Not all letters are the same distance apart. Some like B and C are like next-door neighbors (very close), and some have a little more space between them like A and B. We'll learn more about this in future lessons!
 
 **Fun Memory Trick:**
-To remember the musical alphabet, think: "All Big Cats Dance Every Friday Gently" - the first letter of each word gives you A, B, C, D, E, F, G!
+To remember the musical alphabet, it can be helpful to think: "All Big Cats Dance Every Friday Gently" - the first letter of each word gives you A, B, C, D, E, F, G!
 
-Remember: Every song you've ever heard uses only these 7 letters in different combinations. That's the magic of music!
+Remember: Almost all songs on earth use only these 7 letters in different combinations. That's the magic of music!
 ''',
           keyPoints: [
             'Music uses only 7 letters: A, B, C, D, E, F, G',
             'After G, we start again at A',
             'These letters repeat like a pattern',
             'Every instrument uses these same letters',
-            'All music is made from these 7 letters',
+            'All western music is made from these 7 letters',
           ],
           examples: [
-            'Piano white keys are named with these letters',
+            'Piano white keys are all named with the Musical Alphabet',
             '"Twinkle Twinkle" uses letters like C, C, G, G, A, A, G',
             'The "Happy Birthday" song uses different combinations of these letters',
-            'Your name in music letters might be: B-E-A or D-A-D',
           ],
         ),
         LearningTopic(
@@ -58,7 +57,7 @@ Remember: Every song you've ever heard uses only these 7 letters in different co
           title: 'Important Terminology',
           description: 'Essential music words every musician should know',
           order: 2,
-          estimatedReadTime: const Duration(minutes: 6),
+          estimatedReadTime: Duration(minutes: 6),
           content: '''
 Just like any new subject, music has its own special words. Let's learn the most important ones - think of them as your music vocabulary!
 
@@ -121,12 +120,13 @@ Remember: These words are tools to help you talk about and understand music bett
           title: 'The Chromatic Scale',
           description: 'Discover all 12 musical sounds',
           order: 3,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 Remember our 7 musical letters? Well, there's more to the story! Between some of these letters, there are extra notes - like secret steps between stairs!
 
 **The Complete Musical Rainbow**
 The chromatic scale includes ALL 12 different sounds we use in music. It's like having a box of 12 different colored crayons instead of just 7.
+Like the extra crayons, these sharp and flat notes give your musical expression extra color.
 
 **Sharps and Flats**
 The extra notes between our letter notes have special names:
@@ -150,7 +150,8 @@ The extra notes between our letter notes have special names:
 Then it starts over at A again!
 
 **Why Do Some Notes Have Two Names?**
-Some notes can be called by two different names, like how you might be called by your first name or a nickname. A# and B♭ are the same sound, just with different names!
+Some notes can be called by two different names, like how you might be called by your first name or a nickname. 
+A# and B♭ are the same sound, just with different names! Raising A gives you A#, while lowering B gives you B♭.
 
 **The Special Pattern**
 Notice something interesting? There's no sharp/flat between:
@@ -176,8 +177,7 @@ Think of the chromatic scale as having every possible musical color available - 
           ],
           examples: [
             'C to C# is like adding a pinch of salt to food - just a little change',
-            'Sliding up a guitar string makes the pitch go through all 12 notes',
-            'Police sirens use the chromatic scale when they go up and down',
+            'Sliding up a guitar string makes the pitch go through the chromatic notes',
             'The "Jaws" theme uses notes that are very close together',
           ],
         ),
@@ -186,7 +186,7 @@ Think of the chromatic scale as having every possible musical color available - 
           title: 'Introduction to Intervals',
           description: 'Learn about the space between notes',
           order: 4,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 An interval is simply the distance between two notes. It's like measuring how many steps there are between where you are and where you want to go!
 
@@ -206,8 +206,8 @@ Let's start with the simplest intervals:
 When two notes are exactly the same - like two people singing the exact same note. No distance at all!
 
 **Steps**
-• **Half Step**: The smallest distance in music (like C to C#)
-• **Whole Step**: Two half steps (like C to D)
+• **Half Step**: The smallest distance in music (like C to C#) also called a minor second.
+• **Whole Step**: Two half steps (like C to D) also called a major second.
 
 **Simple Intervals**
 • **Third**: Skipping one letter (C to E)
@@ -222,7 +222,7 @@ When two notes are exactly the same - like two people singing the exact same not
 
 **Fun Interval Game:**
 Try singing:
-• "Twinkle, Twinkle" - the first two notes are the same (unison)
+• "Twinkle, Twinkle" - the first two notes "Twin-kle" are the same (unison)
 • "Happy Birthday" - starts with a small jump up
 • "Somewhere Over the Rainbow" - starts with a big jump (octave)!
 
@@ -248,7 +248,7 @@ Remember: Every melody is just a series of intervals - notes jumping different d
           title: 'The Major Scale',
           description: 'The happy-sounding foundation of music',
           order: 5,
-          estimatedReadTime: const Duration(minutes: 6),
+          estimatedReadTime: Duration(minutes: 6),
           content: '''
 The major scale is one of the most important patterns in music. It's the "happy" scale that sounds bright and cheerful - like sunshine in musical form!
 
@@ -258,6 +258,7 @@ A major scale is a specific pattern of 7 notes that sounds complete and satisfyi
 **The Magic Pattern**
 The major scale follows this pattern of whole steps (W) and half steps (H):
 W - W - H - W - W - W - H
+This pattern is the secret to understanding many aspects of music theory, so its a good one to practice and remember!
 
 Let's see this with C major (the easiest major scale):
 • C to D = Whole step
@@ -265,7 +266,7 @@ Let's see this with C major (the easiest major scale):
 • E to F = Half step
 • F to G = Whole step
 • G to A = Whole step
-• A to B = Whole step
+• A to B = Whole step     
 • B to C = Half step
 
 **Do-Re-Mi!**
@@ -312,7 +313,7 @@ Remember: Once you know this pattern, you can build a major scale starting from 
           title: 'The Natural Minor Scale',
           description: 'The mysterious and emotional scale',
           order: 6,
-          estimatedReadTime: const Duration(minutes: 6),
+          estimatedReadTime: Duration(minutes: 6),
           content: '''
 If the major scale is like a sunny day, the natural minor scale is like a cloudy evening - not necessarily sad, but more serious and mysterious!
 
@@ -322,6 +323,7 @@ The natural minor scale is another pattern of 7 notes, but with a different reci
 **The Minor Pattern**
 The natural minor scale follows this pattern:
 W - H - W - W - H - W - W
+This is the same as the major scale pattern but starting from the 6th note instead!
 
 Let's see A minor (the easiest minor scale):
 • A to B = Whole step
@@ -333,7 +335,7 @@ Let's see A minor (the easiest minor scale):
 • G to A = Whole step
 
 **Major vs. Minor - What's the Difference?**
-The pattern is different! This small change makes a big difference in how the scale sounds and feels. It's like the difference between a smile and a thoughtful expression.
+The start of the pattern is different! This small change makes a big difference in how the scale sounds and feels. It's like the difference between a smile and a thoughtful expression.
 
 **Minor Scale Feelings:**
 • Can sound sad, but also mysterious or cool
@@ -358,7 +360,7 @@ Remember: Minor doesn't always mean sad - it can mean thoughtful, mysterious, co
           keyPoints: [
             'Minor scale = more serious or mysterious sound',
             'Uses pattern: W-H-W-W-H-W-W',
-            'Different pattern than major scale',
+            'Different start than major scale',
             'Can express many emotions',
             'Every major has a relative minor',
             'Common in rock, blues, and film music',
@@ -376,7 +378,7 @@ Remember: Minor doesn't always mean sad - it can mean thoughtful, mysterious, co
           title: 'Rhythm',
           description: 'The heartbeat and movement of music',
           order: 7,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 Rhythm is what makes music move and groove! It's the pattern of long and short sounds that makes you want to tap your feet, clap your hands, or dance.
 
@@ -448,7 +450,7 @@ Remember: Rhythm is what makes music come alive. It's the difference between jus
           title: 'Harmony',
           description: 'When notes work together to create magic',
           order: 8,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 Harmony is what happens when different notes sound at the same time and create something beautiful together. It's like musical teamwork!
 
@@ -514,7 +516,7 @@ Remember: Harmony is like friendship in music - different notes coming together 
           title: 'Melody',
           description: 'The tune that gets stuck in your head',
           order: 9,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 Melody is the part of a song you sing in the shower, whistle while you work, or can't get out of your head. It's the musical line that tells the story!
 
@@ -589,7 +591,7 @@ Remember: Melody is what makes each song unique. It's the musical fingerprint th
           title: 'Meter',
           description: 'How music organizes its beats',
           order: 10,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 Meter is how we group beats in music to create patterns. It's like organizing words into sentences - it helps music make sense and gives it structure!
 
@@ -665,7 +667,7 @@ Remember: Meter is the framework that holds music together. It's why you can dan
           title: 'Time Signatures',
           description: 'The numbers that tell us how to count music',
           order: 11,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 Time signatures are like a map for reading music. Those two numbers you see at the beginning of sheet music? They tell musicians how to count and feel the beat!
 
@@ -739,7 +741,7 @@ Remember: Time signatures are just a way to organize music. Once you feel the pa
           title: 'What are Chords?',
           description: 'Musical building blocks made of multiple notes',
           order: 12,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 Chords are what happen when we play several notes at the same time to create a rich, full sound. They're like musical sandwiches - multiple ingredients layered together to create something delicious!
 
@@ -815,7 +817,7 @@ Remember: Chords are like colors for a painter. Once you know how to use them, y
           title: 'Introduction to Triads',
           description: 'The simplest and most important chords',
           order: 13,
-          estimatedReadTime: const Duration(minutes: 5),
+          estimatedReadTime: Duration(minutes: 5),
           content: '''
 Triads are the simplest type of chord - just three notes that sound great together! They're called "triads" because "tri" means three. These are the building blocks for almost all other chords.
 
@@ -893,7 +895,7 @@ Remember: Master triads and you've mastered the foundation of all harmony. They'
           title: 'Open Chords',
           description: 'The first chords every guitarist learns',
           order: 14,
-          estimatedReadTime: const Duration(minutes: 6),
+          estimatedReadTime: Duration(minutes: 6),
           content: '''
 Open chords are the friendly, easy-to-play chords that use open strings on the guitar. They're called "open" because some strings ring out without being pressed down - they're open and free!
 
