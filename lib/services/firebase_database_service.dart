@@ -19,6 +19,9 @@ class FirebaseDatabaseService {
   CollectionReference get _usersCollection =>
       _firestore.collection(FirebaseCollections.users);
 
+  CollectionReference get _usernamesCollection =>
+      _firestore.collection('usernames');
+
   CollectionReference get _userProgressCollection =>
       _firestore.collection(FirebaseCollections.userProgress);
 
@@ -33,12 +36,23 @@ class FirebaseDatabaseService {
   /// Create a new user document
   Future<void> createUser(String userId, app_user.User user) async {
     try {
+      final batch = _firestore.batch();
+
+      // Create user document
       final userData = user.toJson();
       userData['firebaseUid'] = userId;
       userData['createdAt'] = FieldValue.serverTimestamp();
       userData['lastLoginAt'] = FieldValue.serverTimestamp();
 
-      await _usersCollection.doc(userId).set(userData);
+      batch.set(_usersCollection.doc(userId), userData);
+
+      // Create username document for secure validation
+      batch.set(_usernamesCollection.doc(user.username), {
+        'userId': userId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
 
       // Also create initial user preferences and progress documents
       await _createInitialUserData(userId, user);
@@ -77,10 +91,29 @@ class FirebaseDatabaseService {
   /// Update user data
   Future<void> updateUser(String userId, app_user.User user) async {
     try {
+      final batch = _firestore.batch();
+
+      // Get existing user to check if username changed
+      final existingUser = await getUser(userId);
+
+      // Update user document
       final userData = user.toJson();
       userData['lastLoginAt'] = FieldValue.serverTimestamp();
+      batch.update(_usersCollection.doc(userId), userData);
 
-      await _usersCollection.doc(userId).update(userData);
+      // Handle username change
+      if (existingUser != null && existingUser.username != user.username) {
+        // Delete old username document
+        batch.delete(_usernamesCollection.doc(existingUser.username));
+
+        // Create new username document
+        batch.set(_usernamesCollection.doc(user.username), {
+          'userId': userId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
     } catch (e) {
       throw DatabaseException('Failed to update user: ${e.toString()}');
     }
@@ -91,8 +124,16 @@ class FirebaseDatabaseService {
     try {
       final batch = _firestore.batch();
 
+      // Get user first to get username for deletion
+      final user = await getUser(userId);
+
       // Delete user document
       batch.delete(_usersCollection.doc(userId));
+
+      // Delete username document
+      if (user != null) {
+        batch.delete(_usernamesCollection.doc(user.username));
+      }
 
       // Delete user preferences
       batch.delete(_userPreferencesCollection.doc(userId));
@@ -119,15 +160,11 @@ class FirebaseDatabaseService {
     }
   }
 
-  /// Check if username is already taken
+  /// Check if username is already taken (SECURE VERSION)
   Future<bool> isUsernameTaken(String username) async {
     try {
-      final query = await _usersCollection
-          .where('username', isEqualTo: username)
-          .limit(1)
-          .get();
-
-      return query.docs.isNotEmpty;
+      final doc = await _usernamesCollection.doc(username).get();
+      return doc.exists;
     } catch (e) {
       throw DatabaseException('Failed to check username: ${e.toString()}');
     }
@@ -388,6 +425,48 @@ class FirebaseDatabaseService {
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Username Management Utilities (for admin/debugging)
+
+  /// Get userId from username (for admin purposes)
+  Future<String?> getUserIdFromUsername(String username) async {
+    try {
+      final doc = await _usernamesCollection.doc(username).get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        return data['userId'] as String?;
+      }
+      return null;
+    } catch (e) {
+      throw DatabaseException(
+          'Failed to get userId from username: ${e.toString()}');
+    }
+  }
+
+  /// Clean up orphaned username documents (for maintenance)
+  Future<void> cleanupOrphanedUsernames() async {
+    try {
+      final usernamesSnapshot = await _usernamesCollection.get();
+      final batch = _firestore.batch();
+
+      for (final usernameDoc in usernamesSnapshot.docs) {
+        final data = usernameDoc.data() as Map<String, dynamic>;
+        final userId = data['userId'] as String;
+
+        // Check if user still exists
+        final userDoc = await _usersCollection.doc(userId).get();
+        if (!userDoc.exists) {
+          // Delete orphaned username document
+          batch.delete(usernameDoc.reference);
+        }
+      }
+
+      await batch.commit();
+    } catch (e) {
+      throw DatabaseException(
+          'Failed to cleanup orphaned usernames: ${e.toString()}');
     }
   }
 }
