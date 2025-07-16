@@ -63,36 +63,50 @@ class FirebaseAuthService {
             'Username must be 3-20 characters and contain only letters, numbers, and underscores');
       }
 
-      // Check if username is already taken
+      // Step 1: Sign in anonymously to check username availability
+      firebase_auth.UserCredential? anonymousCredential;
+      try {
+        anonymousCredential = await _auth.signInAnonymously();
+      } catch (e) {
+        throw AuthException('Failed to initialize registration process');
+      }
+
+      // Step 2: Check if username is already taken (now authenticated)
       final isUsernameTaken = await _dbService.isUsernameTaken(username);
       if (isUsernameTaken) {
+        // Clean up anonymous user
+        await anonymousCredential.user?.delete();
         throw AuthException('Username is already taken');
       }
 
-      // Create Firebase user
-      final credential = await _auth.createUserWithEmailAndPassword(
+      // Step 3: Create email/password credential
+      final emailCredential = firebase_auth.EmailAuthProvider.credential(
         email: email.trim().toLowerCase(),
         password: password,
       );
 
-      if (credential.user == null) {
+      // Step 4: Link the anonymous account to email/password
+      final linkedCredential =
+          await anonymousCredential.user!.linkWithCredential(emailCredential);
+
+      if (linkedCredential.user == null) {
         throw AuthException('Failed to create user account');
       }
 
-      // Update Firebase user profile
-      await credential.user!.updateDisplayName(username);
+      // Step 5: Update Firebase user profile
+      await linkedCredential.user!.updateDisplayName(username);
 
-      // Create app user
+      // Step 6: Create app user
       final appUser = app_user.User.fromRegistration(
         username: username,
         email: email.trim().toLowerCase(),
       );
 
-      // Save user to Firestore with Firebase UID as document ID
-      await _dbService.createUser(credential.user!.uid, appUser);
+      // Step 7: Save user to Firestore with Firebase UID as document ID
+      await _dbService.createUser(linkedCredential.user!.uid, appUser);
 
-      // Send email verification
-      await credential.user!.sendEmailVerification();
+      // Step 8: Send email verification
+      await linkedCredential.user!.sendEmailVerification();
 
       return appUser.copyWith();
     } on firebase_auth.FirebaseAuthException catch (e) {
@@ -143,7 +157,7 @@ class FirebaseAuthService {
     }
   }
 
-  /// Sign out
+  /// Sign out current user
   Future<void> signOut() async {
     try {
       await _auth.signOut();
@@ -184,13 +198,14 @@ class FirebaseAuthService {
       }
 
       await user.sendEmailVerification();
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      throw AuthException(_getAuthErrorMessage(e));
     } catch (e) {
-      if (e is AuthException) rethrow;
       throw AuthException('Failed to send verification email: ${e.toString()}');
     }
   }
 
-  /// Check if email is verified
+  /// Check if current user's email is verified
   bool get isEmailVerified => currentFirebaseUser?.emailVerified ?? false;
 
   /// Reload user to check verification status
@@ -271,6 +286,10 @@ class FirebaseAuthService {
         return 'This sign-in method is not enabled';
       case 'requires-recent-login':
         return 'Please sign out and sign in again to complete this action';
+      case 'credential-already-in-use':
+        return 'An account already exists with this email';
+      case 'provider-already-linked':
+        return 'This account is already linked';
       default:
         return e.message ?? 'Authentication failed';
     }
