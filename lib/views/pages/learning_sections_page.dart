@@ -7,63 +7,41 @@ import '../../models/user/user.dart';
 import '../../constants/ui_constants.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../services/quiz_integration_service.dart';
-import '../../services/progress_tracking_service.dart'; // ADDED: For progress initialization
+import '../../services/progress_tracking_service.dart';
 import '../widgets/common/app_bar.dart';
 import 'learning_topics_page.dart';
 
 class LearningSectionsPage extends StatefulWidget {
-  // CHANGED: StatefulWidget for progress initialization
   const LearningSectionsPage({super.key});
 
   @override
-  State<LearningSectionsPage> createState() =>
-      _LearningSectionsPageState(); // ADDED: State class
+  State<LearningSectionsPage> createState() => _LearningSectionsPageState();
 }
 
 class _LearningSectionsPageState extends State<LearningSectionsPage> {
-  // ADDED: State implementation
   @override
   void initState() {
     super.initState();
-    // ADDED: Initialize progress tracking when page loads
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ProgressTrackingService.instance.initializeSectionProgress();
-    });
 
-    // ADDED: Listen to progress changes for real-time updates
-    ProgressTrackingService.instance.addListener(_onProgressChanged);
+    // FIXED: Only listen to progress changes, don't trigger initialization
+    // The AppState should handle initialization, not individual pages
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Just listen to progress changes for real-time updates
+      ProgressTrackingService.instance.addListener(_onProgressChanged);
+
+      // Trigger a refresh to ensure UI is up to date
+      _refreshProgress();
+    });
   }
 
   @override
   void dispose() {
-    // ADDED: Clean up progress listener
+    // Clean up progress listener
     ProgressTrackingService.instance.removeListener(_onProgressChanged);
     super.dispose();
   }
 
-  /// Convert LearningLevel enum to level number (1-8)
-  int _getLevelNumber(LearningLevel level) {
-    switch (level) {
-      case LearningLevel.introduction:
-        return 1;
-      case LearningLevel.fundamentals:
-        return 2;
-      case LearningLevel.essentials:
-        return 3;
-      case LearningLevel.intermediate:
-        return 4;
-      case LearningLevel.advanced:
-        return 5;
-      case LearningLevel.professional:
-        return 6;
-      case LearningLevel.master:
-        return 7;
-      case LearningLevel.virtuoso:
-        return 8;
-    }
-  }
-
-  /// ADDED: Handle progress changes and refresh UI
+  /// Handle progress changes and refresh UI
   void _onProgressChanged() {
     if (mounted) {
       // Force AppState to refresh user data
@@ -75,6 +53,16 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
           });
         }
       });
+    }
+  }
+
+  /// ADDED: Refresh progress without reinitializing
+  Future<void> _refreshProgress() async {
+    try {
+      final appState = context.read<AppState>();
+      await appState.refreshUserProgress();
+    } catch (e) {
+      debugPrint('❌ [LearningSectionsPage] Error refreshing progress: $e');
     }
   }
 
@@ -494,6 +482,28 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
         ),
       ],
     );
+  }
+
+  /// Convert LearningLevel enum to level number (1-8)
+  int _getLevelNumber(LearningLevel level) {
+    switch (level) {
+      case LearningLevel.introduction:
+        return 1;
+      case LearningLevel.fundamentals:
+        return 2;
+      case LearningLevel.essentials:
+        return 3;
+      case LearningLevel.intermediate:
+        return 4;
+      case LearningLevel.advanced:
+        return 5;
+      case LearningLevel.professional:
+        return 6;
+      case LearningLevel.master:
+        return 7;
+      case LearningLevel.virtuoso:
+        return 8;
+    }
   }
 
   Color _getLevelColor(LearningLevel level) {

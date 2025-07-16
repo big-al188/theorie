@@ -21,6 +21,7 @@ import 'user_service.dart';
 /// - ENHANCED: Offline-first storage with background Firebase sync
 /// - ENHANCED: PWA support with persistent local storage
 /// - ENHANCED: Comprehensive debug logging
+/// - FIXED: Proper existing progress checking to prevent data loss
 class ProgressTrackingService extends ChangeNotifier {
   static final ProgressTrackingService _instance =
       ProgressTrackingService._internal();
@@ -239,40 +240,38 @@ class ProgressTrackingService extends ChangeNotifier {
     }
   }
 
-  /// Initialize section progress data for current user
-  ///
-  /// ENHANCED: Now works with offline storage
+  /// CRITICAL FIX: Initialize section progress data for current user
+  /// Now properly checks for existing progress before initialization
   Future<void> initializeSectionProgress() async {
     await initialize(); // Ensure initialized
 
     try {
-      // Try to get current user safely with better debugging
+      // Try to get current user safely
       final currentUser = await _getCurrentUserSafely();
       if (currentUser == null) {
         debugPrint('⏳ [ProgressTracker] Initialize skipped - no current user');
-        debugPrint('🔍 [ProgressTracker] Debugging user state...');
-
-        // Try alternative ways to get user for debugging
-        try {
-          final userServiceUser = await UserService.instance.getCurrentUser();
-          debugPrint(
-              '🔍 [ProgressTracker] UserService.getCurrentUser: ${userServiceUser?.username ?? "null"}');
-        } catch (e) {
-          debugPrint(
-              '❌ [ProgressTracker] UserService.getCurrentUser error: $e');
-        }
-
         return;
       }
 
       debugPrint(
           '👤 [ProgressTracker] Initializing progress for user: ${currentUser.username}');
 
+      // CRITICAL FIX: Check for existing progress first (offline-first approach)
+      var currentProgress = await getCurrentProgress();
+
+      // If we have existing section progress, skip initialization
+      if (currentProgress.sectionProgress.isNotEmpty) {
+        debugPrint('✅ [ProgressTracker] Section progress already initialized');
+        return;
+      }
+
+      debugPrint(
+          '🔧 [ProgressTracker] No existing progress found, initializing sections...');
+
       final sections = LearningContentRepository.getAllSections();
-      var currentProgress = currentUser.progress;
       bool hasUpdates = false;
 
-      // Ensure all sections have progress data
+      // Only initialize sections that don't have progress data
       for (final section in sections) {
         if (!currentProgress.sectionProgress.containsKey(section.id)) {
           final newSectionProgress = Map<String, SectionProgress>.from(
@@ -307,6 +306,8 @@ class ProgressTrackingService extends ChangeNotifier {
 
       // Save if there were any updates
       if (hasUpdates) {
+        // Save to local storage first, then update UserService
+        await _saveLocalProgress(currentProgress);
         await UserService.instance.updateUserProgress(currentProgress);
         notifyListeners();
         debugPrint(
@@ -389,6 +390,17 @@ class ProgressTrackingService extends ChangeNotifier {
       }
 
       return UserProgress.empty();
+    }
+  }
+
+  /// Save progress to local storage
+  Future<void> _saveLocalProgress(UserProgress progress) async {
+    try {
+      await _prefs?.setString(_progressKey, jsonEncode(progress.toJson()));
+      _cachedProgress = progress;
+      debugPrint('💾 [ProgressTracker] Progress saved to local storage');
+    } catch (e) {
+      debugPrint('❌ [ProgressTracker] Error saving local progress: $e');
     }
   }
 
@@ -664,6 +676,8 @@ class ProgressTrackingService extends ChangeNotifier {
         _pendingSyncQueue.addAll(queueData.cast<Map<String, dynamic>>());
         debugPrint(
             '📥 [ProgressTracker] Loaded ${_pendingSyncQueue.length} items from sync queue');
+      } else {
+        debugPrint('📥 [ProgressTracker] Loaded 0 items from sync queue');
       }
     } catch (e) {
       debugPrint('❌ [ProgressTracker] Error loading sync queue: $e');

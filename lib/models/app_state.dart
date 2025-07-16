@@ -16,6 +16,7 @@ import '../services/progress_tracking_service.dart'; // ENHANCED: Now uses enhan
 ///
 /// ENHANCED: Now includes offline-first progress tracking while preserving
 /// all existing fretboard, music theory, and user management functionality
+/// FIXED: Proper existing progress checking to prevent data loss
 class AppState extends ChangeNotifier {
   // ===== USER MANAGEMENT =====
   User? _currentUser;
@@ -112,26 +113,34 @@ class AppState extends ChangeNotifier {
 
   // ===== INITIALIZATION =====
 
-  /// Initialize the application state
-  /// ENHANCED: Now initializes enhanced progress tracking with offline support
+  /// CRITICAL FIX: Initialize the application state with proper progress loading
+  /// Now properly checks for existing progress before initialization
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
       debugPrint('🚀 [AppState] Initializing app state...');
 
-      // ENHANCED: Initialize progress tracking service first (includes offline storage)
+      // Initialize progress tracking service first (includes offline storage)
       await ProgressTrackingService.instance.initialize();
 
       // Load current user
       _currentUser = await UserService.instance.getCurrentUser();
 
-      // ENHANCED: Setup progress tracking for the user
       if (_currentUser != null) {
         debugPrint('👤 [AppState] User found: ${_currentUser!.username}');
 
-        // Initialize section progress for user
-        await ProgressTrackingService.instance.initializeSectionProgress();
+        // CRITICAL FIX: Only initialize section progress if we don't have existing progress
+        final existingProgress =
+            await ProgressTrackingService.instance.getCurrentProgress();
+        if (existingProgress.sectionProgress.isEmpty) {
+          debugPrint(
+              '🔧 [AppState] No existing progress found, initializing sections...');
+          await ProgressTrackingService.instance.initializeSectionProgress();
+        } else {
+          debugPrint(
+              '✅ [AppState] Found existing progress, skipping section initialization');
+        }
 
         // Listen to progress changes for real-time UI updates
         ProgressTrackingService.instance.addListener(_onProgressChanged);
@@ -139,9 +148,7 @@ class AppState extends ChangeNotifier {
         // Load user preferences
         await loadUserPreferences(_currentUser!.preferences);
 
-        // ENHANCED: Try to sync any pending progress to Firebase
-        // FIXED: Check if user is authenticated (has been saved with Firebase UID)
-        // Since User doesn't have firebaseUid property, we check if user is not default
+        // Try to sync any pending progress to Firebase
         if (!_currentUser!.isDefaultUser) {
           ProgressTrackingService.instance
               .forceSyncToFirebase()
@@ -159,7 +166,7 @@ class AppState extends ChangeNotifier {
       } else {
         debugPrint('👤 [AppState] No user found, running in guest mode');
 
-        // ENHANCED: Even without a user, try to load any cached progress from local storage
+        // Even without a user, try to load any cached progress from local storage
         try {
           final localProgress =
               await ProgressTrackingService.instance.getCurrentProgress();
@@ -186,8 +193,8 @@ class AppState extends ChangeNotifier {
 
   // ===== USER MANAGEMENT METHODS =====
 
-  /// Set current user and load their preferences
-  /// ENHANCED: Setup enhanced progress tracking with offline support
+  /// CRITICAL FIX: Set current user with improved progress handling
+  /// Now properly checks for existing progress before initialization
   Future<void> setCurrentUser(User user) async {
     debugPrint('👤 [AppState] Setting current user: ${user.username}');
 
@@ -198,7 +205,7 @@ class AppState extends ChangeNotifier {
 
     _currentUser = user;
 
-    // CRITICAL FIX: Ensure UserService also has this user for ProgressTrackingService
+    // Ensure UserService also has this user for ProgressTrackingService
     try {
       await UserService.instance.saveCurrentUser(user);
       debugPrint('✅ [AppState] User synchronized with UserService');
@@ -207,15 +214,23 @@ class AppState extends ChangeNotifier {
           '⚠️ [AppState] Warning: Could not sync user to UserService: $e');
     }
 
-    // ENHANCED: Setup progress tracking for the new user
+    // CRITICAL FIX: Only initialize sections if we don't have existing progress
     try {
-      // Initialize section progress
-      await ProgressTrackingService.instance.initializeSectionProgress();
+      final existingProgress =
+          await ProgressTrackingService.instance.getCurrentProgress();
+      if (existingProgress.sectionProgress.isEmpty) {
+        debugPrint(
+            '🔧 [AppState] No existing progress for user, initializing sections...');
+        await ProgressTrackingService.instance.initializeSectionProgress();
+      } else {
+        debugPrint(
+            '✅ [AppState] Found existing progress for user, skipping section initialization');
+      }
 
       // Listen to progress changes for real-time UI updates
       ProgressTrackingService.instance.addListener(_onProgressChanged);
 
-      // ENHANCED: Immediately attempt sync if user is authenticated
+      // Attempt sync if user is authenticated
       if (!user.isDefaultUser) {
         // Notify the progress service that a user is now authenticated
         ProgressTrackingService.instance.onUserAuthenticated();
@@ -236,7 +251,10 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ [AppState] Error setting up progress tracking: $e');
     }
 
+    // Load user preferences
+    debugPrint('⚙️ [AppState] Loading user preferences');
     await loadUserPreferences(user.preferences);
+
     notifyListeners();
   }
 
@@ -337,7 +355,7 @@ class AppState extends ChangeNotifier {
       try {
         debugPrint('🔄 [AppState] Refreshing user progress...');
 
-        // ENHANCED: Get fresh progress from enhanced service (offline-first)
+        // Get fresh progress from enhanced service (offline-first)
         final freshProgress =
             await ProgressTrackingService.instance.getCurrentProgress();
 
@@ -358,7 +376,6 @@ class AppState extends ChangeNotifier {
       return await ProgressTrackingService.instance.getCurrentProgress();
     } catch (e) {
       debugPrint('❌ [AppState] Error getting current progress: $e');
-      // FIXED: Use UserProgress.empty() instead of const UserProgress()
       return UserProgress.empty();
     }
   }
