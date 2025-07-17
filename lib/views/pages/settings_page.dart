@@ -46,29 +46,32 @@ class SettingsPage extends StatelessWidget {
   void _showResetDialog(BuildContext context, AppState state) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset Settings'),
-        content: const Text(
-          'This will reset all settings to their default values. Continue?',
+      builder: (dialogContext) => ChangeNotifierProvider.value(
+        value: state,
+        child: AlertDialog(
+          title: const Text('Reset Settings'),
+          content: const Text(
+            'This will reset all settings to their default values. Continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                state.resetToDefaults();
+                Navigator.of(dialogContext).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Settings reset to defaults'),
+                  ),
+                );
+              },
+              child: const Text('Reset'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              state.resetToDefaults();
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Settings reset to defaults'),
-                ),
-              );
-            },
-            child: const Text('Reset'),
-          ),
-        ],
       ),
     );
   }
