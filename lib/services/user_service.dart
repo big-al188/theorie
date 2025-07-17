@@ -2,13 +2,19 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user/user.dart';
+import '../models/user/user_preferences.dart';  // ADDED: Import separated models
+import '../models/user/user_progress.dart';     // ADDED: Import separated models
 
 /// Service for managing user data and persistence
+/// UPDATED: Now works with separated user models
 class UserService {
   static const String _currentUserKey = 'current_user';
   static const String _usersKey = 'all_users';
   static const String _lastLoginKey = 'last_login_user_id';
   static const String _defaultUserKey = 'default_user_persistent';
+  // ADDED: Keys for separated data
+  static const String _userPreferencesKey = 'user_preferences_';
+  static const String _userProgressKey = 'user_progress_';
 
   static UserService? _instance;
   static UserService get instance => _instance ??= UserService._();
@@ -24,22 +30,20 @@ class UserService {
 
   /// Ensure a persistent default user exists
   Future<void> _ensureDefaultUserExists() async {
-    // Don't call initialize() here to avoid recursion
-    // _prefs should already be initialized when this is called
-    
     final existingDefaultUser = _prefs!.getString(_defaultUserKey);
     if (existingDefaultUser == null) {
       // Create and save a persistent default user
       final defaultUser = User.defaultUser();
       await _prefs!.setString(_defaultUserKey, jsonEncode(defaultUser.toJson()));
+      
+      // Also save default preferences and progress separately
+      await _saveUserPreferences(defaultUser.id, UserPreferences.defaults());
+      await _saveUserProgress(defaultUser.id, UserProgress.empty());
     }
   }
 
   /// Get the persistent default user
   Future<User> _getDefaultUser() async {
-    // Don't call initialize() here to avoid recursion
-    // _prefs should already be initialized when this is called
-    
     final defaultUserJson = _prefs!.getString(_defaultUserKey);
     if (defaultUserJson != null) {
       try {
@@ -49,6 +53,8 @@ class UserService {
         // If corrupted, create a new default user
         final defaultUser = User.defaultUser();
         await _prefs!.setString(_defaultUserKey, jsonEncode(defaultUser.toJson()));
+        await _saveUserPreferences(defaultUser.id, UserPreferences.defaults());
+        await _saveUserProgress(defaultUser.id, UserProgress.empty());
         return defaultUser;
       }
     }
@@ -56,6 +62,8 @@ class UserService {
     // Fallback - create new default user
     final defaultUser = User.defaultUser();
     await _prefs!.setString(_defaultUserKey, jsonEncode(defaultUser.toJson()));
+    await _saveUserPreferences(defaultUser.id, UserPreferences.defaults());
+    await _saveUserProgress(defaultUser.id, UserProgress.empty());
     return defaultUser;
   }
 
@@ -126,6 +134,10 @@ class UserService {
     // Save as current user
     await saveCurrentUser(newUser);
     
+    // Initialize preferences and progress separately
+    await _saveUserPreferences(newUser.id, UserPreferences.defaults());
+    await _saveUserProgress(newUser.id, UserProgress.empty());
+    
     return newUser;
   }
 
@@ -178,39 +190,69 @@ class UserService {
     await _prefs!.remove(_currentUserKey);
   }
 
-  /// Update user preferences
+  /// UPDATED: Update user preferences (now separate from User model)
   Future<void> updateUserPreferences(UserPreferences preferences) async {
     final currentUser = await getCurrentUser();
     if (currentUser != null) {
-      final updatedUser = currentUser.copyWith(preferences: preferences);
-      await saveCurrentUser(updatedUser);
+      await _saveUserPreferences(currentUser.id, preferences);
     }
   }
 
-  /// Update user progress
+  /// UPDATED: Update user progress (now separate from User model)
   Future<void> updateUserProgress(UserProgress progress) async {
     final currentUser = await getCurrentUser();
     if (currentUser != null) {
-      final updatedUser = currentUser.copyWith(progress: progress);
-      await saveCurrentUser(updatedUser);
+      await _saveUserProgress(currentUser.id, progress);
     }
   }
 
-  /// Complete a topic quiz
+  /// UPDATED: Get user preferences separately
+  Future<UserPreferences> getUserPreferences(String userId) async {
+    await initialize();
+    final prefsJson = _prefs!.getString(_userPreferencesKey + userId);
+    if (prefsJson != null) {
+      try {
+        return UserPreferences.fromJson(jsonDecode(prefsJson));
+      } catch (e) {
+        // Return defaults if corrupted
+        return UserPreferences.defaults();
+      }
+    }
+    return UserPreferences.defaults();
+  }
+
+  /// UPDATED: Get user progress separately
+  Future<UserProgress> getUserProgress(String userId) async {
+    await initialize();
+    final progressJson = _prefs!.getString(_userProgressKey + userId);
+    if (progressJson != null) {
+      try {
+        return UserProgress.fromJson(jsonDecode(progressJson));
+      } catch (e) {
+        // Return empty if corrupted
+        return UserProgress.empty();
+      }
+    }
+    return UserProgress.empty();
+  }
+
+  /// UPDATED: Complete a topic quiz (now working with separated models)
   Future<void> completeTopicQuiz(String topicId, bool passed) async {
     final currentUser = await getCurrentUser();
     if (currentUser != null) {
-      final updatedProgress = currentUser.progress.completeTopicQuiz(topicId, passed);
-      await updateUserProgress(updatedProgress);
+      final currentProgress = await getUserProgress(currentUser.id);
+      final updatedProgress = currentProgress.completeTopicQuiz(topicId, passed);
+      await _saveUserProgress(currentUser.id, updatedProgress);
     }
   }
 
-  /// Complete a section quiz
+  /// UPDATED: Complete a section quiz (now working with separated models)
   Future<void> completeSectionQuiz(String sectionId, bool passed) async {
     final currentUser = await getCurrentUser();
     if (currentUser != null) {
-      final updatedProgress = currentUser.progress.completeSectionQuiz(sectionId, passed);
-      await updateUserProgress(updatedProgress);
+      final currentProgress = await getUserProgress(currentUser.id);
+      final updatedProgress = currentProgress.completeSectionQuiz(sectionId, passed);
+      await _saveUserProgress(currentUser.id, updatedProgress);
     }
   }
 
@@ -237,6 +279,10 @@ class UserService {
       users.map((key, value) => MapEntry(key, value.toJson()))
     ));
     
+    // Also remove preferences and progress
+    await _prefs!.remove(_userPreferencesKey + userId);
+    await _prefs!.remove(_userProgressKey + userId);
+    
     // If deleting current user, logout
     final currentUser = await getCurrentUser();
     if (currentUser?.id == userId) {
@@ -257,14 +303,30 @@ class UserService {
     await _prefs!.remove(_usersKey);
     await _prefs!.remove(_lastLoginKey);
     await _prefs!.remove(_defaultUserKey);
+    
+    // Clear all preferences and progress data
+    final keys = _prefs!.getKeys();
+    for (final key in keys) {
+      if (key.startsWith(_userPreferencesKey) || key.startsWith(_userProgressKey)) {
+        await _prefs!.remove(key);
+      }
+    }
+    
     await _ensureDefaultUserExists(); // Recreate default user
+  }
+
+  /// ADDED: Save user preferences separately
+  Future<void> _saveUserPreferences(String userId, UserPreferences preferences) async {
+    await _prefs!.setString(_userPreferencesKey + userId, jsonEncode(preferences.toJson()));
+  }
+
+  /// ADDED: Save user progress separately
+  Future<void> _saveUserProgress(String userId, UserProgress progress) async {
+    await _prefs!.setString(_userProgressKey + userId, jsonEncode(progress.toJson()));
   }
 
   /// Private method to get all users
   Future<Map<String, User>> _getAllUsers() async {
-    // Don't call initialize() here since this is called from other methods
-    // that already call initialize()
-    
     final usersJson = _prefs!.getString(_usersKey);
     if (usersJson != null) {
       try {
@@ -290,26 +352,43 @@ class UserService {
     ));
   }
 
-  /// Export user data (for backup)
+  /// UPDATED: Export user data (now includes separated preferences and progress)
   Future<Map<String, dynamic>> exportUserData() async {
     final currentUser = await getCurrentUser();
     if (currentUser == null) {
       throw UserServiceException('No user logged in');
     }
     
+    final preferences = await getUserPreferences(currentUser.id);
+    final progress = await getUserProgress(currentUser.id);
+    
     return {
       'user': currentUser.toJson(),
+      'preferences': preferences.toJson(),
+      'progress': progress.toJson(),
       'exportDate': DateTime.now().toIso8601String(),
-      'version': '1.0',
+      'version': '2.0', // Updated version for separated models
     };
   }
 
-  /// Import user data (for restore)
+  /// UPDATED: Import user data (now handles separated preferences and progress)
   Future<void> importUserData(Map<String, dynamic> data) async {
     try {
       final userData = data['user'] as Map<String, dynamic>;
       final user = User.fromJson(userData);
       await saveCurrentUser(user);
+      
+      // Import preferences if available
+      if (data['preferences'] != null) {
+        final preferences = UserPreferences.fromJson(data['preferences'] as Map<String, dynamic>);
+        await _saveUserPreferences(user.id, preferences);
+      }
+      
+      // Import progress if available
+      if (data['progress'] != null) {
+        final progress = UserProgress.fromJson(data['progress'] as Map<String, dynamic>);
+        await _saveUserProgress(user.id, progress);
+      }
     } catch (e) {
       throw UserServiceException('Invalid user data format');
     }

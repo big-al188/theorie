@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/learning/learning_content.dart';
 import '../../models/user/user.dart';
+import '../../models/user/user_progress.dart';  // ADDED: Import separated models
 import '../../constants/ui_constants.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../services/quiz_integration_service.dart';
@@ -23,13 +24,9 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
   void initState() {
     super.initState();
 
-    // FIXED: Only listen to progress changes, don't trigger initialization
-    // The AppState should handle initialization, not individual pages
+    // Listen to progress changes for real-time updates
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Just listen to progress changes for real-time updates
       ProgressTrackingService.instance.addListener(_onProgressChanged);
-
-      // Trigger a refresh to ensure UI is up to date
       _refreshProgress();
     });
   }
@@ -56,7 +53,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
     }
   }
 
-  /// ADDED: Refresh progress without reinitializing
+  /// Refresh progress without reinitializing
   Future<void> _refreshProgress() async {
     try {
       final appState = context.read<AppState>();
@@ -140,46 +137,91 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
       builder: (context, appState, child) {
         return Column(
           children: sections.map((section) {
-            // ENHANCED: Better progress calculation with fallback
+            // UPDATED: Better progress calculation using separated models
             SectionProgress progress;
             if (appState.currentUser != null) {
-              progress =
-                  appState.currentUser!.progress.getSectionProgress(section.id);
+              // Use the progress tracking service to get real-time progress
+              return FutureBuilder<SectionProgress?>(
+                future: ProgressTrackingService.instance.getSectionProgress(section.id),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    // Show loading state
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        bottom: deviceType == DeviceType.mobile ? 16.0 : 20.0,
+                      ),
+                      child: Card(
+                        elevation: 2,
+                        child: Container(
+                          height: 200,
+                          padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+                          child: const Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
 
-              // ADDED: If progress shows 0 total topics, calculate from section data
-              if (progress.totalTopics == 0 && section.totalTopics > 0) {
-                final completedCount = section.topics
-                    .where((topic) => appState
-                        .currentUser!.progress.completedTopics
-                        .contains(topic.id))
-                    .length;
+                  // Calculate progress with fallback
+                  progress = snapshot.data ?? _calculateFallbackProgress(section, appState);
 
-                progress = SectionProgress(
-                  topicsCompleted: completedCount,
-                  totalTopics: section.totalTopics,
-                  sectionQuizCompleted: appState
-                      .currentUser!.progress.completedSections
-                      .contains(section.id),
-                );
-              }
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: deviceType == DeviceType.mobile ? 16.0 : 20.0,
+                    ),
+                    child: _buildSectionCard(context, section, progress, deviceType),
+                  );
+                },
+              );
             } else {
+              // Guest user - no progress
               progress = SectionProgress(
                 topicsCompleted: 0,
                 totalTopics: section.totalTopics,
                 sectionQuizCompleted: false,
               );
-            }
 
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: deviceType == DeviceType.mobile ? 16.0 : 20.0,
-              ),
-              child: _buildSectionCard(context, section, progress, deviceType),
-            );
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: deviceType == DeviceType.mobile ? 16.0 : 20.0,
+                ),
+                child: _buildSectionCard(context, section, progress, deviceType),
+              );
+            }
           }).toList(),
         );
       },
     );
+  }
+
+  /// ADDED: Calculate fallback progress when async data is not available
+  SectionProgress _calculateFallbackProgress(LearningSection section, AppState appState) {
+    if (appState.currentUserProgress == null) {
+      return SectionProgress(
+        topicsCompleted: 0,
+        totalTopics: section.totalTopics,
+        sectionQuizCompleted: false,
+      );
+    }
+
+    final userProgress = appState.currentUserProgress!;
+    final existingProgress = userProgress.getSectionProgress(section.id);
+
+    // If progress shows 0 total topics, calculate from section data
+    if (existingProgress.totalTopics == 0 && section.totalTopics > 0) {
+      final completedCount = section.topics
+          .where((topic) => userProgress.completedTopics.contains(topic.id))
+          .length;
+
+      return SectionProgress(
+        topicsCompleted: completedCount,
+        totalTopics: section.totalTopics,
+        sectionQuizCompleted: userProgress.completedSections.contains(section.id),
+      );
+    }
+
+    return existingProgress;
   }
 
   Widget _buildSectionCard(BuildContext context, LearningSection section,
@@ -206,8 +248,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
             Row(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: _getLevelColor(section.level),
                     borderRadius: BorderRadius.circular(12),
@@ -222,12 +263,10 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
                   ),
                 ),
                 const Spacer(),
-                // ENHANCED: Better completion indicators
-                if (progress.topicsCompleted == progress.totalTopics &&
-                    progress.totalTopics > 0) ...[
+                // Enhanced completion indicators
+                if (progress.topicsCompleted == progress.totalTopics && progress.totalTopics > 0) ...[
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.green,
                       borderRadius: BorderRadius.circular(12),
@@ -250,8 +289,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
                   ),
                 ] else if (progress.topicsCompleted > 0) ...[
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.blue,
                       borderRadius: BorderRadius.circular(12),
@@ -259,8 +297,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.trending_up,
-                            color: Colors.white, size: 12),
+                        const Icon(Icons.trending_up, color: Colors.white, size: 12),
                         const SizedBox(width: 4),
                         Text(
                           'IN PROGRESS',
@@ -317,8 +354,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.construction,
-                        color: Colors.orange.shade700, size: 20),
+                    Icon(Icons.construction, color: Colors.orange.shade700, size: 20),
                     const SizedBox(width: 8),
                     Text(
                       'Content coming soon...',
@@ -356,7 +392,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            // ENHANCED: Better progress text with percentage
+            // Better progress text with percentage
             Row(
               children: [
                 Text(
@@ -372,9 +408,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
                     '(${(progressPercentage * 100).round()}%)',
                     style: TextStyle(
                       fontSize: deviceType == DeviceType.mobile ? 11.0 : 13.0,
-                      color: progressPercentage == 1.0
-                          ? Colors.green
-                          : Theme.of(context).primaryColor,
+                      color: progressPercentage == 1.0 ? Colors.green : Theme.of(context).primaryColor,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -384,7 +418,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
           ],
         ),
         const SizedBox(height: 8),
-        // ENHANCED: Better progress bar styling
+        // Better progress bar styling
         Container(
           height: 8,
           decoration: BoxDecoration(
@@ -397,15 +431,13 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
               value: progressPercentage,
               backgroundColor: Colors.transparent,
               valueColor: AlwaysStoppedAnimation<Color>(
-                progressPercentage == 1.0
-                    ? Colors.green
-                    : Theme.of(context).primaryColor,
+                progressPercentage == 1.0 ? Colors.green : Theme.of(context).primaryColor,
               ),
               minHeight: 8,
             ),
           ),
         ),
-        // ADDED: Progress status text
+        // Progress status text
         if (totalTopics > 0) ...[
           const SizedBox(height: 4),
           Text(
@@ -442,8 +474,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
           child: SizedBox(
             height: buttonHeight,
             child: ElevatedButton.icon(
-              onPressed:
-                  hasTopics ? () => _navigateToTopics(context, section) : null,
+              onPressed: hasTopics ? () => _navigateToTopics(context, section) : null,
               icon: const Icon(Icons.book, size: 18),
               label: Text(
                 'Explore Topics',
@@ -465,9 +496,7 @@ class _LearningSectionsPageState extends State<LearningSectionsPage> {
           child: SizedBox(
             height: buttonHeight,
             child: OutlinedButton.icon(
-              onPressed: hasTopics
-                  ? () => _navigateToSectionQuiz(context, section)
-                  : null,
+              onPressed: hasTopics ? () => _navigateToSectionQuiz(context, section) : null,
               icon: const Icon(Icons.quiz, size: 18),
               label: Text(
                 'Quiz',

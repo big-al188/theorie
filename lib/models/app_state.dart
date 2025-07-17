@@ -1,4 +1,4 @@
-// lib/models/app_state.dart - Enhanced Firebase integration for app restart scenarios
+// lib/models/app_state.dart - Updated for separated user models
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
@@ -9,15 +9,19 @@ import 'fretboard/fretboard_instance.dart';
 import 'music/chord.dart';
 import 'music/note.dart';
 import 'user/user.dart';
+import 'user/user_preferences.dart';  // ADDED: Import separated models
+import 'user/user_progress.dart';     // ADDED: Import separated models
 import '../services/user_service.dart';
 import '../services/progress_tracking_service.dart';
-import '../services/firebase_user_service.dart'; // ADDED: Direct Firebase integration
+import '../services/firebase_user_service.dart';
 
 /// Central application state management
-/// FIXED: Enhanced Firebase integration for proper progress loading on app restart
+/// UPDATED: Enhanced for separated user models architecture
 class AppState extends ChangeNotifier {
   // ===== USER MANAGEMENT =====
   User? _currentUser;
+  UserPreferences? _currentUserPreferences;  // ADDED: Separate preferences
+  UserProgress? _currentUserProgress;        // ADDED: Separate progress
   bool _isInitialized = false;
 
   // ===== FRETBOARD DEFAULTS =====
@@ -50,6 +54,8 @@ class AppState extends ChangeNotifier {
 
   // ===== USER GETTERS =====
   User? get currentUser => _currentUser;
+  UserPreferences? get currentUserPreferences => _currentUserPreferences;  // ADDED
+  UserProgress? get currentUserProgress => _currentUserProgress;          // ADDED
   bool get isLoggedIn => _currentUser != null;
   bool get isInitialized => _isInitialized;
 
@@ -111,72 +117,43 @@ class AppState extends ChangeNotifier {
 
   // ===== INITIALIZATION =====
 
-  /// CRITICAL FIX: Enhanced initialization with proper Firebase integration
-  /// Now properly handles app restart scenarios by loading from Firebase first
+  /// UPDATED: Enhanced initialization with separated models
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
       debugPrint('🚀 [AppState] Initializing app state...');
 
-      // Initialize progress tracking service first (includes offline storage)
+      // Initialize progress tracking service first
       await ProgressTrackingService.instance.initialize();
 
-      // ENHANCED: Try to load user from Firebase first (for app restart scenarios)
+      // Load user from Firebase with priority
       _currentUser = await _loadUserWithFirebasePriority();
 
       if (_currentUser != null) {
         debugPrint('👤 [AppState] User found: ${_currentUser!.username}');
 
-        // CRITICAL FIX: Only initialize section progress if we don't have existing progress
-        // The enhanced ProgressTrackingService will now properly load from Firebase
-        final existingProgress =
-            await ProgressTrackingService.instance.getCurrentProgress();
+        // UPDATED: Load preferences and progress separately
+        await _loadUserData();
+
+        // Initialize section progress if needed
+        final existingProgress = await ProgressTrackingService.instance.getCurrentProgress();
         if (existingProgress.sectionProgress.isEmpty) {
-          debugPrint(
-              '🔧 [AppState] No existing progress found, initializing sections...');
+          debugPrint('🔧 [AppState] No existing progress found, initializing sections...');
           await ProgressTrackingService.instance.initializeSectionProgress();
-        } else {
-          debugPrint(
-              '✅ [AppState] Found existing progress, skipping section initialization');
         }
 
-        // Listen to progress changes for real-time UI updates
+        // Listen to progress changes
         ProgressTrackingService.instance.addListener(_onProgressChanged);
 
-        // Load user preferences
-        await loadUserPreferences(_currentUser!.preferences);
-
-        // Try to sync any pending progress to Firebase
+        // Sync any pending progress
         if (!_currentUser!.isDefaultUser) {
-          ProgressTrackingService.instance
-              .forceSyncToFirebase()
-              .then((success) {
-            if (success) {
-              debugPrint('✅ [AppState] Pending progress synced to Firebase');
-            } else {
-              debugPrint('⚠️ [AppState] Could not sync progress to Firebase');
-            }
-          });
+          ProgressTrackingService.instance.forceSyncToFirebase();
         }
 
-        debugPrint(
-            '✅ [AppState] User initialized with enhanced progress tracking');
+        debugPrint('✅ [AppState] User initialized with separated models');
       } else {
         debugPrint('👤 [AppState] No user found, running in guest mode');
-
-        // Even without a user, try to load any cached progress from local storage
-        try {
-          final localProgress =
-              await ProgressTrackingService.instance.getCurrentProgress();
-          if (localProgress.completedTopics.isNotEmpty ||
-              localProgress.sectionProgress.isNotEmpty) {
-            debugPrint(
-                '📱 [AppState] Found cached progress without user - preserving locally');
-          }
-        } catch (e) {
-          debugPrint('⚠️ [AppState] Could not check for cached progress: $e');
-        }
       }
 
       _isInitialized = true;
@@ -185,38 +162,52 @@ class AppState extends ChangeNotifier {
       debugPrint('✅ [AppState] App state initialization complete');
     } catch (e) {
       debugPrint('❌ [AppState] Error initializing app state: $e');
-      _isInitialized = true; // Mark as initialized to prevent infinite loops
+      _isInitialized = true;
       notifyListeners();
     }
   }
 
-  /// ADDED: Load user with Firebase priority for app restart scenarios
+  /// UPDATED: Load user data separately (preferences and progress)
+  Future<void> _loadUserData() async {
+    try {
+      // Load preferences
+      _currentUserPreferences = await FirebaseUserService.instance.getUserPreferences();
+      _currentUserPreferences ??= UserPreferences.defaults();
+
+      // Load progress
+      _currentUserProgress = await FirebaseUserService.instance.getUserProgress();
+      _currentUserProgress ??= UserProgress.empty();
+
+      // Load preferences into app state
+      await loadUserPreferences(_currentUserPreferences!);
+
+      debugPrint('✅ [AppState] User data loaded successfully');
+    } catch (e) {
+      debugPrint('❌ [AppState] Error loading user data: $e');
+      // Use defaults on error
+      _currentUserPreferences = UserPreferences.defaults();
+      _currentUserProgress = UserProgress.empty();
+      await loadUserPreferences(_currentUserPreferences!);
+    }
+  }
+
+  /// Load user with Firebase priority
   Future<User?> _loadUserWithFirebasePriority() async {
     try {
       debugPrint('🔍 [AppState] Loading user with Firebase priority...');
 
-      // STEP 1: Try Firebase first (for app restart scenarios)
+      // Try Firebase first
       var user = await FirebaseUserService.instance.getCurrentUser();
       if (user != null) {
         debugPrint('☁️ [AppState] Found user via Firebase: ${user.username}');
-
-        // Sync to UserService for consistency
-        try {
-          await UserService.instance.saveCurrentUser(user);
-          debugPrint('✅ [AppState] Synced Firebase user to UserService');
-        } catch (e) {
-          debugPrint('⚠️ [AppState] Could not sync to UserService: $e');
-        }
-
         return user;
       }
 
-      // STEP 2: Fallback to UserService (for active sessions)
+      // Fallback to UserService
       debugPrint('🔍 [AppState] Firebase empty, trying UserService...');
       user = await UserService.instance.getCurrentUser();
       if (user != null) {
-        debugPrint(
-            '📱 [AppState] Found user via UserService: ${user.username}');
+        debugPrint('📱 [AppState] Found user via UserService: ${user.username}');
         return user;
       }
 
@@ -224,85 +215,48 @@ class AppState extends ChangeNotifier {
       return null;
     } catch (e) {
       debugPrint('❌ [AppState] Error loading user: $e');
-      // Fallback to UserService on error
-      try {
-        return await UserService.instance.getCurrentUser();
-      } catch (fallbackError) {
-        debugPrint(
-            '❌ [AppState] Fallback to UserService also failed: $fallbackError');
-        return null;
-      }
+      return null;
     }
   }
 
   // ===== USER MANAGEMENT METHODS =====
 
-  /// CRITICAL FIX: Enhanced user setting with Firebase integration
+  /// UPDATED: Enhanced user setting with separated models
   Future<void> setCurrentUser(User user) async {
     debugPrint('👤 [AppState] Setting current user: ${user.username}');
 
-    // Remove old progress listener if we had a different user
+    // Remove old progress listener
     if (_currentUser != null) {
       ProgressTrackingService.instance.removeListener(_onProgressChanged);
     }
 
     _currentUser = user;
 
-    // Ensure UserService also has this user for ProgressTrackingService
-    try {
-      await UserService.instance.saveCurrentUser(user);
-      debugPrint('✅ [AppState] User synchronized with UserService');
-    } catch (e) {
-      debugPrint(
-          '⚠️ [AppState] Warning: Could not sync user to UserService: $e');
-    }
+    // Load user data separately
+    await _loadUserData();
 
-    // CRITICAL FIX: Only initialize sections if we don't have existing progress
+    // Setup progress tracking
     try {
-      // The enhanced ProgressTrackingService will now properly check Firebase
-      final existingProgress =
-          await ProgressTrackingService.instance.getCurrentProgress();
+      final existingProgress = await ProgressTrackingService.instance.getCurrentProgress();
       if (existingProgress.sectionProgress.isEmpty) {
-        debugPrint(
-            '🔧 [AppState] No existing progress for user, initializing sections...');
         await ProgressTrackingService.instance.initializeSectionProgress();
-      } else {
-        debugPrint(
-            '✅ [AppState] Found existing progress for user, skipping section initialization');
       }
 
-      // Listen to progress changes for real-time UI updates
       ProgressTrackingService.instance.addListener(_onProgressChanged);
 
-      // ENHANCED: Notify progress service about user authentication
       if (!user.isDefaultUser) {
-        // This will reload progress from Firebase and sync pending items
         await ProgressTrackingService.instance.onUserAuthenticated();
-
-        // Also try the original force sync as backup
-        ProgressTrackingService.instance.forceSyncToFirebase().then((success) {
-          if (success) {
-            debugPrint('✅ [AppState] User progress synced to Firebase');
-          } else {
-            debugPrint('⚠️ [AppState] Could not sync progress to Firebase');
-          }
-        });
       }
 
-      debugPrint(
-          '✅ [AppState] Enhanced progress tracking setup for user: ${user.username}');
+      debugPrint('✅ [AppState] Enhanced progress tracking setup for user: ${user.username}');
     } catch (e) {
       debugPrint('❌ [AppState] Error setting up progress tracking: $e');
     }
 
-    // Load user preferences
-    debugPrint('⚙️ [AppState] Loading user preferences');
-    await loadUserPreferences(user.preferences);
-
     notifyListeners();
   }
 
-  /// Load user preferences into app state
+  /// UPDATED: Load user preferences into app state
   Future<void> loadUserPreferences(UserPreferences preferences) async {
     debugPrint('⚙️ [AppState] Loading user preferences');
 
@@ -325,10 +279,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Save current preferences to user
+  /// UPDATED: Save current preferences to user
   Future<void> saveUserPreferences() async {
     if (_currentUser != null) {
-      final updatedPreferences = _currentUser!.preferences.copyWith(
+      final updatedPreferences = (_currentUserPreferences ?? UserPreferences.defaults()).copyWith(
         themeMode: _themeMode,
         defaultLayout: _defaultLayout,
         defaultStringCount: _defaultStringCount,
@@ -340,12 +294,12 @@ class AppState extends ChangeNotifier {
         defaultSelectedOctaves: _defaultSelectedOctaves,
       );
 
-      await UserService.instance.updateUserPreferences(updatedPreferences);
-      _currentUser = _currentUser!.copyWith(preferences: updatedPreferences);
+      await FirebaseUserService.instance.saveUserPreferences(updatedPreferences);
+      _currentUserPreferences = updatedPreferences;
     }
   }
 
-  /// Logout current user and optionally switch to guest
+  /// UPDATED: Logout with separated models
   Future<void> logout({bool switchToGuest = true}) async {
     try {
       debugPrint('👤 [AppState] Logging out user...');
@@ -359,21 +313,24 @@ class AppState extends ChangeNotifier {
       await UserService.instance.logout();
 
       if (switchToGuest) {
-        // Switch to guest user to maintain app functionality
+        // Switch to guest user
         final guestUser = await UserService.instance.loginAsGuest();
         await setCurrentUser(guestUser);
         debugPrint('👤 [AppState] Switched to guest user');
       } else {
-        // Complete logout - clear user and go to login page
+        // Complete logout
         _currentUser = null;
+        _currentUserPreferences = null;
+        _currentUserProgress = null;
         notifyListeners();
         debugPrint('👤 [AppState] Complete logout - cleared user');
       }
     } catch (e) {
       debugPrint('❌ [AppState] Error during logout: $e');
-      // If logout fails, at least clear current user locally
       ProgressTrackingService.instance.removeListener(_onProgressChanged);
       _currentUser = null;
+      _currentUserPreferences = null;
+      _currentUserProgress = null;
       notifyListeners();
       rethrow;
     }
@@ -384,26 +341,18 @@ class AppState extends ChangeNotifier {
   /// Handle progress changes and update UI
   void _onProgressChanged() {
     debugPrint('📈 [AppState] Progress changed - updating UI');
-
-    // Force UI rebuild when progress changes
     notifyListeners();
-
-    // Also refresh user progress data
     refreshUserProgress();
   }
 
-  /// ENHANCED: Force refresh user progress with Firebase integration
+  /// UPDATED: Force refresh user progress with separated models
   Future<void> refreshUserProgress() async {
     if (_currentUser != null) {
       try {
         debugPrint('🔄 [AppState] Refreshing user progress...');
 
-        // Get fresh progress from enhanced service (now with Firebase integration)
-        final freshProgress =
-            await ProgressTrackingService.instance.getCurrentProgress();
-
-        // Update user with fresh progress
-        _currentUser = _currentUser!.copyWith(progress: freshProgress);
+        final freshProgress = await ProgressTrackingService.instance.getCurrentProgress();
+        _currentUserProgress = freshProgress;
 
         notifyListeners();
         debugPrint('✅ [AppState] User progress refreshed');
@@ -413,7 +362,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Get current progress status (offline-first with Firebase fallback)
+  /// Get current progress status
   Future<UserProgress> getCurrentProgress() async {
     try {
       return await ProgressTrackingService.instance.getCurrentProgress();
@@ -423,7 +372,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Check if topic is completed (offline-first with Firebase fallback)
+  /// Check if topic is completed
   Future<bool> isTopicCompleted(String topicId) async {
     try {
       return await ProgressTrackingService.instance.isTopicCompleted(topicId);
@@ -433,22 +382,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Check if section is completed (offline-first with Firebase fallback)
+  /// Check if section is completed
   Future<bool> isSectionCompleted(String sectionId) async {
     try {
-      return await ProgressTrackingService.instance
-          .isSectionCompleted(sectionId);
+      return await ProgressTrackingService.instance.isSectionCompleted(sectionId);
     } catch (e) {
       debugPrint('❌ [AppState] Error checking section completion: $e');
       return false;
     }
   }
 
-  /// Get section progress (offline-first with Firebase fallback)
+  /// Get section progress
   Future<SectionProgress?> getSectionProgress(String sectionId) async {
     try {
-      return await ProgressTrackingService.instance
-          .getSectionProgress(sectionId);
+      return await ProgressTrackingService.instance.getSectionProgress(sectionId);
     } catch (e) {
       debugPrint('❌ [AppState] Error getting section progress: $e');
       return null;
@@ -459,8 +406,7 @@ class AppState extends ChangeNotifier {
   Future<bool> syncProgressToFirebase() async {
     try {
       debugPrint('☁️ [AppState] Force syncing progress to Firebase...');
-      final success =
-          await ProgressTrackingService.instance.forceSyncToFirebase();
+      final success = await ProgressTrackingService.instance.forceSyncToFirebase();
 
       if (success) {
         debugPrint('✅ [AppState] Progress synced to Firebase successfully');
@@ -480,15 +426,14 @@ class AppState extends ChangeNotifier {
     return ProgressTrackingService.instance.getDetailedSyncStatus();
   }
 
-  /// Manual sync debug method for troubleshooting
+  /// Manual sync debug method
   Future<Map<String, dynamic>> debugManualSync() async {
     return await ProgressTrackingService.instance.manualSyncDebug();
   }
 
   // ===== FRETBOARD DEFAULTS SETTERS =====
   void setDefaultStringCount(int count) {
-    if (count < AppConstants.minStrings || count > AppConstants.maxStrings)
-      return;
+    if (count < AppConstants.minStrings || count > AppConstants.maxStrings) return;
     _defaultStringCount = count;
     _adjustDefaultTuningLength();
     saveUserPreferences();
@@ -554,8 +499,7 @@ class AppState extends ChangeNotifier {
   }
 
   void setDefaultSelectedOctaves(Set<int> octaves) {
-    final validOctaves =
-        octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
+    final validOctaves = octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
     if (validOctaves.isNotEmpty) {
       if (_defaultViewMode == ViewMode.chords && validOctaves.length > 1) {
         _defaultSelectedOctaves = {validOctaves.first};
@@ -593,8 +537,7 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleTheme() {
-    _themeMode =
-        _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
     saveUserPreferences();
     notifyListeners();
   }
@@ -606,8 +549,7 @@ class AppState extends ChangeNotifier {
   void setTuningNote(int stringIndex, String note, int octave) =>
       setDefaultTuningNote(stringIndex, note, octave);
   void setLayout(FretboardLayout layout) => setDefaultLayout(layout);
-  void applyStandardTuning(String tuningName) =>
-      applyStandardTuningAsDefault(tuningName);
+  void applyStandardTuning(String tuningName) => applyStandardTuningAsDefault(tuningName);
 
   void setRoot(String root) {
     _root = root;
@@ -640,8 +582,7 @@ class AppState extends ChangeNotifier {
 
   // Interval management (current session)
   void toggleInterval(int extendedInterval) {
-    debugPrint(
-        'AppState toggleInterval: $extendedInterval, current intervals: $_selectedIntervals');
+    debugPrint('AppState toggleInterval: $extendedInterval, current intervals: $_selectedIntervals');
 
     if (_selectedIntervals.contains(extendedInterval)) {
       if (_selectedIntervals.length > 1 || extendedInterval != 0) {
@@ -679,9 +620,7 @@ class AppState extends ChangeNotifier {
     }
 
     final selectedInterval = _selectedIntervals.first;
-    final referenceOctave = _selectedOctaves.isEmpty
-        ? 3
-        : _selectedOctaves.reduce((a, b) => a < b ? a : b);
+    final referenceOctave = _selectedOctaves.isEmpty ? 3 : _selectedOctaves.reduce((a, b) => a < b ? a : b);
     final currentRootNote = Note.fromString('$_root$referenceOctave');
     final newRootNote = currentRootNote.transpose(selectedInterval);
 
@@ -699,8 +638,7 @@ class AppState extends ChangeNotifier {
 
   // Octave management (current session)
   void setSelectedOctaves(Set<int> octaves) {
-    final validOctaves =
-        octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
+    final validOctaves = octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
     if (validOctaves.isNotEmpty) {
       if (isChordMode && validOctaves.length > 1) {
         _selectedOctaves = {validOctaves.first};
@@ -748,8 +686,7 @@ class AppState extends ChangeNotifier {
 
   void selectAllOctaves() {
     if (isChordMode) return;
-    _selectedOctaves =
-        List.generate(AppConstants.maxOctaves + 1, (i) => i).toSet();
+    _selectedOctaves = List.generate(AppConstants.maxOctaves + 1, (i) => i).toSet();
     notifyListeners();
   }
 
@@ -783,8 +720,7 @@ class AppState extends ChangeNotifier {
   void resetDefaultsToFactorySettings() {
     _defaultStringCount = AppConstants.defaultStringCount;
     _defaultFretCount = AppConstants.defaultFretCount;
-    _defaultTuning =
-        List.from(MusicConstants.standardTunings['Guitar (6-string)']!);
+    _defaultTuning = List.from(MusicConstants.standardTunings['Guitar (6-string)']!);
     _defaultLayout = FretboardLayout.rightHandedBassTop;
     _defaultRoot = AppConstants.defaultRoot;
     _defaultViewMode = ViewMode.intervals;
@@ -797,7 +733,6 @@ class AppState extends ChangeNotifier {
   }
 
   void resetToDefaults() {
-    // Reset current session to defaults
     _root = _defaultRoot;
     _viewMode = _defaultViewMode;
     _scale = _defaultScale;

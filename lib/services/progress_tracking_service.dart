@@ -1,19 +1,20 @@
 // lib/services/progress_tracking_service.dart
-// CRITICAL FIX: Firebase sync now properly saves to Firebase database
+// UPDATED: Now properly imports and uses separated user models
 
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user/user.dart';
+import '../models/user/user_progress.dart';    // ADDED: Import separated models
 import '../models/quiz/quiz_result.dart';
 import '../models/quiz/quiz_session.dart';
 import '../models/learning/learning_content.dart';
 import 'user_service.dart';
-import 'firebase_user_service.dart'; // CRITICAL: Direct Firebase integration
+import 'firebase_user_service.dart';
 
 /// Service responsible for tracking and updating user learning progress
-/// FIXED: Firebase sync now properly saves to Firebase database
+/// UPDATED: Now works with separated user models
 class ProgressTrackingService extends ChangeNotifier {
   static final ProgressTrackingService _instance =
       ProgressTrackingService._internal();
@@ -54,7 +55,7 @@ class ProgressTrackingService extends ChangeNotifier {
     }
   }
 
-  /// CRITICAL FIX: Enhanced progress loading with proper Firebase integration
+  /// UPDATED: Enhanced progress loading with proper Firebase integration
   Future<UserProgress> getCurrentProgress() async {
     await initialize();
 
@@ -72,8 +73,7 @@ class ProgressTrackingService extends ChangeNotifier {
         // Sync to UserService for UI consistency
         try {
           await UserService.instance.updateUserProgress(localProgress);
-          debugPrint(
-              '✅ [ProgressTracker] Synced local progress to UserService');
+          debugPrint('✅ [ProgressTracker] Synced local progress to UserService');
         } catch (e) {
           debugPrint('⚠️ [ProgressTracker] Could not sync to UserService: $e');
         }
@@ -81,8 +81,7 @@ class ProgressTrackingService extends ChangeNotifier {
         return localProgress;
       }
 
-      debugPrint(
-          '📱 [ProgressTracker] No valid local progress, checking Firebase...');
+      debugPrint('📱 [ProgressTracker] No valid local progress, checking Firebase...');
 
       // STEP 2: Try to load from Firebase (for app restart scenarios)
       final firebaseProgress = await _loadProgressFromFirebase();
@@ -95,24 +94,22 @@ class ProgressTrackingService extends ChangeNotifier {
         // Sync to UserService for UI consistency
         try {
           await UserService.instance.updateUserProgress(firebaseProgress);
-          debugPrint(
-              '✅ [ProgressTracker] Synced Firebase progress to UserService');
+          debugPrint('✅ [ProgressTracker] Synced Firebase progress to UserService');
         } catch (e) {
-          debugPrint(
-              '⚠️ [ProgressTracker] Could not sync Firebase progress to UserService: $e');
+          debugPrint('⚠️ [ProgressTracker] Could not sync Firebase progress to UserService: $e');
         }
 
         _cachedProgress = firebaseProgress;
         return firebaseProgress;
       }
 
-      debugPrint(
-          '☁️ [ProgressTracker] No Firebase progress found, trying UserService...');
+      debugPrint('☁️ [ProgressTracker] No Firebase progress found, trying UserService...');
 
       // STEP 3: Fallback to UserService (for compatibility)
       final user = await _getCurrentUserSafely();
       if (user != null && !user.isDefaultUser) {
-        final userServiceProgress = user.progress;
+        // UPDATED: Get progress separately from UserService
+        final userServiceProgress = await UserService.instance.getUserProgress(user.id);
         if (userServiceProgress.completedTopics.isNotEmpty ||
             userServiceProgress.sectionProgress.isNotEmpty) {
           debugPrint('👤 [ProgressTracker] Found progress in UserService');
@@ -134,8 +131,7 @@ class ProgressTrackingService extends ChangeNotifier {
 
       // Return cached progress if available
       if (_cachedProgress != null) {
-        debugPrint(
-            '🔄 [ProgressTracker] Returning cached progress due to error');
+        debugPrint('🔄 [ProgressTracker] Returning cached progress due to error');
         return _cachedProgress!;
       }
 
@@ -151,20 +147,17 @@ class ProgressTrackingService extends ChangeNotifier {
       // Try to get Firebase user service directly
       final firebaseUser = await FirebaseUserService.instance.getCurrentUser();
       if (firebaseUser != null && !firebaseUser.isDefaultUser) {
-        debugPrint(
-            '☁️ [ProgressTracker] Found Firebase user: ${firebaseUser.username}');
+        debugPrint('☁️ [ProgressTracker] Found Firebase user: ${firebaseUser.username}');
 
-        // CRITICAL FIX: Load progress from Firebase database
-        final firebaseProgress =
-            await FirebaseUserService.instance.getUserProgress();
+        // UPDATED: Load progress from Firebase database
+        final firebaseProgress = await FirebaseUserService.instance.getUserProgress();
         if (firebaseProgress != null &&
             (firebaseProgress.completedTopics.isNotEmpty ||
                 firebaseProgress.sectionProgress.isNotEmpty)) {
           debugPrint('✅ [ProgressTracker] Found progress in Firebase database');
           return firebaseProgress;
         } else {
-          debugPrint(
-              '📭 [ProgressTracker] Firebase database has empty progress');
+          debugPrint('📭 [ProgressTracker] Firebase database has empty progress');
         }
       } else {
         debugPrint('👤 [ProgressTracker] No authenticated Firebase user found');
@@ -189,8 +182,7 @@ class ProgressTrackingService extends ChangeNotifier {
         return;
       }
 
-      debugPrint(
-          '👤 [ProgressTracker] Initializing progress for user: ${currentUser.username}');
+      debugPrint('👤 [ProgressTracker] Initializing progress for user: ${currentUser.username}');
 
       // Load existing progress using enhanced method
       var currentProgress = await getCurrentProgress();
@@ -201,8 +193,7 @@ class ProgressTrackingService extends ChangeNotifier {
         return;
       }
 
-      debugPrint(
-          '🔧 [ProgressTracker] No existing progress found, initializing sections...');
+      debugPrint('🔧 [ProgressTracker] No existing progress found, initializing sections...');
 
       final sections = LearningContentRepository.getAllSections();
       bool hasUpdates = false;
@@ -224,8 +215,7 @@ class ProgressTrackingService extends ChangeNotifier {
           newSectionProgress[section.id] = SectionProgress(
             topicsCompleted: completedTopics,
             totalTopics: section.totalTopics,
-            sectionQuizCompleted:
-                currentProgress.completedSections.contains(section.id),
+            sectionQuizCompleted: currentProgress.completedSections.contains(section.id),
           );
 
           currentProgress = UserProgress(
@@ -246,22 +236,18 @@ class ProgressTrackingService extends ChangeNotifier {
         await _saveLocalProgress(currentProgress);
         await UserService.instance.updateUserProgress(currentProgress);
 
-        // CRITICAL FIX: Also save to Firebase
+        // UPDATED: Also save to Firebase
         if (!currentUser.isDefaultUser) {
           try {
-            await FirebaseUserService.instance
-                .saveUserProgress(currentProgress);
-            debugPrint(
-                '✅ [ProgressTracker] Section progress synced to Firebase');
+            await FirebaseUserService.instance.saveUserProgress(currentProgress);
+            debugPrint('✅ [ProgressTracker] Section progress synced to Firebase');
           } catch (e) {
-            debugPrint(
-                '⚠️ [ProgressTracker] Could not sync section progress to Firebase: $e');
+            debugPrint('⚠️ [ProgressTracker] Could not sync section progress to Firebase: $e');
           }
         }
 
         notifyListeners();
-        debugPrint(
-            '💾 [ProgressTracker] Section progress initialized and saved');
+        debugPrint('💾 [ProgressTracker] Section progress initialized and saved');
       } else {
         debugPrint('✅ [ProgressTracker] Section progress already initialized');
       }
@@ -283,8 +269,7 @@ class ProgressTrackingService extends ChangeNotifier {
       final passed = result.scorePercentage >= passingScore;
       final timestamp = DateTime.now();
 
-      debugPrint(
-          '📝 [ProgressTracker] Recording topic quiz: $topicId (${passed ? "PASSED" : "FAILED"})');
+      debugPrint('📝 [ProgressTracker] Recording topic quiz: $topicId (${passed ? "PASSED" : "FAILED"})');
 
       // STEP 1: Store locally immediately for instant UI feedback
       await _storeLocalProgress(
@@ -316,8 +301,7 @@ class ProgressTrackingService extends ChangeNotifier {
       // STEP 4: Try immediate sync (non-blocking)
       _attemptImmediateSync();
 
-      debugPrint(
-          '✅ [ProgressTracker] Topic quiz recorded locally and queued for sync');
+      debugPrint('✅ [ProgressTracker] Topic quiz recorded locally and queued for sync');
     } catch (e) {
       debugPrint('❌ [ProgressTracker] Error recording quiz completion: $e');
       rethrow;
@@ -328,23 +312,20 @@ class ProgressTrackingService extends ChangeNotifier {
   Future<void> onUserAuthenticated() async {
     await initialize();
 
-    debugPrint(
-        '🔄 [ProgressTracker] User authenticated - attempting immediate sync...');
+    debugPrint('🔄 [ProgressTracker] User authenticated - attempting immediate sync...');
 
     // When user becomes authenticated, reload progress from Firebase first
     try {
       final firebaseProgress = await _loadProgressFromFirebase();
       if (firebaseProgress != null) {
-        debugPrint(
-            '🔄 [ProgressTracker] Reloading progress from Firebase after authentication');
+        debugPrint('🔄 [ProgressTracker] Reloading progress from Firebase after authentication');
         await _saveLocalProgress(firebaseProgress);
         _cachedProgress = firebaseProgress;
 
         // Update UserService
         try {
           await UserService.instance.updateUserProgress(firebaseProgress);
-          debugPrint(
-              '✅ [ProgressTracker] Updated UserService with Firebase progress');
+          debugPrint('✅ [ProgressTracker] Updated UserService with Firebase progress');
         } catch (e) {
           debugPrint('⚠️ [ProgressTracker] Could not update UserService: $e');
         }
@@ -358,15 +339,13 @@ class ProgressTrackingService extends ChangeNotifier {
 
     // Then handle pending sync
     if (_pendingSyncQueue.isNotEmpty) {
-      debugPrint(
-          '📤 [ProgressTracker] Found ${_pendingSyncQueue.length} pending items to sync');
+      debugPrint('📤 [ProgressTracker] Found ${_pendingSyncQueue.length} pending items to sync');
 
       final success = await _syncToFirebase();
       if (success) {
         debugPrint('🚀 [ProgressTracker] User authentication sync successful');
       } else {
-        debugPrint(
-            '⚠️ [ProgressTracker] User authentication sync failed - will retry later');
+        debugPrint('⚠️ [ProgressTracker] User authentication sync failed - will retry later');
       }
     } else {
       debugPrint('✅ [ProgressTracker] No pending items to sync');
@@ -408,8 +387,7 @@ class ProgressTrackingService extends ChangeNotifier {
       // Try UserService first (faster)
       var user = await UserService.instance.getCurrentUser();
       if (user != null) {
-        debugPrint(
-            '✅ [ProgressTracker] Found user via UserService: ${user.username}');
+        debugPrint('✅ [ProgressTracker] Found user via UserService: ${user.username}');
         return user;
       }
 
@@ -417,16 +395,14 @@ class ProgressTrackingService extends ChangeNotifier {
       debugPrint('🔍 [ProgressTracker] UserService empty, trying Firebase...');
       user = await FirebaseUserService.instance.getCurrentUser();
       if (user != null) {
-        debugPrint(
-            '✅ [ProgressTracker] Found user via Firebase: ${user.username}');
+        debugPrint('✅ [ProgressTracker] Found user via Firebase: ${user.username}');
 
         // Sync to UserService for consistency
         try {
           await UserService.instance.saveCurrentUser(user);
           debugPrint('✅ [ProgressTracker] Synced Firebase user to UserService');
         } catch (e) {
-          debugPrint(
-              '⚠️ [ProgressTracker] Could not sync user to UserService: $e');
+          debugPrint('⚠️ [ProgressTracker] Could not sync user to UserService: $e');
         }
 
         return user;
@@ -452,8 +428,7 @@ class ProgressTrackingService extends ChangeNotifier {
       final passed = result.scorePercentage >= passingScore;
       final timestamp = DateTime.now();
 
-      debugPrint(
-          '📝 [ProgressTracker] Recording section quiz: $sectionId (${passed ? "PASSED" : "FAILED"})');
+      debugPrint('📝 [ProgressTracker] Recording section quiz: $sectionId (${passed ? "PASSED" : "FAILED"})');
 
       // Get section to auto-complete topics if passed
       final section = _findSectionById(sectionId);
@@ -471,8 +446,7 @@ class ProgressTrackingService extends ChangeNotifier {
           'score': result.scorePercentage,
           'timestamp': timestamp.toIso8601String(),
           'result': result.toJson(),
-          'autoCompleteTopics':
-              passed ? section.topics.map((t) => t.id).toList() : [],
+          'autoCompleteTopics': passed ? section.topics.map((t) => t.id).toList() : [],
         },
       );
 
@@ -484,8 +458,7 @@ class ProgressTrackingService extends ChangeNotifier {
         'score': result.scorePercentage,
         'timestamp': timestamp.toIso8601String(),
         'result': result.toJson(),
-        'autoCompleteTopics':
-            passed ? section.topics.map((t) => t.id).toList() : [],
+        'autoCompleteTopics': passed ? section.topics.map((t) => t.id).toList() : [],
       });
 
       // If section passed, auto-complete all topics locally
@@ -502,19 +475,16 @@ class ProgressTrackingService extends ChangeNotifier {
             },
           );
         }
-        debugPrint(
-            '✨ [ProgressTracker] Auto-completed ${section.topics.length} topics for section: $sectionId');
+        debugPrint('✨ [ProgressTracker] Auto-completed ${section.topics.length} topics for section: $sectionId');
       }
 
       // Notify UI and attempt sync
       notifyListeners();
       _attemptImmediateSync();
 
-      debugPrint(
-          '✅ [ProgressTracker] Section quiz recorded locally and queued for sync');
+      debugPrint('✅ [ProgressTracker] Section quiz recorded locally and queued for sync');
     } catch (e) {
-      debugPrint(
-          '❌ [ProgressTracker] Error recording section quiz completion: $e');
+      debugPrint('❌ [ProgressTracker] Error recording section quiz completion: $e');
       rethrow;
     }
   }
@@ -526,8 +496,7 @@ class ProgressTrackingService extends ChangeNotifier {
   }) async {
     try {
       // Load current local progress
-      UserProgress currentProgress =
-          await _loadLocalProgress() ?? UserProgress.empty();
+      UserProgress currentProgress = await _loadLocalProgress() ?? UserProgress.empty();
 
       // Apply the progress update based on type
       switch (type) {
@@ -537,32 +506,27 @@ class ProgressTrackingService extends ChangeNotifier {
           final passed = data['passed'] as bool;
           final sectionId = data['sectionId'] as String?;
 
-          currentProgress = _updateTopicInProgress(
-              currentProgress, topicId, passed, sectionId);
+          currentProgress = _updateTopicInProgress(currentProgress, topicId, passed, sectionId);
           break;
 
         case 'section_quiz':
           final sectionId = data['sectionId'] as String;
           final passed = data['passed'] as bool;
-          final autoCompleteTopics =
-              data['autoCompleteTopics'] as List<dynamic>?;
+          final autoCompleteTopics = data['autoCompleteTopics'] as List<dynamic>?;
 
-          currentProgress =
-              _updateSectionInProgress(currentProgress, sectionId, passed);
+          currentProgress = _updateSectionInProgress(currentProgress, sectionId, passed);
 
           // Auto-complete topics if section passed
           if (passed && autoCompleteTopics != null) {
             for (final topicId in autoCompleteTopics) {
-              currentProgress = _updateTopicInProgress(
-                  currentProgress, topicId as String, true, sectionId);
+              currentProgress = _updateTopicInProgress(currentProgress, topicId as String, true, sectionId);
             }
           }
           break;
       }
 
       // Save to local storage
-      await _prefs!
-          .setString(_progressKey, jsonEncode(currentProgress.toJson()));
+      await _prefs!.setString(_progressKey, jsonEncode(currentProgress.toJson()));
       _cachedProgress = currentProgress;
 
       debugPrint('💾 [ProgressTracker] Stored $type locally');
@@ -573,8 +537,7 @@ class ProgressTrackingService extends ChangeNotifier {
   }
 
   /// Update topic in local progress object
-  UserProgress _updateTopicInProgress(
-      UserProgress progress, String topicId, bool passed, String? sectionId) {
+  UserProgress _updateTopicInProgress(UserProgress progress, String topicId, bool passed, String? sectionId) {
     final updatedTopics = Set<String>.from(progress.completedTopics);
 
     if (passed) {
@@ -584,15 +547,11 @@ class ProgressTrackingService extends ChangeNotifier {
     }
 
     // Update section progress if we can find the section
-    final section = sectionId != null
-        ? _findSectionById(sectionId)
-        : _findSectionContainingTopic(topicId);
+    final section = sectionId != null ? _findSectionById(sectionId) : _findSectionContainingTopic(topicId);
     if (section != null) {
-      final updatedSectionProgress =
-          Map<String, SectionProgress>.from(progress.sectionProgress);
+      final updatedSectionProgress = Map<String, SectionProgress>.from(progress.sectionProgress);
 
-      final completedInSection =
-          section.topics.where((t) => updatedTopics.contains(t.id)).length;
+      final completedInSection = section.topics.where((t) => updatedTopics.contains(t.id)).length;
 
       updatedSectionProgress[section.id] = SectionProgress(
         topicsCompleted: completedInSection,
@@ -605,9 +564,7 @@ class ProgressTrackingService extends ChangeNotifier {
         completedTopics: updatedTopics,
         completedSections: progress.completedSections,
         totalQuizzesTaken: progress.totalQuizzesTaken + 1,
-        totalQuizzesPassed: passed
-            ? progress.totalQuizzesPassed + 1
-            : progress.totalQuizzesPassed,
+        totalQuizzesPassed: passed ? progress.totalQuizzesPassed + 1 : progress.totalQuizzesPassed,
       );
     }
 
@@ -616,15 +573,12 @@ class ProgressTrackingService extends ChangeNotifier {
       completedTopics: updatedTopics,
       completedSections: progress.completedSections,
       totalQuizzesTaken: progress.totalQuizzesTaken + 1,
-      totalQuizzesPassed: passed
-          ? progress.totalQuizzesPassed + 1
-          : progress.totalQuizzesPassed,
+      totalQuizzesPassed: passed ? progress.totalQuizzesPassed + 1 : progress.totalQuizzesPassed,
     );
   }
 
   /// Update section in local progress object
-  UserProgress _updateSectionInProgress(
-      UserProgress progress, String sectionId, bool passed) {
+  UserProgress _updateSectionInProgress(UserProgress progress, String sectionId, bool passed) {
     final updatedSections = Set<String>.from(progress.completedSections);
 
     if (passed) {
@@ -638,9 +592,7 @@ class ProgressTrackingService extends ChangeNotifier {
       completedTopics: progress.completedTopics,
       completedSections: updatedSections,
       totalQuizzesTaken: progress.totalQuizzesTaken + 1,
-      totalQuizzesPassed: passed
-          ? progress.totalQuizzesPassed + 1
-          : progress.totalQuizzesPassed,
+      totalQuizzesPassed: passed ? progress.totalQuizzesPassed + 1 : progress.totalQuizzesPassed,
     );
   }
 
@@ -668,9 +620,9 @@ class ProgressTrackingService extends ChangeNotifier {
     return null;
   }
 
-  // ===== FIREBASE SYNC METHODS (FIXED) =====
+  // ===== FIREBASE SYNC METHODS =====
 
-  /// CRITICAL FIX: Sync topic progress to Firebase - now actually saves to Firebase
+  /// Sync topic progress to Firebase
   Future<void> _syncTopicProgress(User user, Map<String, dynamic> item) async {
     try {
       final topicId = item['topicId'] as String;
@@ -683,64 +635,57 @@ class ProgressTrackingService extends ChangeNotifier {
       var currentProgress = await _loadLocalProgress() ?? UserProgress.empty();
 
       // Update the progress with this topic
-      currentProgress =
-          _updateTopicInProgress(currentProgress, topicId, passed, sectionId);
+      currentProgress = _updateTopicInProgress(currentProgress, topicId, passed, sectionId);
 
-      // CRITICAL FIX: Save to Firebase using FirebaseUserService
+      // Save to Firebase using FirebaseUserService
       await FirebaseUserService.instance.saveUserProgress(currentProgress);
 
       // Also update UserService for consistency
       await UserService.instance.updateUserProgress(currentProgress);
 
-      debugPrint(
-          '✅ [ProgressTracker] Topic $topicId synced to Firebase successfully');
+      debugPrint('✅ [ProgressTracker] Topic $topicId synced to Firebase successfully');
     } catch (e) {
       debugPrint('❌ [ProgressTracker] Failed to sync topic to Firebase: $e');
       rethrow;
     }
   }
 
-  /// CRITICAL FIX: Sync section progress to Firebase - now actually saves to Firebase
-  Future<void> _syncSectionProgress(
-      User user, Map<String, dynamic> item) async {
+  /// Sync section progress to Firebase
+  Future<void> _syncSectionProgress(User user, Map<String, dynamic> item) async {
     try {
       final sectionId = item['sectionId'] as String;
       final passed = item['passed'] as bool;
       final autoCompleteTopics = item['autoCompleteTopics'] as List<dynamic>?;
 
-      debugPrint(
-          '🔄 [ProgressTracker] Syncing section $sectionId to Firebase...');
+      debugPrint('🔄 [ProgressTracker] Syncing section $sectionId to Firebase...');
 
       // Get current progress from local storage (most up-to-date)
       var currentProgress = await _loadLocalProgress() ?? UserProgress.empty();
 
       // Update section completion
-      currentProgress =
-          _updateSectionInProgress(currentProgress, sectionId, passed);
+      currentProgress = _updateSectionInProgress(currentProgress, sectionId, passed);
 
       // Auto-complete topics if section passed
       if (passed && autoCompleteTopics != null) {
         for (final topicId in autoCompleteTopics) {
-          currentProgress = _updateTopicInProgress(
-              currentProgress, topicId as String, true, sectionId);
+          currentProgress = _updateTopicInProgress(currentProgress, topicId as String, true, sectionId);
         }
       }
 
-      // CRITICAL FIX: Save to Firebase using FirebaseUserService
+      // Save to Firebase using FirebaseUserService
       await FirebaseUserService.instance.saveUserProgress(currentProgress);
 
       // Also update UserService for consistency
       await UserService.instance.updateUserProgress(currentProgress);
 
-      debugPrint(
-          '✅ [ProgressTracker] Section $sectionId synced to Firebase successfully');
+      debugPrint('✅ [ProgressTracker] Section $sectionId synced to Firebase successfully');
     } catch (e) {
       debugPrint('❌ [ProgressTracker] Failed to sync section to Firebase: $e');
       rethrow;
     }
   }
 
-  // ===== REMAINING METHODS (keeping all existing functionality) =====
+  // ===== REMAINING METHODS =====
 
   /// Check if topic is completed (offline-first)
   Future<bool> isTopicCompleted(String topicId) async {
@@ -770,8 +715,7 @@ class ProgressTrackingService extends ChangeNotifier {
       if (success) {
         debugPrint('✅ [ProgressTracker] Force sync completed successfully');
       } else {
-        debugPrint(
-            '⚠️ [ProgressTracker] Force sync failed (user not available)');
+        debugPrint('⚠️ [ProgressTracker] Force sync failed (user not available)');
       }
       return success;
     } catch (e) {
@@ -847,8 +791,7 @@ class ProgressTrackingService extends ChangeNotifier {
     try {
       _pendingSyncQueue.add(item);
       await _prefs!.setString(_pendingSyncKey, jsonEncode(_pendingSyncQueue));
-      debugPrint(
-          '📤 [ProgressTracker] Added to sync queue (${_pendingSyncQueue.length} pending)');
+      debugPrint('📤 [ProgressTracker] Added to sync queue (${_pendingSyncQueue.length} pending)');
     } catch (e) {
       debugPrint('❌ [ProgressTracker] Error adding to sync queue: $e');
     }
@@ -862,8 +805,7 @@ class ProgressTrackingService extends ChangeNotifier {
         final queueData = jsonDecode(queueJson) as List<dynamic>;
         _pendingSyncQueue.clear();
         _pendingSyncQueue.addAll(queueData.cast<Map<String, dynamic>>());
-        debugPrint(
-            '📥 [ProgressTracker] Loaded ${_pendingSyncQueue.length} items from sync queue');
+        debugPrint('📥 [ProgressTracker] Loaded ${_pendingSyncQueue.length} items from sync queue');
       } else {
         debugPrint('📥 [ProgressTracker] Loaded 0 items from sync queue');
       }
@@ -876,16 +818,13 @@ class ProgressTrackingService extends ChangeNotifier {
   void _startPeriodicSync() {
     _syncTimer?.cancel();
 
-    final interval = _pendingSyncQueue.isNotEmpty
-        ? const Duration(seconds: 30)
-        : _syncInterval;
+    final interval = _pendingSyncQueue.isNotEmpty ? const Duration(seconds: 30) : _syncInterval;
 
     _syncTimer = Timer.periodic(interval, (_) {
       _attemptImmediateSync();
     });
 
-    debugPrint(
-        '⏱️ [ProgressTracker] Periodic sync started (every ${interval.inSeconds} seconds)');
+    debugPrint('⏱️ [ProgressTracker] Periodic sync started (every ${interval.inSeconds} seconds)');
   }
 
   /// Attempt immediate sync (non-blocking)
@@ -912,8 +851,7 @@ class ProgressTrackingService extends ChangeNotifier {
         return false;
       }
 
-      debugPrint(
-          '☁️ [ProgressTracker] Syncing ${_pendingSyncQueue.length} items to Firebase for user: ${user.username}');
+      debugPrint('☁️ [ProgressTracker] Syncing ${_pendingSyncQueue.length} items to Firebase for user: ${user.username}');
 
       int successCount = 0;
       int failCount = 0;
@@ -926,8 +864,7 @@ class ProgressTrackingService extends ChangeNotifier {
           debugPrint('✅ [ProgressTracker] Synced item: ${item['type']}');
         } catch (e) {
           failCount++;
-          debugPrint(
-              '❌ [ProgressTracker] Failed to sync item ${item['type']}: $e');
+          debugPrint('❌ [ProgressTracker] Failed to sync item ${item['type']}: $e');
         }
       }
 
@@ -935,8 +872,7 @@ class ProgressTrackingService extends ChangeNotifier {
       await _prefs!.setString(_pendingSyncKey, jsonEncode(_pendingSyncQueue));
       await _prefs!.setString(_lastSyncKey, DateTime.now().toIso8601String());
 
-      debugPrint(
-          '📊 [ProgressTracker] Sync complete - Success: $successCount, Failed: $failCount');
+      debugPrint('📊 [ProgressTracker] Sync complete - Success: $successCount, Failed: $failCount');
 
       return _pendingSyncQueue.isEmpty;
     } catch (e) {

@@ -1,12 +1,15 @@
 // lib/services/firebase_database_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/user/user.dart' as app_user;
+import '../models/user/user.dart';
+import '../models/user/user_preferences.dart';
+import '../models/user/user_progress.dart';
 import '../models/quiz/quiz_result.dart';
 import '../models/quiz/quiz_session.dart';
 import './firebase_config.dart';
 
-/// Firebase Firestore Database Service
-/// Handles all database operations for user data, preferences, and progress
+/// Firebase Firestore Database Service for Separated User Models
+/// Handles all database operations for user account data, preferences, and progress
+/// Updated to work with the new separated model architecture
 class FirebaseDatabaseService {
   static FirebaseDatabaseService? _instance;
   static FirebaseDatabaseService get instance =>
@@ -31,18 +34,18 @@ class FirebaseDatabaseService {
   CollectionReference get _userPreferencesCollection =>
       _firestore.collection(FirebaseCollections.userPreferences);
 
-  /// User Operations
+  /// User Account Operations
 
-  /// Create a new user document
-  Future<void> createUser(String userId, app_user.User user) async {
+  /// Create a new user account with initial data
+  Future<void> createUser(String userId, User user) async {
     try {
-      print('Creating user with ID: $userId');
+      print('Creating user account with ID: $userId');
 
       final batch = _firestore.batch();
 
-      // Create user document
+      // Create user account document
       final userData = user.toJson();
-      userData['firebaseUid'] = userId; // Ensure Firebase UID is stored
+      userData['firebaseUid'] = userId;
       userData['createdAt'] = FieldValue.serverTimestamp();
       userData['lastLoginAt'] = FieldValue.serverTimestamp();
 
@@ -54,23 +57,22 @@ class FirebaseDatabaseService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      print('Committing user creation batch...');
+      print('Committing user account creation batch...');
       await batch.commit();
 
-      // Create initial user data documents (preferences, progress, etc.)
+      // Create initial user data documents (preferences and progress)
       print('Creating initial user data documents...');
-      await _createInitialUserData(userId, user);
+      await _createInitialUserData(userId);
 
-      print('User creation completed successfully');
+      print('User account creation completed successfully');
     } catch (e) {
       print('Error in createUser: $e');
-      throw DatabaseException('Failed to create user: ${e.toString()}');
+      throw DatabaseException('Failed to create user account: ${e.toString()}');
     }
   }
 
   /// Repair missing user data for existing Firebase Auth users
-  /// This handles cases where Firebase Auth succeeded but Firestore creation failed
-  Future<app_user.User> repairUserData({
+  Future<User> repairUserData({
     required String firebaseUid,
     required String email,
     String? displayName,
@@ -83,126 +85,35 @@ class FirebaseDatabaseService {
       if (existingDoc.exists) {
         print('User document already exists, no repair needed');
         final data = existingDoc.data() as Map<String, dynamic>;
-
-        // Convert timestamps if needed
-        if (data['createdAt'] is Timestamp) {
-          data['createdAt'] =
-              (data['createdAt'] as Timestamp).toDate().toIso8601String();
-        }
-        if (data['lastLoginAt'] is Timestamp) {
-          data['lastLoginAt'] =
-              (data['lastLoginAt'] as Timestamp).toDate().toIso8601String();
-        }
-
-        return app_user.User.fromJson(data);
+        return _convertFirestoreUserData(data);
       }
 
       // Extract username from email or use display name
       String baseUsername = displayName ?? email.split('@').first;
-
-      // Ensure username is valid and unique
       String username = await _generateUniqueUsername(baseUsername);
 
       print('Generated unique username: $username');
 
       // Create new user object with Firebase UID as the ID
-      final newUser = app_user.User.fromRegistration(
+      final newUser = User.fromRegistration(
         username: username,
         email: email.toLowerCase().trim(),
+        firebaseUid: firebaseUid,
       );
 
-      // IMPORTANT: Create a copy with the Firebase UID as the user ID
-      final repairedUser = newUser.copyWith();
-
       print('Creating repaired user document...');
-
-      // Create user document with Firebase UID as document ID
-      await createUser(firebaseUid, repairedUser);
+      await createUser(firebaseUid, newUser);
 
       print('User data repaired successfully for: $username');
-      return repairedUser;
+      return newUser;
     } catch (e) {
       print('Failed to repair user data: $e');
       throw DatabaseException('Failed to repair user data: ${e.toString()}');
     }
   }
 
-  /// Generate a unique username by appending numbers if needed
-  Future<String> _generateUniqueUsername(String baseUsername) async {
-    // Clean up the base username
-    String cleanUsername =
-        baseUsername.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
-    if (cleanUsername.length < 3) {
-      cleanUsername = 'user${DateTime.now().millisecondsSinceEpoch % 10000}';
-    }
-    if (cleanUsername.length > 20) {
-      cleanUsername = cleanUsername.substring(0, 20);
-    }
-
-    String currentUsername = cleanUsername;
-    int counter = 1;
-
-    // Check if username is available, append numbers if needed
-    while (await isUsernameTaken(currentUsername)) {
-      if (counter == 1) {
-        currentUsername = '${cleanUsername}_$counter';
-      } else {
-        // Remove previous number and add new one
-        currentUsername = '${cleanUsername}_$counter';
-      }
-      counter++;
-
-      // Prevent infinite loop
-      if (counter > 999) {
-        currentUsername =
-            'user${DateTime.now().millisecondsSinceEpoch % 10000}';
-        break;
-      }
-    }
-
-    return currentUsername;
-  }
-
-  /// Health check method to verify database setup
-  Future<Map<String, bool>> checkDatabaseHealth(String userId) async {
-    try {
-      final results = <String, bool>{};
-
-      // Check user document
-      final userDoc = await _usersCollection.doc(userId).get();
-      results['userDocument'] = userDoc.exists;
-
-      // Check preferences document
-      final prefsDoc = await _userPreferencesCollection.doc(userId).get();
-      results['preferencesDocument'] = prefsDoc.exists;
-
-      // Check progress document
-      final progressDoc = await _userProgressCollection.doc(userId).get();
-      results['progressDocument'] = progressDoc.exists;
-
-      // Check quiz results document
-      final quizDoc = await _quizResultsCollection.doc(userId).get();
-      results['quizResultsDocument'] = quizDoc.exists;
-
-      // Check username document if user exists
-      if (userDoc.exists) {
-        final userData = userDoc.data() as Map<String, dynamic>;
-        final username = userData['username'] as String?;
-        if (username != null) {
-          final usernameDoc = await _usernamesCollection.doc(username).get();
-          results['usernameDocument'] = usernameDoc.exists;
-        }
-      }
-
-      return results;
-    } catch (e) {
-      print('Error checking database health: $e');
-      return {'error': false};
-    }
-  }
-
-  /// Get user by Firebase UID
-  Future<app_user.User?> getUser(String userId) async {
+  /// Get user account by Firebase UID
+  Future<User?> getUser(String userId) async {
     try {
       final doc = await _usersCollection.doc(userId).get();
 
@@ -211,25 +122,14 @@ class FirebaseDatabaseService {
       }
 
       final data = doc.data() as Map<String, dynamic>;
-
-      // Convert Firestore timestamps to DateTime
-      if (data['createdAt'] is Timestamp) {
-        data['createdAt'] =
-            (data['createdAt'] as Timestamp).toDate().toIso8601String();
-      }
-      if (data['lastLoginAt'] is Timestamp) {
-        data['lastLoginAt'] =
-            (data['lastLoginAt'] as Timestamp).toDate().toIso8601String();
-      }
-
-      return app_user.User.fromJson(data);
+      return _convertFirestoreUserData(data);
     } catch (e) {
-      throw DatabaseException('Failed to get user: ${e.toString()}');
+      throw DatabaseException('Failed to get user account: ${e.toString()}');
     }
   }
 
-  /// Update user data
-  Future<void> updateUser(String userId, app_user.User user) async {
+  /// Update user account data
+  Future<void> updateUser(String userId, User user) async {
     try {
       final batch = _firestore.batch();
 
@@ -255,11 +155,11 @@ class FirebaseDatabaseService {
 
       await batch.commit();
     } catch (e) {
-      throw DatabaseException('Failed to update user: ${e.toString()}');
+      throw DatabaseException('Failed to update user account: ${e.toString()}');
     }
   }
 
-  /// Delete user and all associated data
+  /// Delete user account and all associated data
   Future<void> deleteUser(String userId) async {
     try {
       final batch = _firestore.batch();
@@ -296,17 +196,7 @@ class FirebaseDatabaseService {
 
       await batch.commit();
     } catch (e) {
-      throw DatabaseException('Failed to delete user: ${e.toString()}');
-    }
-  }
-
-  /// Check if username is already taken (SECURE VERSION)
-  Future<bool> isUsernameTaken(String username) async {
-    try {
-      final doc = await _usernamesCollection.doc(username).get();
-      return doc.exists;
-    } catch (e) {
-      throw DatabaseException('Failed to check username: ${e.toString()}');
+      throw DatabaseException('Failed to delete user account: ${e.toString()}');
     }
   }
 
@@ -314,19 +204,22 @@ class FirebaseDatabaseService {
 
   /// Save user preferences
   Future<void> saveUserPreferences(
-      String userId, app_user.UserPreferences preferences) async {
+      String userId, UserPreferences preferences) async {
     try {
       await _userPreferencesCollection.doc(userId).set(
-            preferences.toJson(),
+            {
+              ...preferences.toJson(),
+              'lastUpdated': FieldValue.serverTimestamp(),
+            },
             SetOptions(merge: true),
           );
     } catch (e) {
-      throw DatabaseException('Failed to save preferences: ${e.toString()}');
+      throw DatabaseException('Failed to save user preferences: ${e.toString()}');
     }
   }
 
   /// Get user preferences
-  Future<app_user.UserPreferences?> getUserPreferences(String userId) async {
+  Future<UserPreferences?> getUserPreferences(String userId) async {
     try {
       final doc = await _userPreferencesCollection.doc(userId).get();
 
@@ -334,30 +227,45 @@ class FirebaseDatabaseService {
         return null;
       }
 
-      return app_user.UserPreferences.fromJson(
-          doc.data() as Map<String, dynamic>);
+      final data = doc.data() as Map<String, dynamic>;
+      return UserPreferences.fromJson(data);
     } catch (e) {
-      throw DatabaseException('Failed to get preferences: ${e.toString()}');
+      throw DatabaseException('Failed to get user preferences: ${e.toString()}');
+    }
+  }
+
+  /// Update specific preference
+  Future<void> updateUserPreference(
+      String userId, String key, dynamic value) async {
+    try {
+      await _userPreferencesCollection.doc(userId).update({
+        key: value,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw DatabaseException('Failed to update user preference: ${e.toString()}');
     }
   }
 
   /// User Progress Operations
 
   /// Save user progress
-  Future<void> saveUserProgress(
-      String userId, app_user.UserProgress progress) async {
+  Future<void> saveUserProgress(String userId, UserProgress progress) async {
     try {
       await _userProgressCollection.doc(userId).set(
-            progress.toJson(),
+            {
+              ...progress.toJson(),
+              'lastUpdated': FieldValue.serverTimestamp(),
+            },
             SetOptions(merge: true),
           );
     } catch (e) {
-      throw DatabaseException('Failed to save progress: ${e.toString()}');
+      throw DatabaseException('Failed to save user progress: ${e.toString()}');
     }
   }
 
   /// Get user progress
-  Future<app_user.UserProgress?> getUserProgress(String userId) async {
+  Future<UserProgress?> getUserProgress(String userId) async {
     try {
       final doc = await _userProgressCollection.doc(userId).get();
 
@@ -365,13 +273,134 @@ class FirebaseDatabaseService {
         return null;
       }
 
-      return app_user.UserProgress.fromJson(doc.data() as Map<String, dynamic>);
+      final data = doc.data() as Map<String, dynamic>;
+      return UserProgress.fromJson(data);
     } catch (e) {
-      throw DatabaseException('Failed to get progress: ${e.toString()}');
+      throw DatabaseException('Failed to get user progress: ${e.toString()}');
     }
   }
 
-  /// Quiz Results Operations
+  /// Update specific progress data
+  Future<void> updateProgressData(
+      String userId, String key, dynamic value) async {
+    try {
+      await _userProgressCollection.doc(userId).update({
+        key: value,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw DatabaseException('Failed to update progress data: ${e.toString()}');
+    }
+  }
+
+  /// Record quiz attempt and update progress
+  Future<void> recordQuizAttempt(
+    String userId,
+    QuizAttempt attempt,
+  ) async {
+    try {
+      final batch = _firestore.batch();
+
+      // Get current progress
+      final currentProgress = await getUserProgress(userId);
+      if (currentProgress == null) {
+        throw DatabaseException('User progress not found');
+      }
+
+      // Update progress with new attempt
+      final updatedProgress = currentProgress.recordQuizAttempt(
+        topicId: attempt.topicId,
+        sectionId: attempt.sectionId,
+        score: attempt.score,
+        passed: attempt.passed,
+        timeSpent: attempt.timeSpent,
+        totalQuestions: attempt.totalQuestions,
+        correctAnswers: attempt.correctAnswers,
+        isTopicQuiz: attempt.isTopicQuiz,
+      );
+
+      // Save updated progress
+      batch.set(
+        _userProgressCollection.doc(userId),
+        {
+          ...updatedProgress.toJson(),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+    } catch (e) {
+      throw DatabaseException('Failed to record quiz attempt: ${e.toString()}');
+    }
+  }
+
+  /// Complete User Data Operations
+
+  /// Get complete user data (account, preferences, progress)
+  Future<CompleteUserData?> getCompleteUserData(String userId) async {
+    try {
+      final futures = await Future.wait([
+        getUser(userId),
+        getUserPreferences(userId),
+        getUserProgress(userId),
+      ]);
+
+      final user = futures[0] as User?;
+      final preferences = futures[1] as UserPreferences?;
+      final progress = futures[2] as UserProgress?;
+
+      if (user == null) return null;
+
+      return CompleteUserData(
+        user: user,
+        preferences: preferences ?? UserPreferences.defaults(),
+        progress: progress ?? UserProgress.empty(),
+      );
+    } catch (e) {
+      throw DatabaseException('Failed to get complete user data: ${e.toString()}');
+    }
+  }
+
+  /// Save complete user data
+  Future<void> saveCompleteUserData(
+      String userId, CompleteUserData userData) async {
+    try {
+      final batch = _firestore.batch();
+
+      // Update user account
+      batch.update(_usersCollection.doc(userId), {
+        ...userData.user.toJson(),
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update preferences
+      batch.set(
+        _userPreferencesCollection.doc(userId),
+        {
+          ...userData.preferences.toJson(),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      // Update progress
+      batch.set(
+        _userProgressCollection.doc(userId),
+        {
+          ...userData.progress.toJson(),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+    } catch (e) {
+      throw DatabaseException('Failed to save complete user data: ${e.toString()}');
+    }
+  }
+
+  /// Quiz Results Operations (updated for new models)
 
   /// Save quiz result
   Future<void> saveQuizResult(String userId, QuizResult result) async {
@@ -425,8 +454,6 @@ class FirebaseDatabaseService {
               (data['createdAt'] as Timestamp).toDate().toIso8601String();
         }
 
-        // Since QuizResult.fromJson doesn't exist, we'll create a simple conversion
-        // Note: This is a temporary fix - ideally QuizResult should have a fromJson method
         return _createQuizResultFromData(data);
       }).toList();
     } catch (e) {
@@ -434,16 +461,43 @@ class FirebaseDatabaseService {
     }
   }
 
-  /// Delete quiz result
-  Future<void> deleteQuizResult(String userId, String sessionId) async {
+  /// Health Check and Diagnostic Operations
+
+  /// Health check method to verify database setup
+  Future<Map<String, bool>> checkDatabaseHealth(String userId) async {
     try {
-      await _quizResultsCollection
-          .doc(userId)
-          .collection(FirebaseCollections.quizSessions)
-          .doc(sessionId)
-          .delete();
+      final results = <String, bool>{};
+
+      // Check user document
+      final userDoc = await _usersCollection.doc(userId).get();
+      results['userDocument'] = userDoc.exists;
+
+      // Check preferences document
+      final prefsDoc = await _userPreferencesCollection.doc(userId).get();
+      results['preferencesDocument'] = prefsDoc.exists;
+
+      // Check progress document
+      final progressDoc = await _userProgressCollection.doc(userId).get();
+      results['progressDocument'] = progressDoc.exists;
+
+      // Check quiz results document
+      final quizDoc = await _quizResultsCollection.doc(userId).get();
+      results['quizResultsDocument'] = quizDoc.exists;
+
+      // Check username document if user exists
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        final username = userData['username'] as String?;
+        if (username != null) {
+          final usernameDoc = await _usernamesCollection.doc(username).get();
+          results['usernameDocument'] = usernameDoc.exists;
+        }
+      }
+
+      return results;
     } catch (e) {
-      throw DatabaseException('Failed to delete quiz result: ${e.toString()}');
+      print('Error checking database health: $e');
+      return {'error': false};
     }
   }
 
@@ -452,15 +506,13 @@ class FirebaseDatabaseService {
   /// Export user data for backup
   Future<Map<String, dynamic>> exportUserData(String userId) async {
     try {
-      final user = await getUser(userId);
-      final preferences = await getUserPreferences(userId);
-      final progress = await getUserProgress(userId);
+      final completeData = await getCompleteUserData(userId);
       final quizResults = await getQuizResults(userId);
 
       return {
-        'user': user?.toJson(),
-        'preferences': preferences?.toJson(),
-        'progress': progress?.toJson(),
+        'user': completeData?.user.toJson(),
+        'preferences': completeData?.preferences.toJson(),
+        'progress': completeData?.progress.toJson(),
         'quizResults': quizResults.map((r) => r.toJson()).toList(),
         'exportedAt': DateTime.now().toIso8601String(),
       };
@@ -469,28 +521,50 @@ class FirebaseDatabaseService {
     }
   }
 
-  /// Batch operations for data migration
-  Future<void> batchUpdateUsers(List<Map<String, dynamic>> updates) async {
+  /// Username Management Operations
+
+  /// Check if username is already taken
+  Future<bool> isUsernameTaken(String username) async {
     try {
-      final batch = _firestore.batch();
-
-      for (final update in updates) {
-        final userId = update['userId'] as String;
-        final userData = update['data'] as Map<String, dynamic>;
-
-        batch.update(_usersCollection.doc(userId), userData);
-      }
-
-      await batch.commit();
+      final doc = await _usernamesCollection.doc(username).get();
+      return doc.exists;
     } catch (e) {
-      throw DatabaseException('Failed to batch update users: ${e.toString()}');
+      throw DatabaseException('Failed to check username: ${e.toString()}');
     }
+  }
+
+  /// Generate a unique username by appending numbers if needed
+  Future<String> _generateUniqueUsername(String baseUsername) async {
+    String cleanUsername =
+        baseUsername.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
+    if (cleanUsername.length < 3) {
+      cleanUsername = 'user${DateTime.now().millisecondsSinceEpoch % 10000}';
+    }
+    if (cleanUsername.length > 20) {
+      cleanUsername = cleanUsername.substring(0, 20);
+    }
+
+    String currentUsername = cleanUsername;
+    int counter = 1;
+
+    while (await isUsernameTaken(currentUsername)) {
+      currentUsername = '${cleanUsername}_$counter';
+      counter++;
+
+      if (counter > 999) {
+        currentUsername =
+            'user${DateTime.now().millisecondsSinceEpoch % 10000}';
+        break;
+      }
+    }
+
+    return currentUsername;
   }
 
   /// Helper Methods
 
-  /// Create initial user data documents - Improved with better error handling
-  Future<void> _createInitialUserData(String userId, app_user.User user) async {
+  /// Create initial user data documents
+  Future<void> _createInitialUserData(String userId) async {
     try {
       print('Creating initial data for user: $userId');
 
@@ -500,7 +574,7 @@ class FirebaseDatabaseService {
       batch.set(
         _userPreferencesCollection.doc(userId),
         {
-          ...user.preferences.toJson(),
+          ...UserPreferences.defaults().toJson(),
           'createdAt': FieldValue.serverTimestamp(),
         },
       );
@@ -509,7 +583,7 @@ class FirebaseDatabaseService {
       batch.set(
         _userProgressCollection.doc(userId),
         {
-          ...user.progress.toJson(),
+          ...UserProgress.empty().toJson(),
           'createdAt': FieldValue.serverTimestamp(),
         },
       );
@@ -534,10 +608,23 @@ class FirebaseDatabaseService {
     }
   }
 
+  /// Convert Firestore data to User model
+  User _convertFirestoreUserData(Map<String, dynamic> data) {
+    // Convert Firestore timestamps to DateTime strings
+    if (data['createdAt'] is Timestamp) {
+      data['createdAt'] =
+          (data['createdAt'] as Timestamp).toDate().toIso8601String();
+    }
+    if (data['lastLoginAt'] is Timestamp) {
+      data['lastLoginAt'] =
+          (data['lastLoginAt'] as Timestamp).toDate().toIso8601String();
+    }
+
+    return User.fromJson(data);
+  }
+
   /// Temporary method to create QuizResult from data
-  /// This should be replaced with proper QuizResult.fromJson once implemented
   QuizResult _createQuizResultFromData(Map<String, dynamic> data) {
-    // This is a simplified conversion - you may need to adjust based on actual QuizResult structure
     return QuizResult(
       sessionId: data['sessionId'] as String? ?? '',
       quizType: _parseQuizType(data['quizType'] as String?),
@@ -552,8 +639,8 @@ class FirebaseDatabaseService {
           (data['totalPossiblePoints'] as num?)?.toDouble() ?? 0.0,
       pointsEarned: (data['pointsEarned'] as num?)?.toDouble() ?? 0.0,
       timeSpent: Duration(milliseconds: data['timeSpent'] as int? ?? 0),
-      questionResults: [], // Would need proper deserialization
-      topicPerformance: [], // Would need proper deserialization
+      questionResults: [],
+      topicPerformance: [],
       passingScore: (data['passingScore'] as num?)?.toDouble() ?? 0.7,
       timeLimitMinutes: data['timeLimitMinutes'] as int?,
       hintsUsed: data['hintsUsed'] as int? ?? 0,
@@ -577,53 +664,37 @@ class FirebaseDatabaseService {
   /// Health check for database connectivity
   Future<bool> checkConnectivity() async {
     try {
-      await _firestore.settings.toString(); // Simple connectivity test
+      await _firestore.settings.toString();
       return true;
     } catch (e) {
       return false;
     }
   }
+}
 
-  /// Username Management Utilities (for admin/debugging)
+/// Container for complete user data
+class CompleteUserData {
+  final User user;
+  final UserPreferences preferences;
+  final UserProgress progress;
 
-  /// Get userId from username (for admin purposes)
-  Future<String?> getUserIdFromUsername(String username) async {
-    try {
-      final doc = await _usernamesCollection.doc(username).get();
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        return data['userId'] as String?;
-      }
-      return null;
-    } catch (e) {
-      throw DatabaseException(
-          'Failed to get userId from username: ${e.toString()}');
-    }
-  }
+  const CompleteUserData({
+    required this.user,
+    required this.preferences,
+    required this.progress,
+  });
 
-  /// Clean up orphaned username documents (for maintenance)
-  Future<void> cleanupOrphanedUsernames() async {
-    try {
-      final usernamesSnapshot = await _usernamesCollection.get();
-      final batch = _firestore.batch();
-
-      for (final usernameDoc in usernamesSnapshot.docs) {
-        final data = usernameDoc.data() as Map<String, dynamic>;
-        final userId = data['userId'] as String;
-
-        // Check if user still exists
-        final userDoc = await _usersCollection.doc(userId).get();
-        if (!userDoc.exists) {
-          // Delete orphaned username document
-          batch.delete(usernameDoc.reference);
-        }
-      }
-
-      await batch.commit();
-    } catch (e) {
-      throw DatabaseException(
-          'Failed to cleanup orphaned usernames: ${e.toString()}');
-    }
+  /// Create copy with updated user data
+  CompleteUserData copyWith({
+    User? user,
+    UserPreferences? preferences,
+    UserProgress? progress,
+  }) {
+    return CompleteUserData(
+      user: user ?? this.user,
+      preferences: preferences ?? this.preferences,
+      progress: progress ?? this.progress,
+    );
   }
 }
 

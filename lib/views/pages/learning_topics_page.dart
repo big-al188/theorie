@@ -1,14 +1,15 @@
-// lib/views/pages/learning_topics_page.dart - Enhanced with Progress Tracking
+// lib/views/pages/learning_topics_page.dart - Updated for separated models
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/learning/learning_content.dart';
 import '../../models/user/user.dart';
+import '../../models/user/user_progress.dart';  // ADDED: Import separated models
 import '../../constants/ui_constants.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../services/quiz_integration_service.dart';
-import '../../services/progress_tracking_service.dart'; // ADDED: For progress tracking
+import '../../services/progress_tracking_service.dart';
 import '../widgets/common/app_bar.dart';
 import 'topic_detail_page.dart';
 
@@ -28,18 +29,18 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
   @override
   void initState() {
     super.initState();
-    // ADDED: Listen to progress changes for real-time updates
+    // Listen to progress changes for real-time updates
     ProgressTrackingService.instance.addListener(_onProgressChanged);
   }
 
   @override
   void dispose() {
-    // ADDED: Clean up progress listener
+    // Clean up progress listener
     ProgressTrackingService.instance.removeListener(_onProgressChanged);
     super.dispose();
   }
 
-  /// ADDED: Handle progress changes and refresh UI
+  /// Handle progress changes and refresh UI
   void _onProgressChanged() {
     if (mounted) {
       // Force AppState to refresh user data
@@ -126,161 +127,183 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
   Widget _buildSectionStats(BuildContext context, DeviceType deviceType) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
-        // ENHANCED: Real-time progress calculation
-        int completedTopics = 0;
-        int totalTopics = widget.section.topics.length;
-
-        if (appState.currentUser != null) {
-          for (final topic in widget.section.topics) {
-            if (appState.currentUser!.progress.completedTopics
-                .contains(topic.id)) {
-              completedTopics++;
+        // UPDATED: Use FutureBuilder for async progress loading
+        return FutureBuilder<UserProgress>(
+          future: _getUserProgress(appState),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Card(
+                elevation: 2,
+                child: Container(
+                  height: 120,
+                  padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+              );
             }
-          }
-        }
 
-        final progressPercentage =
-            totalTopics > 0 ? completedTopics / totalTopics : 0.0;
+            final userProgress = snapshot.data ?? UserProgress.empty();
+            int completedTopics = 0;
+            int totalTopics = widget.section.topics.length;
 
-        return Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Padding(
-            padding:
-                EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            for (final topic in widget.section.topics) {
+              if (userProgress.completedTopics.contains(topic.id)) {
+                completedTopics++;
+              }
+            }
+
+            final progressPercentage = totalTopics > 0 ? completedTopics / totalTopics : 0.0;
+
+            return Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Section Progress',
-                      style: TextStyle(
-                        fontSize: deviceType == DeviceType.mobile ? 16.0 : 18.0,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    // ENHANCED: Real-time completion badge
-                    if (completedTopics == totalTopics && totalTopics > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          borderRadius: BorderRadius.circular(12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Section Progress',
+                          style: TextStyle(
+                            fontSize: deviceType == DeviceType.mobile ? 16.0 : 18.0,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.check_circle,
-                                color: Colors.white, size: 14),
-                            SizedBox(width: 4),
-                            Text(
-                              'COMPLETE',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        // Real-time completion badge
+                        if (completedTopics == totalTopics && totalTopics > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                          ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(Icons.check_circle, color: Colors.white, size: 14),
+                                SizedBox(width: 4),
+                                Text(
+                                  'COMPLETE',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '$completedTopics / $totalTopics topics completed',
+                          style: TextStyle(
+                            fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        Text(
+                          '${(progressPercentage * 100).round()}%',
+                          style: TextStyle(
+                            fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                            fontWeight: FontWeight.bold,
+                            color: progressPercentage == 1.0 ? Colors.green : Theme.of(context).primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 8,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        color: Colors.grey.shade300,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: progressPercentage,
+                          backgroundColor: Colors.transparent,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            progressPercentage == 1.0 ? Colors.green : Theme.of(context).primaryColor,
+                          ),
+                          minHeight: 8,
                         ),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '$completedTopics / $totalTopics topics completed',
-                      style: TextStyle(
-                        fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    Text(
-                      '${(progressPercentage * 100).round()}%',
-                      style: TextStyle(
-                        fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                        fontWeight: FontWeight.bold,
-                        color: progressPercentage == 1.0
-                            ? Colors.green
-                            : Theme.of(context).primaryColor,
-                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  height: 8,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(4),
-                    color: Colors.grey.shade300,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: progressPercentage,
-                      backgroundColor: Colors.transparent,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        progressPercentage == 1.0
-                            ? Colors.green
-                            : Theme.of(context).primaryColor,
-                      ),
-                      minHeight: 8,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildTopicsList(
-      BuildContext context, DeviceType deviceType, bool isLandscape) {
+  Widget _buildTopicsList(BuildContext context, DeviceType deviceType, bool isLandscape) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
-        return Column(
-          children: widget.section.topics.map((topic) {
-            // ENHANCED: Real-time completion status
-            final isCompleted = appState.currentUser?.progress.completedTopics
-                    .contains(topic.id) ??
-                false;
+        return FutureBuilder<UserProgress>(
+          future: _getUserProgress(appState),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Column(
+                children: widget.section.topics.map((topic) {
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: deviceType == DeviceType.mobile ? 12.0 : 16.0),
+                    child: Card(
+                      elevation: 1,
+                      child: Container(
+                        height: 120,
+                        padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 12.0 : 16.0),
+                        child: const Center(child: CircularProgressIndicator()),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            }
 
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: deviceType == DeviceType.mobile ? 12.0 : 16.0,
-              ),
-              child: _buildTopicCard(context, topic, isCompleted, deviceType),
+            final userProgress = snapshot.data ?? UserProgress.empty();
+
+            return Column(
+              children: widget.section.topics.map((topic) {
+                // Real-time completion status
+                final isCompleted = userProgress.completedTopics.contains(topic.id);
+
+                return Padding(
+                  padding: EdgeInsets.only(bottom: deviceType == DeviceType.mobile ? 12.0 : 16.0),
+                  child: _buildTopicCard(context, topic, isCompleted, deviceType),
+                );
+              }).toList(),
             );
-          }).toList(),
+          },
         );
       },
     );
   }
 
-  Widget _buildTopicCard(BuildContext context, LearningTopic topic,
-      bool isCompleted, DeviceType deviceType) {
+  Widget _buildTopicCard(BuildContext context, LearningTopic topic, bool isCompleted, DeviceType deviceType) {
     final titleFontSize = deviceType == DeviceType.mobile ? 16.0 : 18.0;
     final bodyFontSize = deviceType == DeviceType.mobile ? 14.0 : 16.0;
-    final hasQuiz = QuizIntegrationService.isTopicQuizImplemented(
-        widget.section.id, topic.id);
+    final hasQuiz = QuizIntegrationService.isTopicQuizImplemented(widget.section.id, topic.id);
 
     return Card(
       elevation: 1,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
-          color: isCompleted
-              ? Colors.green.withOpacity(0.3)
-              : Colors.grey.withOpacity(0.3),
+          color: isCompleted ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
           width: 1,
         ),
       ),
@@ -302,7 +325,7 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
                     ),
                   ),
                 ),
-                // ENHANCED: Real-time completion indicator
+                // Real-time completion indicator
                 if (isCompleted)
                   Container(
                     padding: const EdgeInsets.all(4),
@@ -376,10 +399,8 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
                         style: TextStyle(fontSize: bodyFontSize - 2),
                       ),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor:
-                            isCompleted ? Colors.green : Colors.blue,
-                        side: BorderSide(
-                            color: isCompleted ? Colors.green : Colors.blue),
+                        foregroundColor: isCompleted ? Colors.green : Colors.blue,
+                        side: BorderSide(color: isCompleted ? Colors.green : Colors.blue),
                         padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
                     ),
@@ -429,129 +450,146 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
   }
 
   Widget _buildSectionQuizCard(BuildContext context, DeviceType deviceType) {
-    final hasQuiz =
-        QuizIntegrationService.isSectionQuizImplemented(widget.section.id);
+    final hasQuiz = QuizIntegrationService.isSectionQuizImplemented(widget.section.id);
 
     return Consumer<AppState>(
       builder: (context, appState, child) {
-        // ENHANCED: Check if section quiz is completed
-        final sectionCompleted = appState
-                .currentUser?.progress.completedSections
-                .contains(widget.section.id) ??
-            false;
+        return FutureBuilder<UserProgress>(
+          future: _getUserProgress(appState),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Card(
+                elevation: 2,
+                child: Container(
+                  height: 150,
+                  padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
 
-        return Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: sectionCompleted
-                  ? Colors.green.withOpacity(0.3)
-                  : Theme.of(context).primaryColor.withOpacity(0.3),
-              width: 1,
-            ),
-          ),
-          child: Padding(
-            padding:
-                EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+            final userProgress = snapshot.data ?? UserProgress.empty();
+            final sectionCompleted = userProgress.completedSections.contains(widget.section.id);
+
+            return Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: sectionCompleted
+                      ? Colors.green.withOpacity(0.3)
+                      : Theme.of(context).primaryColor.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.quiz,
-                      color: _getLevelColor(widget.section.level),
-                      size: 24,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Section Quiz',
-                        style: TextStyle(
-                          fontSize:
-                              deviceType == DeviceType.mobile ? 18.0 : 20.0,
-                          fontWeight: FontWeight.bold,
-                          color:
-                              sectionCompleted ? Colors.green.shade700 : null,
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.quiz,
+                          color: _getLevelColor(widget.section.level),
+                          size: 24,
                         ),
-                      ),
-                    ),
-                    // ENHANCED: Section completion indicator
-                    if (sectionCompleted)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.check_circle,
-                                color: Colors.white, size: 14),
-                            SizedBox(width: 4),
-                            Text(
-                              'PASSED',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Section Quiz',
+                            style: TextStyle(
+                              fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+                              fontWeight: FontWeight.bold,
+                              color: sectionCompleted ? Colors.green.shade700 : null,
                             ),
-                          ],
+                          ),
+                        ),
+                        // Section completion indicator
+                        if (sectionCompleted)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(Icons.check_circle, color: Colors.white, size: 14),
+                                SizedBox(width: 4),
+                                Text(
+                                  'PASSED',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Test your knowledge of all topics in this section.',
+                      style: TextStyle(
+                        fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: hasQuiz ? () => _navigateToSectionQuiz(context) : null,
+                        icon: Icon(
+                          hasQuiz ? Icons.play_arrow : Icons.construction,
+                          size: 20,
+                        ),
+                        label: Text(
+                          hasQuiz
+                              ? (sectionCompleted ? 'Retake Section Quiz' : 'Take Section Quiz')
+                              : 'Coming Soon',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: hasQuiz
+                              ? (sectionCompleted ? Colors.green : _getLevelColor(widget.section.level))
+                              : Colors.grey.shade300,
+                          foregroundColor: hasQuiz ? Colors.white : Colors.grey.shade600,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                       ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Test your knowledge of all topics in this section.',
-                  style: TextStyle(
-                    fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        hasQuiz ? () => _navigateToSectionQuiz(context) : null,
-                    icon: Icon(
-                      hasQuiz ? Icons.play_arrow : Icons.construction,
-                      size: 20,
-                    ),
-                    label: Text(
-                      hasQuiz
-                          ? (sectionCompleted
-                              ? 'Retake Section Quiz'
-                              : 'Take Section Quiz')
-                          : 'Coming Soon',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: hasQuiz
-                          ? (sectionCompleted
-                              ? Colors.green
-                              : _getLevelColor(widget.section.level))
-                          : Colors.grey.shade300,
-                      foregroundColor:
-                          hasQuiz ? Colors.white : Colors.grey.shade600,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
+  }
+
+  /// ADDED: Helper method to get user progress
+  Future<UserProgress> _getUserProgress(AppState appState) async {
+    if (appState.currentUser == null) {
+      return UserProgress.empty();
+    }
+
+    try {
+      // Try to get progress from the progress tracking service
+      return await ProgressTrackingService.instance.getCurrentProgress();
+    } catch (e) {
+      debugPrint('Error getting user progress: $e');
+      // Fallback to cached progress in AppState
+      return appState.currentUserProgress ?? UserProgress.empty();
+    }
   }
 
   Color _getLevelColor(LearningLevel level) {
