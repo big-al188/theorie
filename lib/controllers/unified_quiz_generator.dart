@@ -3,9 +3,27 @@
 import 'dart:math';
 import '../models/quiz/quiz_question.dart';
 import '../models/quiz/quiz_session.dart';
+
+// Introduction section imports
 import '../models/quiz/sections/introduction/whattheory_quiz_questions.dart';
 import '../models/quiz/sections/introduction/whytheory_quiz_questions.dart';
 import '../models/quiz/sections/introduction/practicetips_quiz_questions.dart';
+
+// Fundamentals section imports
+import '../models/quiz/sections/fundamentals/musical_alphabet_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/important_terminology_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/chromatic_scale_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/introduction_to_intervals_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/major_scale_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/natural_minor_scale_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/rhythm_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/harmony_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/melody_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/meter_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/time_signatures_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/what_are_chords_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/introduction_to_triads_quiz_questions.dart';
+import '../models/quiz/sections/fundamentals/open_chords_quiz_questions.dart';
 
 /// Configuration for generating quizzes
 class QuizGenerationConfig {
@@ -99,11 +117,13 @@ class UnifiedQuizGenerator {
       final topicId = allTopicIds[i];
       final topicQuestions = _getTopicQuestions(sectionId, topicId);
 
-      final questionsToTake =
-          questionsPerTopic + (i < remainingQuestions ? 1 : 0);
+      if (topicQuestions.isNotEmpty) {
+        final questionsToTake =
+            questionsPerTopic + (i < remainingQuestions ? 1 : 0);
 
-      topicQuestions.shuffle(_random);
-      selectedQuestions.addAll(topicQuestions.take(questionsToTake));
+        topicQuestions.shuffle(_random);
+        selectedQuestions.addAll(topicQuestions.take(questionsToTake));
+      }
     }
 
     // If we still need more questions, fill from remaining pool
@@ -231,6 +251,8 @@ class UnifiedQuizGenerator {
     switch (sectionId) {
       case 'introduction':
         return _getIntroductionTopicQuestions(topicId);
+      case 'fundamentals':
+        return _getFundamentalsTopicQuestions(topicId);
       // Add more sections here as they are implemented
       default:
         return [];
@@ -251,6 +273,42 @@ class UnifiedQuizGenerator {
     }
   }
 
+  /// Get questions for Fundamentals section topics
+  List<QuizQuestion> _getFundamentalsTopicQuestions(String topicId) {
+    switch (topicId) {
+      case MusicalAlphabetQuizQuestions.topicId:
+        return MusicalAlphabetQuizQuestions.getQuestions();
+      case ImportantTerminologyQuizQuestions.topicId:
+        return ImportantTerminologyQuizQuestions.getQuestions();
+      case ChromaticScaleQuizQuestions.topicId:
+        return ChromaticScaleQuizQuestions.getQuestions();
+      case IntroductionToIntervalsQuizQuestions.topicId:
+        return IntroductionToIntervalsQuizQuestions.getQuestions();
+      case MajorScaleQuizQuestions.topicId:
+        return MajorScaleQuizQuestions.getQuestions();
+      case NaturalMinorScaleQuizQuestions.topicId:
+        return NaturalMinorScaleQuizQuestions.getQuestions();
+      case RhythmQuizQuestions.topicId:
+        return RhythmQuizQuestions.getQuestions();
+      case HarmonyQuizQuestions.topicId:
+        return HarmonyQuizQuestions.getQuestions();
+      case MelodyQuizQuestions.topicId:
+        return MelodyQuizQuestions.getQuestions();
+      case MeterQuizQuestions.topicId:
+        return MeterQuizQuestions.getQuestions();
+      case TimeSignaturesQuizQuestions.topicId:
+        return TimeSignaturesQuizQuestions.getQuestions();
+      case WhatAreChordsQuizQuestions.topicId:
+        return WhatAreChordsQuizQuestions.getQuestions();
+      case IntroductionToTriadsQuizQuestions.topicId:
+        return IntroductionToTriadsQuizQuestions.getQuestions();
+      case OpenChordsQuizQuestions.topicId:
+        return OpenChordsQuizQuestions.getQuestions();
+      default:
+        return [];
+    }
+  }
+
   /// Get all topic IDs for a section
   List<String> _getSectionTopicIds(String sectionId) {
     switch (sectionId) {
@@ -259,6 +317,23 @@ class UnifiedQuizGenerator {
           WhatTheoryQuizQuestions.topicId,
           WhyTheoryQuizQuestions.topicId,
           PracticeTipsQuizQuestions.topicId,
+        ];
+      case 'fundamentals':
+        return [
+          MusicalAlphabetQuizQuestions.topicId,
+          ImportantTerminologyQuizQuestions.topicId,
+          ChromaticScaleQuizQuestions.topicId,
+          IntroductionToIntervalsQuizQuestions.topicId,
+          MajorScaleQuizQuestions.topicId,
+          NaturalMinorScaleQuizQuestions.topicId,
+          RhythmQuizQuestions.topicId,
+          HarmonyQuizQuestions.topicId,
+          MelodyQuizQuestions.topicId,
+          MeterQuizQuestions.topicId,
+          TimeSignaturesQuizQuestions.topicId,
+          WhatAreChordsQuizQuestions.topicId,
+          IntroductionToTriadsQuizQuestions.topicId,
+          OpenChordsQuizQuestions.topicId,
         ];
       // Add more sections here as they are implemented
       default:
@@ -295,6 +370,8 @@ class UnifiedQuizGenerator {
     switch (sectionId) {
       case 'introduction':
         return _getIntroductionTopicTitle(topicId);
+      case 'fundamentals':
+        return _getFundamentalsTopicTitle(topicId);
       // Add more sections here as they are implemented
       default:
         return 'Unknown Topic';
@@ -310,6 +387,42 @@ class UnifiedQuizGenerator {
         return WhyTheoryQuizQuestions.topicTitle;
       case PracticeTipsQuizQuestions.topicId:
         return PracticeTipsQuizQuestions.topicTitle;
+      default:
+        return 'Unknown Topic';
+    }
+  }
+
+  /// Get topic titles for Fundamentals section
+  String _getFundamentalsTopicTitle(String topicId) {
+    switch (topicId) {
+      case MusicalAlphabetQuizQuestions.topicId:
+        return MusicalAlphabetQuizQuestions.topicTitle;
+      case ImportantTerminologyQuizQuestions.topicId:
+        return ImportantTerminologyQuizQuestions.topicTitle;
+      case ChromaticScaleQuizQuestions.topicId:
+        return ChromaticScaleQuizQuestions.topicTitle;
+      case IntroductionToIntervalsQuizQuestions.topicId:
+        return IntroductionToIntervalsQuizQuestions.topicTitle;
+      case MajorScaleQuizQuestions.topicId:
+        return MajorScaleQuizQuestions.topicTitle;
+      case NaturalMinorScaleQuizQuestions.topicId:
+        return NaturalMinorScaleQuizQuestions.topicTitle;
+      case RhythmQuizQuestions.topicId:
+        return RhythmQuizQuestions.topicTitle;
+      case HarmonyQuizQuestions.topicId:
+        return HarmonyQuizQuestions.topicTitle;
+      case MelodyQuizQuestions.topicId:
+        return MelodyQuizQuestions.topicTitle;
+      case MeterQuizQuestions.topicId:
+        return MeterQuizQuestions.topicTitle;
+      case TimeSignaturesQuizQuestions.topicId:
+        return TimeSignaturesQuizQuestions.topicTitle;
+      case WhatAreChordsQuizQuestions.topicId:
+        return WhatAreChordsQuizQuestions.topicTitle;
+      case IntroductionToTriadsQuizQuestions.topicId:
+        return IntroductionToTriadsQuizQuestions.topicTitle;
+      case OpenChordsQuizQuestions.topicId:
+        return OpenChordsQuizQuestions.topicTitle;
       default:
         return 'Unknown Topic';
     }
