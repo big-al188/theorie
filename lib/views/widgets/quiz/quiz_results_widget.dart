@@ -5,7 +5,8 @@ import 'package:provider/provider.dart';
 import '../../../controllers/quiz_controller.dart';
 import '../../../models/quiz/quiz_result.dart';
 import '../../../models/quiz/quiz_question.dart';
-import '../../../constants/quiz_constants.dart'; // ADDED: Import constants
+import '../../../models/quiz/multiple_choice_question.dart';
+import '../../../constants/quiz_constants.dart';
 import 'dart:math' as math;
 
 /// Widget that displays comprehensive quiz results
@@ -14,7 +15,7 @@ import 'dart:math' as math;
 /// - Overall score and grade
 /// - Performance breakdown by topic
 /// - Time statistics
-/// - Question review
+/// - Detailed question review with missed questions and explanations
 /// - Recommendations for improvement
 class QuizResultsWidget extends StatefulWidget {
   const QuizResultsWidget({
@@ -47,6 +48,8 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
   late Animation<double> _scoreAnimation;
 
   bool _showDetailedStats = false;
+  bool _showQuestionReview = false;
+  String _reviewFilter = 'all'; // 'all', 'incorrect', 'correct', 'skipped'
 
   @override
   void initState() {
@@ -140,6 +143,14 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
                     const SizedBox(height: 16),
                     _buildDetailedStats(context, controller),
                   ],
+                  if (widget.showDetailedReview) ...[
+                    const SizedBox(height: 24),
+                    _buildQuestionReviewToggle(context, controller),
+                    if (_showQuestionReview) ...[
+                      const SizedBox(height: 16),
+                      _buildQuestionReview(context, controller),
+                    ],
+                  ],
                   const SizedBox(height: 24),
                   _buildActionButtons(context),
                 ],
@@ -177,13 +188,10 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
     );
   }
 
-  // FIXED: This method now uses actual quiz results instead of mock data
   Widget _buildScoreCard(BuildContext context, QuizController controller) {
-    // Try to get actual results first
     final result = controller.lastResult;
 
     if (result != null) {
-      // Use actual quiz result data - THIS FIXES THE BUGS
       final scorePercentage = result.scorePercentage;
       final letterGrade = result.letterGrade;
       final passed = result.passed;
@@ -238,19 +246,17 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
                   );
                 },
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // Pass/Fail status
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: passed
-                      ? Colors.green.withOpacity(0.1)
-                      : Colors.orange.withOpacity(0.1),
+                  color: (passed ? Colors.green : Colors.orange).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: passed ? Colors.green : Colors.orange,
+                    width: 1,
                   ),
                 ),
                 child: Row(
@@ -274,7 +280,7 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
               ),
               const SizedBox(height: 16),
 
-              // Quick stats with actual result data - THIS FIXES THE null/null ISSUE
+              // Quick stats with actual result data
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -307,7 +313,7 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
       );
     }
 
-    // Fallback to current performance stats if no result yet (shouldn't happen in normal flow)
+    // Fallback to current performance stats if no result yet
     final stats = controller.getCurrentPerformanceStats();
     final accuracy = (stats['accuracy'] as double? ?? 0.0);
     final scorePercentage = accuracy;
@@ -364,39 +370,6 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
                 );
               },
             ),
-            const SizedBox(height: 24),
-
-            // Pass/Fail status
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: passed
-                    ? Colors.green.withOpacity(0.1)
-                    : Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: passed ? Colors.green : Colors.orange,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    passed ? Icons.check_circle : Icons.warning,
-                    color: passed ? Colors.green : Colors.orange,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    passed ? 'PASSED' : 'NEEDS IMPROVEMENT',
-                    style: TextStyle(
-                      color: passed ? Colors.green : Colors.orange,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 16),
 
             // Quick stats
@@ -405,10 +378,10 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
               children: [
                 _buildStatItem(
                   context,
-                  'Correct',
-                  '${stats['questionsCorrect']} / ${stats['questionsAnswered']}',
-                  Icons.check_circle,
-                  Colors.green,
+                  'Answered',
+                  '${stats['answered'] ?? 0}',
+                  Icons.quiz,
+                  Colors.blue,
                 ),
                 _buildStatItem(
                   context,
@@ -432,7 +405,6 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
     );
   }
 
-  // ADDED: Helper method for formatting duration from QuizResult
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
@@ -510,12 +482,8 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
                   ),
             ),
             const SizedBox(height: 16),
-
-            // Topic performance - now uses real data when available
             _buildTopicPerformance(context, controller),
             const SizedBox(height: 16),
-
-            // Recommendations
             _buildRecommendations(context),
           ],
         ),
@@ -523,13 +491,11 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
     );
   }
 
-  // FIXED: Now uses actual topic performance data when available
   Widget _buildTopicPerformance(
       BuildContext context, QuizController controller) {
     final result = controller.lastResult;
 
     if (result != null && result.topicPerformance.isNotEmpty) {
-      // Use actual topic performance data - THIS FIXES THE PLACEHOLDER DATA
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -544,7 +510,7 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _buildTopicBar(
                   context,
-                  topic.topic.displayName, // Use the extension from constants
+                  topic.topic.displayName,
                   topic.scorePercentage,
                   topic.questionsAttempted,
                 ),
@@ -553,52 +519,29 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
       );
     }
 
-    // Fallback to mock data for quizzes without topic breakdown
-    final topics = [
-      {'name': 'Notes', 'score': 0.85, 'questions': 3},
-      {'name': 'Intervals', 'score': 0.70, 'questions': 2},
-      {'name': 'Chords', 'score': 0.90, 'questions': 2},
-      {'name': 'Scales', 'score': 0.60, 'questions': 3},
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'By Topic',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        const SizedBox(height: 12),
-        ...topics.map((topic) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _buildTopicBar(
-                context,
-                topic['name'] as String,
-                topic['score'] as double,
-                topic['questions'] as int,
-              ),
-            )),
-      ],
-    );
+    return const Text('No topic performance data available');
   }
 
-  Widget _buildTopicBar(
-      BuildContext context, String name, double score, int questions) {
-    final color = score >= 0.8
-        ? Colors.green
-        : (score >= 0.6 ? Colors.orange : Colors.red);
-
+  Widget _buildTopicBar(BuildContext context, String topicName, double score,
+      int questionsAttempted) {
+    final percentage = (score * 100).round();
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(name, style: Theme.of(context).textTheme.bodyMedium),
+            Expanded(
+              child: Text(
+                topicName,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ),
             Text(
-              '${(score * 100).round()}% ($questions questions)',
+              '$percentage% ($questionsAttempted questions)',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Colors.grey[600],
                   ),
@@ -608,8 +551,10 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
         const SizedBox(height: 4),
         LinearProgressIndicator(
           value: score,
-          backgroundColor: Colors.grey.shade200,
-          valueColor: AlwaysStoppedAnimation<Color>(color),
+          backgroundColor: Colors.grey[300],
+          valueColor: AlwaysStoppedAnimation<Color>(
+            score >= 0.8 ? Colors.green : score >= 0.6 ? Colors.orange : Colors.red,
+          ),
         ),
       ],
     );
@@ -625,62 +570,446 @@ class _QuizResultsWidgetState extends State<QuizResultsWidget>
                 fontWeight: FontWeight.w600,
               ),
         ),
-        const SizedBox(height: 12),
-        _buildRecommendationItem(
-          context,
-          'Review scales theory',
-          'Your performance on scales questions suggests reviewing major scale patterns',
-          Icons.music_note,
-          Colors.blue,
-        ),
         const SizedBox(height: 8),
-        _buildRecommendationItem(
-          context,
-          'Practice interval recognition',
-          'Consider practicing interval identification exercises',
-          Icons.hearing,
-          Colors.green,
+        const Text(
+          '• Review topics with lower scores\n'
+          '• Practice with additional quiz questions\n'
+          '• Focus on areas where you spent more time\n'
+          '• Retake the quiz to improve your score',
         ),
       ],
     );
   }
 
-  Widget _buildRecommendationItem(BuildContext context, String title,
-      String description, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+  // NEW: Toggle for question review section
+  Widget _buildQuestionReviewToggle(BuildContext context, QuizController controller) {
+    final result = controller.lastResult;
+    if (result == null || result.questionResults.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final incorrectCount = result.incorrectQuestions.length;
+    final skippedCount = result.skippedQuestions.length;
+
+    return Card(
+      child: InkWell(
+        onTap: () => setState(() => _showQuestionReview = !_showQuestionReview),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: color,
-                      ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(
+                Icons.quiz,
+                color: Theme.of(context).primaryColor,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Question Review',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    Text(
+                      '$incorrectCount missed • $skippedCount skipped',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
+              ),
+              AnimatedRotation(
+                turns: _showQuestionReview ? 0.5 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Icon(
+                  Icons.keyboard_arrow_down,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // NEW: Detailed question review section
+  Widget _buildQuestionReview(BuildContext context, QuizController controller) {
+    final result = controller.lastResult;
+    if (result == null || result.questionResults.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('No question details available'),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Filter tabs
+            _buildQuestionFilters(context, result),
+            const SizedBox(height: 16),
+            
+            // Filtered questions
+            _buildFilteredQuestions(context, result),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // NEW: Filter tabs for question review
+  Widget _buildQuestionFilters(BuildContext context, QuizResult result) {
+    final filters = [
+      ('all', 'All Questions', result.questionResults.length),
+      ('incorrect', 'Missed', result.incorrectQuestions.length),
+      ('correct', 'Correct', result.questionResults.where((q) => q.isCorrect).length),
+      ('skipped', 'Skipped', result.skippedQuestions.length),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: filters.map((filter) {
+          final isSelected = _reviewFilter == filter.$1;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              label: Text('${filter.$2} (${filter.$3})'),
+              selected: isSelected,
+              onSelected: (_) => setState(() => _reviewFilter = filter.$1),
+              selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
+              checkmarkColor: Theme.of(context).primaryColor,
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // NEW: Display filtered questions
+  Widget _buildFilteredQuestions(BuildContext context, QuizResult result) {
+    List<QuestionResultDetail> filteredQuestions;
+    
+    switch (_reviewFilter) {
+      case 'incorrect':
+        filteredQuestions = result.incorrectQuestions;
+        break;
+      case 'correct':
+        filteredQuestions = result.questionResults.where((q) => q.isCorrect).toList();
+        break;
+      case 'skipped':
+        filteredQuestions = result.skippedQuestions;
+        break;
+      default:
+        filteredQuestions = result.questionResults;
+    }
+
+    if (filteredQuestions.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No questions to show for this filter',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey[600],
+                ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: filteredQuestions.asMap().entries.map((entry) {
+        final index = entry.key;
+        final questionDetail = entry.value;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: _buildQuestionCard(context, questionDetail, index + 1),
+        );
+      }).toList(),
+    );
+  }
+
+  // NEW: Individual question card with details
+  Widget _buildQuestionCard(BuildContext context, QuestionResultDetail questionDetail, int questionNumber) {
+    final question = questionDetail.question;
+    final isCorrect = questionDetail.isCorrect;
+    final wasSkipped = questionDetail.wasSkipped;
+    
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: wasSkipped 
+              ? Colors.grey 
+              : isCorrect 
+                  ? Colors.green 
+                  : Colors.red,
+          width: 2,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Question header
+            Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: wasSkipped 
+                        ? Colors.grey 
+                        : isCorrect 
+                            ? Colors.green 
+                            : Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      questionNumber.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Icon(
+                  wasSkipped 
+                      ? Icons.skip_next 
+                      : isCorrect 
+                          ? Icons.check_circle 
+                          : Icons.cancel,
+                  color: wasSkipped 
+                      ? Colors.grey 
+                      : isCorrect 
+                          ? Colors.green 
+                          : Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    wasSkipped 
+                        ? 'Skipped' 
+                        : isCorrect 
+                            ? 'Correct' 
+                            : 'Incorrect',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: wasSkipped 
+                              ? Colors.grey 
+                              : isCorrect 
+                                  ? Colors.green 
+                                  : Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
                 Text(
-                  description,
+                  _formatDuration(questionDetail.timeSpent),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[700],
+                        color: Colors.grey[600],
                       ),
                 ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            
+            // Question text
+            Text(
+              question.questionText,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            
+            // Answer details for multiple choice questions
+            if (question is MultipleChoiceQuestion) 
+              _buildMultipleChoiceDetails(context, question, questionDetail),
+            
+            // Explanation
+            if (question.explanation?.isNotEmpty == true) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline,
+                          color: Colors.blue[700],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Explanation',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                color: Colors.blue[700],
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      question.explanation!,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
+    );
+  }
+
+  // NEW: Display multiple choice answer details
+  Widget _buildMultipleChoiceDetails(BuildContext context, MultipleChoiceQuestion question, QuestionResultDetail questionDetail) {
+    final wasSkipped = questionDetail.wasSkipped;
+    
+    // Handle different types of user answers
+    List<String> userAnswerIds = [];
+    if (!wasSkipped && questionDetail.userAnswer != null) {
+      final userAnswer = questionDetail.userAnswer;
+      
+      if (userAnswer is AnswerOption) {
+        // Single select - userAnswer is a single AnswerOption
+        userAnswerIds = [userAnswer.id];
+      } else if (userAnswer is List<AnswerOption>) {
+        // Multi-select - userAnswer is a List<AnswerOption>
+        userAnswerIds = userAnswer.map((option) => option.id).toList();
+      } else if (userAnswer is String) {
+        // Single select - userAnswer is an option ID string
+        userAnswerIds = [userAnswer];
+      } else if (userAnswer is List<String>) {
+        // Multi-select - userAnswer is a List<String> of option IDs
+        userAnswerIds = userAnswer;
+      } else if (userAnswer is List) {
+        // Handle generic List and try to extract IDs
+        userAnswerIds = userAnswer.map((item) {
+          if (item is AnswerOption) {
+            return item.id;
+          } else if (item is String) {
+            return item;
+          } else {
+            return item.toString();
+          }
+        }).toList();
+      }
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: question.options.map((option) {
+        final isCorrect = option.isCorrect;
+        final wasSelected = userAnswerIds.contains(option.id);
+        
+        Color backgroundColor;
+        Color borderColor;
+        IconData? icon;
+        
+        if (wasSkipped) {
+          backgroundColor = Colors.grey.withOpacity(0.1);
+          borderColor = Colors.grey.withOpacity(0.3);
+          icon = isCorrect ? Icons.check_circle : null;
+        } else if (isCorrect && wasSelected) {
+          // Correct answer that was selected
+          backgroundColor = Colors.green.withOpacity(0.1);
+          borderColor = Colors.green;
+          icon = Icons.check_circle;
+        } else if (isCorrect && !wasSelected) {
+          // Correct answer that wasn't selected
+          backgroundColor = Colors.green.withOpacity(0.05);
+          borderColor = Colors.green.withOpacity(0.5);
+          icon = Icons.check_circle_outline;
+        } else if (!isCorrect && wasSelected) {
+          // Incorrect answer that was selected
+          backgroundColor = Colors.red.withOpacity(0.1);
+          borderColor = Colors.red;
+          icon = Icons.cancel;
+        } else {
+          // Incorrect answer that wasn't selected
+          backgroundColor = Colors.transparent;
+          borderColor = Colors.grey.withOpacity(0.3);
+        }
+        
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              children: [
+                if (icon != null) ...[
+                  Icon(
+                    icon,
+                    color: isCorrect ? Colors.green : Colors.red,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Text(
+                    option.text,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: wasSelected ? FontWeight.w500 : FontWeight.normal,
+                        ),
+                  ),
+                ),
+                if (wasSelected && !wasSkipped) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isCorrect ? Colors.green : Colors.red,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Your answer',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
