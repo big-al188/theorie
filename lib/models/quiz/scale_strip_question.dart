@@ -3,6 +3,16 @@
 import 'package:flutter/foundation.dart';
 import 'quiz_question.dart';
 
+/// Enumeration for different interval label formats
+enum IntervalLabelFormat {
+  /// Numeric labels: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+  numeric,
+  /// Scale degree labels with accidentals: 1, ♭2, 2, ♭3, 3, 4, ♭5, 5, ♭6, 6, ♭7, 7, 8
+  scaleDegreesWithAccidentals,
+  /// Roman numerals: I, ii, iii, IV, V, vi, vii°
+  romanNumerals,
+}
+
 /// Configuration for scale strip display and interaction
 class ScaleStripConfiguration {
   const ScaleStripConfiguration({
@@ -16,6 +26,15 @@ class ScaleStripConfiguration {
     this.validationMode = ValidationMode.exactPositions,
     this.showEmptyPositions = false,
     this.highlightRoot = true,
+    this.lockPreHighlighted = false,
+    this.useDropdownSelection = false,
+    this.enableOctaveDistinction = false,
+    this.allowPartialCreditForOctaves = false,
+    this.showFirstNoteAsReference = false,
+    this.firstNotePosition,
+    this.useScaleDegreeLabels = false,
+    this.intervalLabelFormat = IntervalLabelFormat.numeric,
+    this.showPreHighlightedLabels = false,
   });
 
   /// Whether to show interval numbers on the scale strip
@@ -45,8 +64,35 @@ class ScaleStripConfiguration {
   /// Whether to show empty positions as blanks to fill
   final bool showEmptyPositions;
 
-  /// Whether to highlight the root note
+  /// Whether to highlight the root note with special styling
   final bool highlightRoot;
+
+  /// Whether pre-highlighted positions should be locked (non-interactive)
+  final bool lockPreHighlighted;
+
+  /// Whether to use dropdown selection for note names instead of direct selection
+  final bool useDropdownSelection;
+
+  /// Whether to distinguish between different octaves in validation
+  final bool enableOctaveDistinction;
+
+  /// Whether to award partial credit for correct notes in wrong octaves
+  final bool allowPartialCreditForOctaves;
+
+  /// Whether to show the first note as a reference without special highlighting
+  final bool showFirstNoteAsReference;
+
+  /// Position of the first note to show as reference (if showFirstNoteAsReference is true)
+  final int? firstNotePosition;
+
+  /// Whether to use scale degree labels instead of numeric labels
+  final bool useScaleDegreeLabels;
+
+  /// Format for interval labels
+  final IntervalLabelFormat intervalLabelFormat;
+
+  /// Whether to show correct labels for pre-highlighted positions
+  final bool showPreHighlightedLabels;
 
   ScaleStripConfiguration copyWith({
     bool? showIntervalLabels,
@@ -59,6 +105,15 @@ class ScaleStripConfiguration {
     ValidationMode? validationMode,
     bool? showEmptyPositions,
     bool? highlightRoot,
+    bool? lockPreHighlighted,
+    bool? useDropdownSelection,
+    bool? enableOctaveDistinction,
+    bool? allowPartialCreditForOctaves,
+    bool? showFirstNoteAsReference,
+    int? firstNotePosition,
+    bool? useScaleDegreeLabels,
+    IntervalLabelFormat? intervalLabelFormat,
+    bool? showPreHighlightedLabels,
   }) {
     return ScaleStripConfiguration(
       showIntervalLabels: showIntervalLabels ?? this.showIntervalLabels,
@@ -71,89 +126,112 @@ class ScaleStripConfiguration {
       validationMode: validationMode ?? this.validationMode,
       showEmptyPositions: showEmptyPositions ?? this.showEmptyPositions,
       highlightRoot: highlightRoot ?? this.highlightRoot,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'showIntervalLabels': showIntervalLabels,
-      'showNoteLabels': showNoteLabels,
-      'allowMultipleSelection': allowMultipleSelection,
-      'displayMode': displayMode.toString(),
-      'preHighlightedPositions': preHighlightedPositions.toList(),
-      'rootNote': rootNote,
-      'octaveCount': octaveCount,
-      'validationMode': validationMode.toString(),
-      'showEmptyPositions': showEmptyPositions,
-      'highlightRoot': highlightRoot,
-    };
-  }
-
-  factory ScaleStripConfiguration.fromJson(Map<String, dynamic> json) {
-    return ScaleStripConfiguration(
-      showIntervalLabels: json['showIntervalLabels'] ?? true,
-      showNoteLabels: json['showNoteLabels'] ?? true,
-      allowMultipleSelection: json['allowMultipleSelection'] ?? true,
-      displayMode: ScaleStripMode.values.firstWhere(
-        (mode) => mode.toString() == json['displayMode'],
-        orElse: () => ScaleStripMode.intervals,
-      ),
-      preHighlightedPositions: Set<int>.from(json['preHighlightedPositions'] ?? []),
-      rootNote: json['rootNote'] ?? 'C',
-      octaveCount: json['octaveCount'] ?? 1,
-      validationMode: ValidationMode.values.firstWhere(
-        (mode) => mode.toString() == json['validationMode'],
-        orElse: () => ValidationMode.exactPositions,
-      ),
-      showEmptyPositions: json['showEmptyPositions'] ?? false,
-      highlightRoot: json['highlightRoot'] ?? true,
+      lockPreHighlighted: lockPreHighlighted ?? this.lockPreHighlighted,
+      useDropdownSelection: useDropdownSelection ?? this.useDropdownSelection,
+      enableOctaveDistinction: enableOctaveDistinction ?? this.enableOctaveDistinction,
+      allowPartialCreditForOctaves: allowPartialCreditForOctaves ?? this.allowPartialCreditForOctaves,
+      showFirstNoteAsReference: showFirstNoteAsReference ?? this.showFirstNoteAsReference,
+      firstNotePosition: firstNotePosition ?? this.firstNotePosition,
+      useScaleDegreeLabels: useScaleDegreeLabels ?? this.useScaleDegreeLabels,
+      intervalLabelFormat: intervalLabelFormat ?? this.intervalLabelFormat,
+      showPreHighlightedLabels: showPreHighlightedLabels ?? this.showPreHighlightedLabels,
     );
   }
 }
 
-/// Display modes for the scale strip
+/// Enumeration for scale strip display modes
 enum ScaleStripMode {
-  intervals,      // Show interval numbers (1, 2, 3, etc.)
-  noteNames,      // Show note names (C, D, E, etc.)
-  fillInBlanks,   // Show blanks to fill in
-  construction,   // Construction mode for chords/scales
+  /// Display and select intervals
+  intervals,
+  /// Display and select note names
+  notes,
+  /// Construct scales or chords
+  construction,
+  /// Fill in missing notes/intervals
+  fillInBlanks,
+  /// Recognize patterns
+  pattern,
 }
 
-/// Validation modes for answers
+/// Enumeration for answer validation modes
 enum ValidationMode {
-  exactPositions,  // Must select exact chromatic positions
-  noteNames,       // Correct notes in any octave
-  intervals,       // Correct interval relationships
-  pattern,         // Pattern recognition (e.g., W-W-H-W-W-W-H)
+  /// Exact position matching
+  exactPositions,
+  /// Note name matching (ignoring octaves)
+  noteNames,
+  /// Note names with octave awareness
+  noteNamesWithOctaves,
+  /// Pattern matching (allowing transposition)
+  pattern,
+  /// Note names with partial credit for octave differences
+  noteNamesWithPartialCredit,
 }
 
-/// Represents a user's answer selection on the scale strip
+/// Enumeration for scale strip question modes
+enum ScaleStripQuestionMode {
+  /// Select interval positions
+  intervals,
+  /// Select/identify note names
+  notes,
+  /// Construct scales or chords
+  construction,
+  /// Recognize scale/chord patterns
+  pattern,
+}
+
+/// Enhanced answer class with octave awareness and partial credit support
 class ScaleStripAnswer {
   const ScaleStripAnswer({
-    required this.selectedPositions,
-    required this.selectedNotes,
+    this.selectedPositions = const {},
+    this.selectedNotes = const {},
+    this.expectedOctavePatterns = const {},
+    this.partialCreditAnswers = const [],
     this.timeTaken,
   });
 
-  /// Chromatic positions selected (0-11, where 0 = C)
+  /// Positions selected on the scale strip (0-based from root)
   final Set<int> selectedPositions;
 
-  /// Note names selected (for note-based validation)
+  /// Note names selected (may include octave info like 'C4')
   final Set<String> selectedNotes;
 
-  /// Time taken to answer (optional)
+  /// Expected octave patterns for each note (for octave-aware validation)
+  /// Map of note name to list of valid octaves: {'C': [3, 4], 'E': [3, 4]}
+  final Map<String, List<int>> expectedOctavePatterns;
+
+  /// Alternative answers that should receive partial credit
+  final List<Set<String>> partialCreditAnswers;
+
+  /// Time taken to provide this answer
   final Duration? timeTaken;
 
   bool get isEmpty => selectedPositions.isEmpty && selectedNotes.isEmpty;
 
+  /// Get note names without octave info
+  Set<String> get noteNamesOnly {
+    return selectedNotes.map((note) {
+      // Remove octave number if present (e.g., 'C4' -> 'C')
+      return note.replaceAll(RegExp(r'\d+$'), '');
+    }).toSet();
+  }
+
+  /// Check if this answer has octave information
+  bool get hasOctaveInfo {
+    return selectedNotes.any((note) => RegExp(r'\d+$').hasMatch(note));
+  }
+
   ScaleStripAnswer copyWith({
     Set<int>? selectedPositions,
     Set<String>? selectedNotes,
+    Map<String, List<int>>? expectedOctavePatterns,
+    List<Set<String>>? partialCreditAnswers,
     Duration? timeTaken,
   }) {
     return ScaleStripAnswer(
       selectedPositions: selectedPositions ?? this.selectedPositions,
       selectedNotes: selectedNotes ?? this.selectedNotes,
+      expectedOctavePatterns: expectedOctavePatterns ?? this.expectedOctavePatterns,
+      partialCreditAnswers: partialCreditAnswers ?? this.partialCreditAnswers,
       timeTaken: timeTaken ?? this.timeTaken,
     );
   }
@@ -162,6 +240,12 @@ class ScaleStripAnswer {
     return {
       'selectedPositions': selectedPositions.toList(),
       'selectedNotes': selectedNotes.toList(),
+      'expectedOctavePatterns': expectedOctavePatterns.map(
+        (key, value) => MapEntry(key, value),
+      ),
+      'partialCreditAnswers': partialCreditAnswers
+          .map((answer) => answer.toList())
+          .toList(),
       'timeTaken': timeTaken?.inMilliseconds,
     };
   }
@@ -170,6 +254,11 @@ class ScaleStripAnswer {
     return ScaleStripAnswer(
       selectedPositions: Set<int>.from(json['selectedPositions'] ?? []),
       selectedNotes: Set<String>.from(json['selectedNotes'] ?? []),
+      expectedOctavePatterns: (json['expectedOctavePatterns'] as Map<String, dynamic>?)
+          ?.map((key, value) => MapEntry(key, List<int>.from(value))) ?? {},
+      partialCreditAnswers: (json['partialCreditAnswers'] as List?)
+          ?.map((answer) => Set<String>.from(answer))
+          .toList() ?? [],
       timeTaken: json['timeTaken'] != null 
         ? Duration(milliseconds: json['timeTaken']) 
         : null,
@@ -181,11 +270,16 @@ class ScaleStripAnswer {
     if (identical(this, other)) return true;
     return other is ScaleStripAnswer &&
         setEquals(other.selectedPositions, selectedPositions) &&
-        setEquals(other.selectedNotes, selectedNotes);
+        setEquals(other.selectedNotes, selectedNotes) &&
+        mapEquals(other.expectedOctavePatterns, expectedOctavePatterns);
   }
 
   @override
-  int get hashCode => Object.hash(selectedPositions, selectedNotes);
+  int get hashCode => Object.hash(
+    selectedPositions, 
+    selectedNotes, 
+    expectedOctavePatterns,
+  );
 
   @override
   String toString() => 'ScaleStripAnswer(positions: $selectedPositions, notes: $selectedNotes)';
@@ -245,6 +339,7 @@ class ScaleStripQuestion extends QuizQuestion {
       isCorrect: result.score >= 0.7, // 70% threshold for correct
       userAnswer: userAnswer,
       correctAnswer: correctAnswer,
+      partialCreditScore: result.score < 1.0 ? result.score : null,
       feedback: result.feedback,
       explanation: explanation,
     );
@@ -252,240 +347,205 @@ class ScaleStripQuestion extends QuizQuestion {
 
   @override
   double calculateScore(dynamic userAnswer, {Duration? timeTaken}) {
-    if (userAnswer is! ScaleStripAnswer) return 0.0;
-    
+    if (userAnswer is! ScaleStripAnswer) {
+      return 0.0;
+    }
+
     final result = _validateScaleStripAnswer(userAnswer);
     return result.score;
   }
 
-  /// Validates a scale strip answer based on the configuration
-  ValidationResult _validateScaleStripAnswer(ScaleStripAnswer userAnswer) {
+  /// Internal validation logic with enhanced octave and partial credit support
+  _ValidationResult _validateScaleStripAnswer(ScaleStripAnswer userAnswer) {
     switch (configuration.validationMode) {
       case ValidationMode.exactPositions:
         return _validateExactPositions(userAnswer);
+      
       case ValidationMode.noteNames:
         return _validateNoteNames(userAnswer);
-      case ValidationMode.intervals:
-        return _validateIntervals(userAnswer);
+      
+      case ValidationMode.noteNamesWithOctaves:
+        return _validateNoteNamesWithOctaves(userAnswer);
+      
+      case ValidationMode.noteNamesWithPartialCredit:
+        return _validateNoteNamesWithPartialCredit(userAnswer);
+      
       case ValidationMode.pattern:
         return _validatePattern(userAnswer);
     }
   }
 
-  /// Validates exact chromatic positions
-  ValidationResult _validateExactPositions(ScaleStripAnswer userAnswer) {
+  _ValidationResult _validateExactPositions(ScaleStripAnswer userAnswer) {
     final correctPositions = correctAnswer.selectedPositions;
     final userPositions = userAnswer.selectedPositions;
-
-    final correctCount = userPositions.intersection(correctPositions).length;
-    final totalCorrect = correctPositions.length;
-    final extraSelections = userPositions.difference(correctPositions).length;
-
-    double score = correctCount / totalCorrect;
     
-    // Penalize extra selections
-    if (extraSelections > 0) {
-      score = (score - (extraSelections * 0.1)).clamp(0.0, 1.0);
+    final intersection = correctPositions.intersection(userPositions);
+    final score = intersection.length / correctPositions.length;
+    
+    String feedback;
+    if (score == 1.0) {
+      feedback = 'Perfect! All positions are correct.';
+    } else if (score >= 0.7) {
+      feedback = 'Good job! Most positions are correct.';
+    } else if (score >= 0.3) {
+      feedback = 'Some positions are correct, but review the pattern.';
+    } else {
+      feedback = 'Review the scale pattern and try again.';
     }
-
-    String feedback = _generatePositionFeedback(
-      correctCount, totalCorrect, extraSelections, userPositions, correctPositions
-    );
-
-    return ValidationResult(score: score, feedback: feedback);
+    
+    return _ValidationResult(score: score, feedback: feedback);
   }
 
-  /// Validates note names regardless of octave
-  ValidationResult _validateNoteNames(ScaleStripAnswer userAnswer) {
+  _ValidationResult _validateNoteNames(ScaleStripAnswer userAnswer) {
+    final correctNotes = correctAnswer.noteNamesOnly;
+    final userNotes = userAnswer.noteNamesOnly;
+    
+    final intersection = correctNotes.intersection(userNotes);
+    final score = intersection.length / correctNotes.length;
+    
+    String feedback;
+    if (score == 1.0) {
+      feedback = 'Excellent! All note names are correct.';
+    } else if (score >= 0.7) {
+      feedback = 'Well done! Most note names are correct.';
+    } else {
+      feedback = 'Review the note names and try again.';
+    }
+    
+    return _ValidationResult(score: score, feedback: feedback);
+  }
+
+  _ValidationResult _validateNoteNamesWithOctaves(ScaleStripAnswer userAnswer) {
     final correctNotes = correctAnswer.selectedNotes;
     final userNotes = userAnswer.selectedNotes;
-
-    final correctCount = userNotes.intersection(correctNotes).length;
-    final totalCorrect = correctNotes.length;
-    final extraSelections = userNotes.difference(correctNotes).length;
-
-    double score = correctCount / totalCorrect;
     
-    if (extraSelections > 0) {
-      score = (score - (extraSelections * 0.1)).clamp(0.0, 1.0);
-    }
-
-    String feedback = _generateNoteFeedback(
-      correctCount, totalCorrect, extraSelections, userNotes, correctNotes
-    );
-
-    return ValidationResult(score: score, feedback: feedback);
-  }
-
-  /// Validates interval relationships
-  ValidationResult _validateIntervals(ScaleStripAnswer userAnswer) {
-    // Convert positions to intervals from root
-    final userIntervals = _positionsToIntervals(userAnswer.selectedPositions);
-    final correctIntervals = _positionsToIntervals(correctAnswer.selectedPositions);
-
-    final correctCount = userIntervals.intersection(correctIntervals).length;
-    final totalCorrect = correctIntervals.length;
-
-    final score = correctCount / totalCorrect;
-    final feedback = 'You identified $correctCount of $totalCorrect intervals correctly.';
-
-    return ValidationResult(score: score, feedback: feedback);
-  }
-
-  /// Validates scale patterns
-  ValidationResult _validatePattern(ScaleStripAnswer userAnswer) {
-    final userPattern = _generatePattern(userAnswer.selectedPositions);
-    final correctPattern = _generatePattern(correctAnswer.selectedPositions);
-
-    final score = userPattern == correctPattern ? 1.0 : 0.0;
-    final feedback = score == 1.0 
-      ? 'Correct pattern!' 
-      : 'Pattern doesn\'t match. Expected: $correctPattern, Got: $userPattern';
-
-    return ValidationResult(score: score, feedback: feedback);
-  }
-
-  /// Convert chromatic positions to intervals from root
-  Set<int> _positionsToIntervals(Set<int> positions) {
-    if (positions.isEmpty) return {};
+    final intersection = correctNotes.intersection(userNotes);
+    final score = intersection.length / correctNotes.length;
     
-    final root = positions.first; // Assume first position is root
-    return positions.map((pos) => (pos - root) % 12).toSet();
-  }
-
-  /// Generate pattern string from positions (W = whole step, H = half step)
-  String _generatePattern(Set<int> positions) {
-    if (positions.length < 2) return '';
-    
-    final sortedPositions = positions.toList()..sort();
-    final intervals = <String>[];
-    
-    for (int i = 1; i < sortedPositions.length; i++) {
-      final diff = sortedPositions[i] - sortedPositions[i - 1];
-      intervals.add(diff == 2 ? 'W' : 'H');
-    }
-    
-    return intervals.join('-');
-  }
-
-  /// Generate feedback for position validation
-  String _generatePositionFeedback(
-    int correctCount, 
-    int totalCorrect, 
-    int extraSelections,
-    Set<int> userPositions,
-    Set<int> correctPositions,
-  ) {
-    final buffer = StringBuffer();
-    
-    if (correctCount == totalCorrect && extraSelections == 0) {
-      buffer.writeln('Perfect! You selected all the correct positions.');
+    String feedback;
+    if (score == 1.0) {
+      feedback = 'Perfect! All notes and octaves are correct.';
+    } else if (score >= 0.7) {
+      feedback = 'Good! Most notes and octaves are correct.';
     } else {
-      buffer.writeln('You selected $correctCount of $totalCorrect correct positions.');
-      
-      if (extraSelections > 0) {
-        buffer.writeln('You also selected $extraSelections incorrect position(s).');
-      }
-      
-      final missed = correctPositions.difference(userPositions);
-      if (missed.isNotEmpty) {
-        buffer.writeln('You missed positions: ${missed.join(', ')}');
+      feedback = 'Consider the octave placement carefully.';
+    }
+    
+    return _ValidationResult(score: score, feedback: feedback);
+  }
+
+  _ValidationResult _validateNoteNamesWithPartialCredit(ScaleStripAnswer userAnswer) {
+    final correctNotes = correctAnswer.selectedNotes;
+    final userNotes = userAnswer.selectedNotes;
+    
+    // First check for exact match
+    final exactMatch = correctNotes.intersection(userNotes);
+    if (exactMatch.length == correctNotes.length) {
+      return _ValidationResult(score: 1.0, feedback: 'Perfect! All notes and octaves are correct.');
+    }
+    
+    // Check for partial credit answers
+    for (final partialAnswer in correctAnswer.partialCreditAnswers) {
+      final partialMatch = partialAnswer.intersection(userNotes);
+      if (partialMatch.length == partialAnswer.length) {
+        return _ValidationResult(
+          score: 0.8,
+          feedback: 'Good! Correct notes, consider the optimal octave placement.',
+        );
       }
     }
     
-    return buffer.toString();
-  }
-
-  /// Generate feedback for note validation
-  String _generateNoteFeedback(
-    int correctCount, 
-    int totalCorrect, 
-    int extraSelections,
-    Set<String> userNotes,
-    Set<String> correctNotes,
-  ) {
-    final buffer = StringBuffer();
+    // Check for correct note names regardless of octave
+    final correctNoteNames = correctAnswer.noteNamesOnly;
+    final userNoteNames = userAnswer.noteNamesOnly;
+    final noteNameMatch = correctNoteNames.intersection(userNoteNames);
     
-    if (correctCount == totalCorrect && extraSelections == 0) {
-      buffer.writeln('Excellent! You identified all the correct notes.');
-    } else {
-      buffer.writeln('You identified $correctCount of $totalCorrect correct notes.');
-      
-      if (extraSelections > 0) {
-        buffer.writeln('You also selected $extraSelections incorrect note(s).');
-      }
-      
-      final missed = correctNotes.difference(userNotes);
-      if (missed.isNotEmpty) {
-        buffer.writeln('You missed notes: ${missed.join(', ')}');
-      }
+    if (noteNameMatch.length == correctNoteNames.length) {
+      return _ValidationResult(
+        score: 0.6,
+        feedback: 'Correct note names! Pay attention to octave placement.',
+      );
     }
     
-    return buffer.toString();
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'questionText': questionText,
-      'topic': topic.toString(),
-      'difficulty': difficulty.toString(),
-      'pointValue': pointValue,
-      'explanation': explanation,
-      'hints': hints,
-      'tags': tags,
-      'timeLimit': timeLimit,
-      'allowPartialCredit': allowPartialCredit,
-      'type': type.toString(),
-      'configuration': configuration.toJson(),
-      'correctAnswer': correctAnswer.toJson(),
-      'scaleType': scaleType,
-      'questionMode': questionMode.toString(),
-    };
-  }
-
-  factory ScaleStripQuestion.fromJson(Map<String, dynamic> json) {
-    return ScaleStripQuestion(
-      id: json['id'],
-      questionText: json['questionText'],
-      topic: QuestionTopic.values.firstWhere(
-        (t) => t.toString() == json['topic'],
-        orElse: () => QuestionTopic.scales,
-      ),
-      difficulty: QuestionDifficulty.values.firstWhere(
-        (d) => d.toString() == json['difficulty'],
-        orElse: () => QuestionDifficulty.beginner,
-      ),
-      pointValue: json['pointValue'],
-      explanation: json['explanation'],
-      hints: List<String>.from(json['hints'] ?? []),
-      tags: List<String>.from(json['tags'] ?? []),
-      timeLimit: json['timeLimit'],
-      allowPartialCredit: json['allowPartialCredit'] ?? true,
-      configuration: ScaleStripConfiguration.fromJson(json['configuration']),
-      correctAnswer: ScaleStripAnswer.fromJson(json['correctAnswer']),
-      scaleType: json['scaleType'] ?? 'major',
-      questionMode: ScaleStripQuestionMode.values.firstWhere(
-        (m) => m.toString() == json['questionMode'],
-        orElse: () => ScaleStripQuestionMode.intervals,
-      ),
+    // Partial note name match
+    final score = noteNameMatch.length / correctNoteNames.length;
+    return _ValidationResult(
+      score: score * 0.5, // Reduced score for incomplete answer
+      feedback: 'Some notes are correct. Review the complete pattern.',
     );
+  }
+
+  _ValidationResult _validatePattern(ScaleStripAnswer userAnswer) {
+    // For pattern validation, we check if the user's selection follows
+    // the expected pattern regardless of starting position
+    final userPositions = userAnswer.selectedPositions.toList()..sort();
+    final correctPositions = correctAnswer.selectedPositions.toList()..sort();
+    
+    if (userPositions.length != correctPositions.length) {
+      return _ValidationResult(
+        score: 0.0,
+        feedback: 'Incorrect number of notes. Check the pattern.',
+      );
+    }
+    
+    // Calculate intervals between selected positions
+    final userIntervals = <int>[];
+    for (int i = 1; i < userPositions.length; i++) {
+      userIntervals.add(userPositions[i] - userPositions[i - 1]);
+    }
+    
+    final correctIntervals = <int>[];
+    for (int i = 1; i < correctPositions.length; i++) {
+      correctIntervals.add(correctPositions[i] - correctPositions[i - 1]);
+    }
+    
+    // Check if interval patterns match
+    bool patternsMatch = listEquals(userIntervals, correctIntervals);
+    
+    if (patternsMatch) {
+      return _ValidationResult(score: 1.0, feedback: 'Excellent! Pattern is correct.');
+    } else {
+      return _ValidationResult(
+        score: 0.0,
+        feedback: 'Pattern doesn\'t match. Review the interval structure.',
+      );
+    }
+  }
+
+  /// Get interval label for a given position based on configuration
+  String getIntervalLabel(int position) {
+    switch (configuration.intervalLabelFormat) {
+      case IntervalLabelFormat.numeric:
+        return (position + 1).toString();
+      
+      case IntervalLabelFormat.scaleDegreesWithAccidentals:
+        return _getScaleDegreeLabel(position);
+      
+      case IntervalLabelFormat.romanNumerals:
+        return _getRomanNumeralLabel(position);
+    }
+  }
+
+  String _getScaleDegreeLabel(int position) {
+    const labels = [
+      '1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'
+    ];
+    return labels[position % 12];
+  }
+
+  String _getRomanNumeralLabel(int position) {
+    const labels = [
+      'I', '♭II', 'II', '♭III', 'III', 'IV', '♭V', 'V', '♭VI', 'VI', '♭VII', 'VII'
+    ];
+    return labels[position % 12];
   }
 }
 
-/// Different modes for scale strip questions
-enum ScaleStripQuestionMode {
-  intervals,      // Fill in scale intervals
-  notes,          // Identify note names
-  construction,   // Construct scales/chords
-  pattern,        // Pattern recognition
-}
-
-/// Result of answer validation (internal helper class)
-class ValidationResult {
-  const ValidationResult({
+/// Internal result class for validation
+class _ValidationResult {
+  const _ValidationResult({
     required this.score,
-    required this.feedback,  
+    required this.feedback,
   });
 
   final double score;

@@ -9,6 +9,7 @@ import '../../../utils/color_utils.dart';
 import '../../../utils/note_utils.dart';
 
 /// Widget for displaying and interacting with scale strip questions
+/// Updated to fix octave handling, dropdown interactions, and highlighting bugs
 class ScaleStripQuestionWidget extends StatefulWidget {
   const ScaleStripQuestionWidget({
     super.key,
@@ -32,6 +33,7 @@ class ScaleStripQuestionWidget extends StatefulWidget {
 class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
   late Set<int> _selectedPositions;
   late Set<String> _selectedNotes;
+  late Map<int, String> _pendingNoteSelections; // For dropdown mode
   Timer? _feedbackTimer;
 
   @override
@@ -57,37 +59,83 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
   void _initializeState() {
     _selectedPositions = widget.selectedAnswer?.selectedPositions ?? {};
     _selectedNotes = widget.selectedAnswer?.selectedNotes ?? {};
+    _pendingNoteSelections = {};
   }
 
-  void _onPositionTapped(int position, String noteName) {
+  void _onPositionTapped(int position, String noteName, {String? octaveInfo}) {
     if (!widget.enabled) return;
 
+    final config = widget.question.configuration;
+    
+    // Check if position is locked (pre-highlighted)
+    if (config.lockPreHighlighted && config.preHighlightedPositions.contains(position)) {
+      return; // Don't allow interaction with locked positions
+    }
+
+    // Handle dropdown selection mode
+    if (config.useDropdownSelection) {
+      _showNoteSelectionDropdown(position);
+      return;
+    }
+
     setState(() {
-      if (widget.question.configuration.allowMultipleSelection) {
+      final fullNoteName = octaveInfo != null ? '$noteName$octaveInfo' : noteName;
+      
+      if (config.allowMultipleSelection) {
         // Toggle selection for multiple selection mode
         if (_selectedPositions.contains(position)) {
           _selectedPositions.remove(position);
-          _selectedNotes.remove(noteName);
+          _selectedNotes.remove(fullNoteName);
+          _selectedNotes.removeWhere((note) => note.startsWith('$noteName'));
         } else {
           _selectedPositions.add(position);
-          _selectedNotes.add(noteName);
+          _selectedNotes.add(fullNoteName);
         }
       } else {
         // Single selection mode
         _selectedPositions = {position};
-        _selectedNotes = {noteName};
+        _selectedNotes = {fullNoteName};
       }
     });
 
-    // Notify parent of answer change
-    final answer = ScaleStripAnswer(
-      selectedPositions: _selectedPositions,
-      selectedNotes: _selectedNotes,
-    );
-    widget.onAnswerSelected?.call(answer);
-
-    // Provide haptic feedback
+    _notifyAnswerChange();
     HapticFeedback.selectionClick();
+  }
+
+  void _showNoteSelectionDropdown(int position) {
+    final chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Select Note for Position ${position + 1}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: chromaticNotes.map((note) {
+              return ListTile(
+                title: Text(note),
+                onTap: () {
+                  setState(() {
+                    _selectedPositions.add(position);
+                    _selectedNotes.add(note);
+                    _pendingNoteSelections[position] = note;
+                  });
+                  Navigator.of(context).pop();
+                  _notifyAnswerChange();
+                },
+              );
+            }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _clearSelection() {
@@ -96,8 +144,13 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     setState(() {
       _selectedPositions.clear();
       _selectedNotes.clear();
+      _pendingNoteSelections.clear();
     });
 
+    _notifyAnswerChange();
+  }
+
+  void _notifyAnswerChange() {
     final answer = ScaleStripAnswer(
       selectedPositions: _selectedPositions,
       selectedNotes: _selectedNotes,
@@ -119,7 +172,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
         const SizedBox(height: 16),
         
         // Interactive scale strip
-        _buildInteractiveScaleStrip(screenWidth),
+        _buildInteractiveScaleStrip(screenWidth, theme),
         
         const SizedBox(height: 16),
         
@@ -172,6 +225,9 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
       case ScaleStripQuestionMode.intervals:
         return 'Tap the positions that correspond to the scale intervals.';
       case ScaleStripQuestionMode.notes:
+        if (config.useDropdownSelection) {
+          return 'Tap on empty positions to select the correct note from the dropdown.';
+        }
         return 'Identify and tap the correct note names.';
       case ScaleStripQuestionMode.construction:
         return 'Construct the requested scale or chord by tapping the correct notes.';
@@ -180,346 +236,257 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     }
   }
 
-  Widget _buildInteractiveScaleStrip(double screenWidth) {
+  Widget _buildInteractiveScaleStrip(double screenWidth, ThemeData theme) {
+    final config = widget.question.configuration;
+    final octaveCount = config.octaveCount;
+    final totalPositions = 12 * octaveCount;
+    
+    // Calculate positions per row to optimize display
+    final positionsPerRow = screenWidth > 800 ? 12 : (screenWidth > 600 ? 8 : 6);
+    final rows = (totalPositions / positionsPerRow).ceil();
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
       ),
-      child: InteractiveScaleStrip(
-        configuration: widget.question.configuration,
-        selectedPositions: _selectedPositions,
-        correctPositions: widget.showCorrectAnswer 
-          ? widget.question.correctAnswer.selectedPositions 
-          : {},
-        onPositionTapped: _onPositionTapped,
-        enabled: widget.enabled,
-        screenWidth: screenWidth,
+      child: Column(
+        children: List.generate(rows, (rowIndex) {
+          final startPos = rowIndex * positionsPerRow;
+          final endPos = (startPos + positionsPerRow).clamp(0, totalPositions);
+          
+          return Padding(
+            padding: EdgeInsets.only(bottom: rowIndex < rows - 1 ? 8.0 : 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(endPos - startPos, (colIndex) {
+                final position = startPos + colIndex;
+                return _buildScaleStripPosition(position, theme);
+              }),
+            ),
+          );
+        }),
       ),
     );
   }
 
+  Widget _buildScaleStripPosition(int position, ThemeData theme) {
+    final config = widget.question.configuration;
+    final isSelected = _selectedPositions.contains(position);
+    final isPreHighlighted = config.preHighlightedPositions.contains(position);
+    final isLocked = config.lockPreHighlighted && isPreHighlighted;
+    final isReference = config.showFirstNoteAsReference && 
+                       config.firstNotePosition == position;
+    
+    // Determine octave for this position
+    final octave = (position ~/ 12) + 3; // Start from octave 3
+    final chromaticPosition = position % 12;
+    final noteName = _getNoteNameForPosition(chromaticPosition, config.rootNote);
+    final fullNoteName = config.enableOctaveDistinction ? '$noteName$octave' : noteName;
+    
+    // Get the display label
+    final displayLabel = _getDisplayLabel(position, noteName, isPreHighlighted);
+    
+    // Determine display styling
+    Color backgroundColor;
+    Color borderColor;
+    Color textColor;
+    
+    if (isSelected) {
+      backgroundColor = theme.colorScheme.primary;
+      borderColor = theme.colorScheme.primary;
+      textColor = theme.colorScheme.onPrimary;
+    } else if (isPreHighlighted) {
+      backgroundColor = theme.colorScheme.secondary.withOpacity(0.6);
+      borderColor = theme.colorScheme.secondary;
+      textColor = theme.colorScheme.onSecondary;
+    } else if (isReference) {
+      // Fixed: Use normal highlighting instead of gold
+      backgroundColor = theme.colorScheme.surfaceVariant;
+      borderColor = theme.colorScheme.outline;
+      textColor = theme.colorScheme.onSurface;
+    } else {
+      backgroundColor = theme.colorScheme.surface;
+      borderColor = theme.colorScheme.outline.withOpacity(0.5);
+      textColor = theme.colorScheme.onSurface;
+    }
+    
+    return GestureDetector(
+      onTap: isLocked ? null : () => _onPositionTapped(
+        position, 
+        noteName, 
+        octaveInfo: config.enableOctaveDistinction ? octave.toString() : null,
+      ),
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          border: Border.all(color: borderColor, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Note name - always show if we have a display label
+            if (displayLabel.isNotEmpty) ...[
+              Text(
+                displayLabel,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: textColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+            
+            // Interval label
+            if (config.showIntervalLabels) ...[
+              const SizedBox(height: 2),
+              Text(
+                widget.question.getIntervalLabel(chromaticPosition),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: textColor.withOpacity(0.8),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+            
+            // Octave indicator for multi-octave displays
+            if (config.octaveCount > 1 && config.enableOctaveDistinction) ...[
+              const SizedBox(height: 1),
+              Text(
+                octave.toString(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: textColor.withOpacity(0.6),
+                  fontSize: 8,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getDisplayLabel(int position, String noteName, bool isPreHighlighted) {
+    final config = widget.question.configuration;
+    
+    // For dropdown mode, show selected note or placeholder
+    if (config.useDropdownSelection) {
+      if (_pendingNoteSelections.containsKey(position)) {
+        return _pendingNoteSelections[position]!;
+      } else if (isPreHighlighted) {
+        // Always show the correct note name for pre-highlighted positions
+        return noteName;
+      } else {
+        return '?'; // Show placeholder for unlocked empty positions
+      }
+    }
+    
+    // For pre-highlighted positions, always show the correct note
+    if (isPreHighlighted) {
+      return noteName;
+    }
+    
+    // For selected positions or when showing note labels
+    if (config.showNoteLabels || _selectedPositions.contains(position)) {
+      return noteName;
+    }
+    
+    return '';
+  }
+
+  String _getNoteNameForPosition(int chromaticPosition, String rootNote) {
+    const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    
+    // Find root position
+    int rootIndex = chromaticNotes.indexOf(rootNote);
+    if (rootIndex == -1) {
+      // Handle flat notes
+      const flatToSharp = {
+        'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#'
+      };
+      rootIndex = chromaticNotes.indexOf(flatToSharp[rootNote] ?? 'C');
+    }
+    
+    final noteIndex = (chromaticPosition + rootIndex) % 12;
+    return chromaticNotes[noteIndex];
+  }
+
   Widget _buildControlButtons(ThemeData theme) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Clear selection button
+        // Clear button
         OutlinedButton.icon(
-          onPressed: widget.enabled && _selectedPositions.isNotEmpty 
-            ? _clearSelection 
-            : null,
-          icon: const Icon(Icons.clear, size: 18),
+          onPressed: widget.enabled ? _clearSelection : null,
+          icon: const Icon(Icons.clear),
           label: const Text('Clear'),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          ),
         ),
         
-        const SizedBox(width: 12),
-        
-        // Selection count indicator
+        // Selection info
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(20),
+            color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Text(
             '${_selectedPositions.length} selected',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
-              fontWeight: FontWeight.w500,
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
             ),
           ),
         ),
-        
-        const Spacer(),
-        
-        // Hint button
-        if (widget.question.hints.isNotEmpty && widget.enabled)
-          IconButton(
-            onPressed: () => _showHint(context),
-            icon: const Icon(Icons.lightbulb_outline),
-            tooltip: 'Show hint',
-          ),
       ],
     );
   }
 
   Widget _buildAnswerFeedback(ThemeData theme) {
     final correctAnswer = widget.question.correctAnswer;
-    final userAnswer = ScaleStripAnswer(
-      selectedPositions: _selectedPositions,
-      selectedNotes: _selectedNotes,
-    );
-    
-    final result = widget.question.validateAnswer(userAnswer);
     
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: result.isCorrect 
-          ? Colors.green.shade50 
-          : Colors.orange.shade50,
+        color: theme.colorScheme.primaryContainer.withOpacity(0.3),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: result.isCorrect 
-            ? Colors.green.shade300 
-            : Colors.orange.shade300,
-        ),
+        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                result.isCorrect ? Icons.check_circle : Icons.info,
-                color: result.isCorrect ? Colors.green : Colors.orange,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                result.isCorrect ? 'Correct!' : 'Review your answer',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: result.isCorrect ? Colors.green.shade700 : Colors.orange.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${(result.finalScore * 100).round()}%', // Fixed: Use finalScore instead of score
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: result.isCorrect ? Colors.green.shade700 : Colors.orange.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+          Text(
+            'Correct Answer:',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.primary,
+            ),
           ),
           const SizedBox(height: 8),
-          Text(
-            result.feedback ?? 'No feedback available', // Fixed: Handle null feedback
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: result.isCorrect ? Colors.green.shade700 : Colors.orange.shade700,
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: correctAnswer.selectedNotes.map((note) {
+              return Chip(
+                label: Text(note),
+                backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
+              );
+            }).toList(),
           ),
           if (widget.question.explanation != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
               widget.question.explanation!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.8),
               ),
             ),
           ],
         ],
       ),
     );
-  }
-
-  void _showHint(BuildContext context) {
-    if (widget.question.hints.isEmpty) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Hint'),
-        content: Text(widget.question.hints.first),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Interactive scale strip that handles user taps and shows selections
-class InteractiveScaleStrip extends StatelessWidget {
-  const InteractiveScaleStrip({
-    super.key,
-    required this.configuration,
-    required this.selectedPositions,
-    required this.correctPositions,
-    required this.onPositionTapped,
-    required this.enabled,
-    required this.screenWidth,
-  });
-
-  final ScaleStripConfiguration configuration;
-  final Set<int> selectedPositions;
-  final Set<int> correctPositions;
-  final Function(int position, String noteName) onPositionTapped;
-  final bool enabled;
-  final double screenWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    // Calculate responsive dimensions
-    final noteCount = 12 * configuration.octaveCount + 1; // Include octave
-    final availableWidth = screenWidth - 64; // Account for padding
-    final noteWidth = (availableWidth / noteCount).clamp(30.0, 80.0);
-    final noteHeight = 60.0;
-    
-    return Container(
-      height: noteHeight + 40, // Extra space for labels
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: _buildNotePositions(theme, noteWidth, noteHeight),
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildNotePositions(ThemeData theme, double noteWidth, double noteHeight) {
-    final positions = <Widget>[];
-    final chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    
-    for (int octave = 0; octave < configuration.octaveCount; octave++) {
-      for (int i = 0; i < 12; i++) {
-        final position = i;
-        final noteName = chromaticNotes[i];
-        final isSelected = selectedPositions.contains(position);
-        final isCorrect = correctPositions.contains(position);
-        final isPreHighlighted = configuration.preHighlightedPositions.contains(position);
-        final isRoot = i == 0 && configuration.highlightRoot;
-        
-        positions.add(_buildNotePosition(
-          theme,
-          position,
-          noteName,
-          noteWidth,
-          noteHeight,
-          isSelected,
-          isCorrect,
-          isPreHighlighted,
-          isRoot,
-        ));
-      }
-    }
-    
-    // Add final octave note
-    final finalPosition = 12 * configuration.octaveCount;
-    final finalNoteName = chromaticNotes[0]; // C of next octave
-    positions.add(_buildNotePosition(
-      theme,
-      finalPosition,
-      finalNoteName,
-      noteWidth,
-      noteHeight,
-      selectedPositions.contains(finalPosition),
-      correctPositions.contains(finalPosition),
-      configuration.preHighlightedPositions.contains(finalPosition),
-      false,
-    ));
-    
-    return positions;
-  }
-
-  Widget _buildNotePosition(
-    ThemeData theme,
-    int position,
-    String noteName,
-    double width,
-    double height,
-    bool isSelected,
-    bool isCorrect,
-    bool isPreHighlighted,
-    bool isRoot,
-  ) {
-    Color backgroundColor;
-    Color borderColor;
-    Color textColor;
-    
-    if (isCorrect && correctPositions.isNotEmpty) {
-      // Show correct answer
-      backgroundColor = Colors.green.shade100;
-      borderColor = Colors.green;
-      textColor = Colors.green.shade800;
-    } else if (isSelected) {
-      // User selection
-      backgroundColor = theme.colorScheme.primary.withOpacity(0.2);
-      borderColor = theme.colorScheme.primary;
-      textColor = theme.colorScheme.primary;
-    } else if (isPreHighlighted) {
-      // Pre-highlighted positions
-      backgroundColor = Colors.blue.shade50;
-      borderColor = Colors.blue.shade300;
-      textColor = Colors.blue.shade700;
-    } else if (isRoot) {
-      // Root note
-      backgroundColor = Colors.amber.shade50;
-      borderColor = Colors.amber.shade300;
-      textColor = Colors.amber.shade700;
-    } else {
-      // Normal note
-      backgroundColor = theme.colorScheme.surface;
-      borderColor = theme.colorScheme.outline.withOpacity(0.3);
-      textColor = theme.colorScheme.onSurface;
-    }
-    
-    return GestureDetector(
-      onTap: enabled ? () => onPositionTapped(position, noteName) : null,
-      child: Container(
-        width: width,
-        height: height,
-        margin: const EdgeInsets.symmetric(horizontal: 1),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Note name (if enabled)
-            if (configuration.showNoteLabels || configuration.displayMode == ScaleStripMode.fillInBlanks)
-              Text(
-                _getDisplayText(position, noteName),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: textColor,
-                ),
-              ),
-            
-            // Interval number (if enabled)
-            if (configuration.showIntervalLabels && configuration.displayMode == ScaleStripMode.intervals)
-              Text(
-                _getIntervalText(position),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: textColor.withOpacity(0.7),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _getDisplayText(int position, String noteName) {
-    switch (configuration.displayMode) {
-      case ScaleStripMode.noteNames:
-        return noteName;
-      case ScaleStripMode.intervals:
-        return _getIntervalText(position);
-      case ScaleStripMode.fillInBlanks:
-        return selectedPositions.contains(position) ? noteName : '?';
-      case ScaleStripMode.construction:
-        return noteName;
-    }
-  }
-
-  String _getIntervalText(int position) {
-    // Convert chromatic position to interval number
-    final interval = (position % 12) + 1;
-    return interval.toString();
   }
 }
