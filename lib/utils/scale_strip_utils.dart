@@ -135,8 +135,8 @@ class ScaleStripUtils {
     return _getNoteNameFromPitchClass(targetPc, preferFlats: preferFlats);
   }
 
-  /// Get all available note names for a position (including enharmonic equivalents)
-  /// ENHANCED: Returns all possible notes without showing preference
+  /// FIXED: Get all available note names for a position (including enharmonic equivalents)
+  /// For educational purposes, return only valid enharmonic equivalents for the position
   static List<String> getAllNotesForPosition(String keyContext, int position) {
     final rootPc = _getNotePitchClass(keyContext);
     final targetPc = (rootPc + position) % 12;
@@ -148,6 +148,15 @@ class ScaleStripUtils {
     ];
     
     return List<String>.from(allNoteNames[targetPc]);
+  }
+
+  /// NEW: Get ALL possible note names for dropdown selection (educational mode)
+  /// This returns all note names regardless of position for educational purposes
+  static List<String> getAllPossibleNoteNames() {
+    return const [
+      'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 
+      'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B'
+    ];
   }
 
   /// Get missing positions from a complete set (useful for fill-in questions)
@@ -318,6 +327,41 @@ class ScaleStripUtils {
       selectedPositions: positions,
       selectedNotes: {targetNote},
     );
+  }
+
+  /// FIXED: Validate user answer against correct answer with enhanced enharmonic support
+  static bool validateAnswer(ScaleStripAnswer userAnswer, ScaleStripAnswer correctAnswer, {bool allowEnharmonics = true}) {
+    // Check position matching first
+    if (userAnswer.selectedPositions == correctAnswer.selectedPositions) {
+      return true;
+    }
+    
+    // If allowing enharmonics, check note equivalency
+    if (allowEnharmonics) {
+      // Convert notes to pitch classes for comparison
+      final userPitchClasses = <int>{};
+      final correctPitchClasses = <int>{};
+      
+      for (final note in userAnswer.selectedNotes) {
+        try {
+          userPitchClasses.add(_getNotePitchClass(note));
+        } catch (e) {
+          // Skip invalid notes
+        }
+      }
+      
+      for (final note in correctAnswer.selectedNotes) {
+        try {
+          correctPitchClasses.add(_getNotePitchClass(note));
+        } catch (e) {
+          // Skip invalid notes
+        }
+      }
+      
+      return userPitchClasses == correctPitchClasses;
+    }
+    
+    return false;
   }
 
   // Private helper methods

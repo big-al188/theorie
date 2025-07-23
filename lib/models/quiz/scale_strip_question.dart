@@ -179,9 +179,21 @@ class ScaleStripConfiguration {
     return includeOctaveNote ? basePositions + 1 : basePositions;
   }
 
-  /// Get all available note names for a position based on context
+  /// FIXED: Get all available note names for a position based on context
+  /// For dropdown mode, this returns valid enharmonic equivalents
   List<String> getAvailableNotesForPosition(int position) {
-    return ScaleStripUtils.getAllNotesForPosition(keyContext ?? rootNote, position);
+    if (useDropdownSelection) {
+      // For dropdown selection, return valid enharmonic equivalents for this position
+      return ScaleStripUtils.getAllNotesForPosition(keyContext ?? rootNote, position);
+    } else {
+      // For non-dropdown mode, return all possible notes for educational purposes
+      return ScaleStripUtils.getAllPossibleNoteNames();
+    }
+  }
+
+  /// NEW: Get ALL possible note names for dropdown selection (educational mode)
+  List<String> getAllPossibleNoteNames() {
+    return ScaleStripUtils.getAllPossibleNoteNames();
   }
 
   /// Get the preferred note name for a position based on key context

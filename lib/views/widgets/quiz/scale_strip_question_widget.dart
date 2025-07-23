@@ -29,7 +29,6 @@ class ScaleStripQuestionWidget extends StatefulWidget {
 
 class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
   late Set<int> _selectedPositions;
-  late Map<int, String> _selectedNotes;
   late Map<int, String> _dropdownSelections;
 
   @override
@@ -50,21 +49,21 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     final answer = widget.selectedAnswer;
     _selectedPositions = answer?.selectedPositions.toSet() ?? <int>{};
     
-    // Convert Set<String> to Map<int, String> properly
-    _selectedNotes = <int, String>{};
+    // Initialize dropdown selections from existing answer
+    _dropdownSelections = <int, String>{};
     if (answer?.selectedNotes != null) {
+      // For dropdown questions, we need to map notes back to positions
+      // This is a simplified approach - in practice you might want more sophisticated mapping
       final notesList = answer!.selectedNotes.toList();
-      for (int i = 0; i < notesList.length; i++) {
-        _selectedNotes[i] = notesList[i];
+      final positionsList = answer.selectedPositions.toList();
+      for (int i = 0; i < positionsList.length && i < notesList.length; i++) {
+        _dropdownSelections[positionsList[i]] = notesList[i];
       }
     }
-    
-    _dropdownSelections = <int, String>{};
 
     // Clear selections if configured to do so
     if (widget.question.configuration.clearSelectionOnStart) {
       _selectedPositions.clear();
-      _selectedNotes.clear();
       _dropdownSelections.clear();
     }
   }
@@ -305,7 +304,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     } else if (config.showIntervalLabels) {
       displayText = _getIntervalLabel(positionInOctave);
     } else if (config.useDropdownSelection && !isPreHighlighted) {
-      // FIX: Show selected note name instead of "?"
+      // FIXED: Show selected note name instead of "?"
       displayText = _dropdownSelections[position] ?? '?';
     }
 
@@ -413,26 +412,28 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
   }
 
   void _showNoteSelectionDropdown(int position) {
-    // FIX: Show ALL possible notes, not just preferred ones
-    final allNotes = _getAllPossibleNotesForPosition(position);
+    // FIXED: Show ALL possible note names, not just position-specific ones
+    final allNotes = _getAllPossibleNoteNames();
     
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Select note for position ${position + 1}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Choose the correct note for this position:'),
-            const SizedBox(height: 16),
-            ...allNotes.map((note) => ListTile(
-              title: Text(note),
-              onTap: () {
-                _selectNoteForPosition(position, note);
-                Navigator.of(context).pop();
-              },
-            )),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Choose the correct note for this position:'),
+              const SizedBox(height: 16),
+              ...allNotes.map((note) => ListTile(
+                title: Text(note),
+                onTap: () {
+                  _selectNoteForPosition(position, note);
+                  Navigator.of(context).pop();
+                },
+              )),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -444,43 +445,24 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     );
   }
 
-  // FIX: Get all possible notes without showing preference
-  List<String> _getAllPossibleNotesForPosition(int position) {
-    const allNotes = [
+  // FIXED: Return ALL possible note names for educational purposes
+  List<String> _getAllPossibleNoteNames() {
+    return const [
       'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 
       'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B'
     ];
-    
-    final config = widget.question.configuration;
-    final stripRootNote = Note.fromString(config.rootNote);
-    final stripRootPc = stripRootNote.pitchClass;
-    
-    // Calculate what pitch class this position represents
-    final targetPc = (stripRootPc + position) % 12;
-    
-    // Return all notes that match this pitch class
-    final matchingNotes = <String>[];
-    for (final note in allNotes) {
-      try {
-        final notePc = Note.fromString(note).pitchClass;
-        if (notePc == targetPc) {
-          matchingNotes.add(note);
-        }
-      } catch (e) {
-        // Skip invalid note names
-      }
-    }
-    
-    return matchingNotes;
   }
 
   void _selectNoteForPosition(int position, String note) {
     setState(() {
+      // FIXED: Properly update all state variables
       _dropdownSelections[position] = note;
       _selectedPositions.add(position);
-      _selectedNotes[position] = note;
     });
-    _notifyAnswerChange();
+    // FIXED: Call notification after setState completes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notifyAnswerChange();
+    });
   }
 
   void _togglePositionSelection(int position) {
@@ -489,13 +471,11 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     setState(() {
       if (_selectedPositions.contains(position)) {
         _selectedPositions.remove(position);
-        _selectedNotes.remove(position);
         _dropdownSelections.remove(position);
       } else {
         if (!config.allowMultipleSelection) {
           // Clear previous selections for single-select mode
           _selectedPositions.clear();
-          _selectedNotes.clear();
           _dropdownSelections.clear();
         }
         _selectedPositions.add(position);
@@ -503,7 +483,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
         // Set note name if available
         final noteName = _getNoteNameForPosition(position);
         if (noteName.isNotEmpty) {
-          _selectedNotes[position] = noteName;
+          _dropdownSelections[position] = noteName;
         }
       }
     });
@@ -529,7 +509,6 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
 
     setState(() {
       _selectedPositions.clear();
-      _selectedNotes.clear();
       _dropdownSelections.clear();
     });
 
@@ -538,9 +517,18 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
   }
 
   void _notifyAnswerChange() {
+    // FIXED: Properly construct the answer with selected notes from dropdowns
+    final selectedNotes = <String>{};
+    for (final position in _selectedPositions) {
+      final note = _dropdownSelections[position];
+      if (note != null && note != '?') {
+        selectedNotes.add(note);
+      }
+    }
+    
     final answer = ScaleStripAnswer(
       selectedPositions: _selectedPositions,
-      selectedNotes: _selectedNotes.values.toSet(),
+      selectedNotes: selectedNotes,
     );
     widget.onAnswerSelected?.call(answer);
   }
