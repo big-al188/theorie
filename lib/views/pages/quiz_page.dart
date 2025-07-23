@@ -11,6 +11,7 @@ import '../../models/learning/learning_content.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/quiz/quiz_progress_bar.dart';
 import '../widgets/quiz/multiple_choice_widget.dart';
+import '../widgets/quiz/question_widget.dart';
 import '../widgets/quiz/quiz_results_widget.dart';
 import 'learning_topics_page.dart';
 
@@ -675,41 +676,26 @@ class _QuizPageState extends State<QuizPage> with TickerProviderStateMixin {
     QuizQuestion question,
     QuizController controller,
   ) {
-    if (question is MultipleChoiceQuestion) {
-      dynamic selectedAnswer;
+    // Preserve the existing answer state logic
+    dynamic selectedAnswer;
 
-      if (_stableAnswerState != null &&
-          _stableAnswerState!['questionId'] == question.id) {
-        selectedAnswer = _stableAnswerState!['answer'];
-      } else {
-        selectedAnswer = controller.currentSession
-            ?.getAnswerForQuestion(question.id)
-            ?.answer;
-      }
-
-      return MultipleChoiceWidget(
-        question: question,
-        selectedAnswer: selectedAnswer,
-        onAnswerSelected: (answer) =>
-            _handleAnswerSubmission(controller, answer),
-        enabled: !controller.isProcessingAnswer && !_isTransitioning,
-        showQuestionText: false,
-      );
+    if (_stableAnswerState != null &&
+        _stableAnswerState!['questionId'] == question.id) {
+      selectedAnswer = _stableAnswerState!['answer'];
+    } else {
+      selectedAnswer = controller.currentSession
+          ?.getAnswerForQuestion(question.id)
+          ?.answer;
     }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        'Question type ${question.runtimeType} not yet supported',
-        style: TextStyle(
-          color: Colors.grey[600],
-          fontStyle: FontStyle.italic,
-        ),
-      ),
+    // Use the centralized QuestionWidget that handles all question types
+    return QuestionWidget(
+      question: question,
+      selectedAnswer: selectedAnswer,
+      onAnswerSelected: (answer) => _handleAnswerSubmission(controller, answer),
+      enabled: !controller.isProcessingAnswer && !_isTransitioning,
+      showCorrectAnswer: false,
+      showQuestionText: false, // Already shown in the question section header
     );
   }
 

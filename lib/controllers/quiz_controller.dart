@@ -5,7 +5,8 @@ import '../models/quiz/quiz_question.dart';
 import '../models/quiz/quiz_session.dart';
 import '../models/quiz/quiz_result.dart';
 import '../models/quiz/multiple_choice_question.dart';
-import '../services/progress_tracking_service.dart'; // SAME: Uses enhanced service
+import '../models/quiz/scale_strip_question.dart';
+import '../services/progress_tracking_service.dart';
 
 /// Exception thrown when quiz controller operations fail
 class QuizControllerException implements Exception {
@@ -37,7 +38,7 @@ class QuizController extends ChangeNotifier {
   String? _currentTopicId;
   String? _currentSectionId;
 
-  // ADDED: Disposal state tracking for safety
+  // Disposal state tracking for safety
   bool _disposed = false;
   String? _lastError;
 
@@ -46,7 +47,7 @@ class QuizController extends ChangeNotifier {
   bool get hasActiveSession => _currentSession != null && !_disposed;
   bool get isProcessingAnswer => _isProcessingAnswer;
 
-  // ADDED: Error state getters
+  // Error state getters
   bool get hasError => _lastError != null;
   String? get error => _lastError;
 
@@ -65,7 +66,7 @@ class QuizController extends ChangeNotifier {
   Duration? get timeRemaining => _currentSession?.timeRemaining;
   bool get isTimeExpired => _currentSession?.isTimeExpired ?? false;
 
-  /// ADDED: Safe notification method that checks disposal state
+  /// Safe notification method that checks disposal state
   void _safeNotifyListeners() {
     if (!_disposed) {
       notifyListeners();
@@ -73,8 +74,6 @@ class QuizController extends ChangeNotifier {
   }
 
   /// Creates and starts a new quiz session
-  ///
-  /// ENHANCED: Added context parameters for progress tracking and disposal safety
   Future<void> startQuiz({
     required List<QuizQuestion> questions,
     required QuizType quizType,
@@ -87,7 +86,7 @@ class QuizController extends ChangeNotifier {
     int? timeLimit,
     double passingScore = 0.7,
   }) async {
-    // ADDED: Check if controller is disposed
+    // Check if controller is disposed
     if (_disposed) {
       throw QuizControllerException('Controller has been disposed');
     }
@@ -151,10 +150,7 @@ class QuizController extends ChangeNotifier {
     }
   }
 
-  /// Submits an answer for the current question
-  ///
-  /// [answer] - The user's answer
-  /// [autoAdvance] - Whether to automatically advance to next question
+  /// Submits an answer for the current question with enhanced support for scale strip questions
   Future<QuestionResult> submitAnswer(
     dynamic answer, {
     bool autoAdvance = true,
@@ -179,8 +175,48 @@ class QuizController extends ChangeNotifier {
       final question = _currentSession!.currentQuestion;
       final timeSpent = _calculateQuestionTime();
 
-      // Validate the answer
-      final result = question.validateAnswer(answer);
+      // Enhanced answer validation for different question types
+      QuestionResult result;
+      
+      switch (question.type) {
+        case QuestionType.multipleChoice:
+          if (question is MultipleChoiceQuestion) {
+            result = question.validateAnswer(answer);
+          } else {
+            throw QuizControllerException('Question type mismatch: expected MultipleChoiceQuestion');
+          }
+          break;
+          
+        case QuestionType.scaleStrip:
+          if (question is ScaleStripQuestion) {
+            // Ensure we have a valid ScaleStripAnswer
+            ScaleStripAnswer scaleStripAnswer;
+            if (answer is ScaleStripAnswer) {
+              scaleStripAnswer = answer;
+            } else if (answer == null) {
+              // Create empty answer for null input
+              scaleStripAnswer = const ScaleStripAnswer(
+                selectedPositions: {},
+                selectedNotes: {},
+              );
+            } else {
+              throw QuizControllerException('Invalid answer type for scale strip question: expected ScaleStripAnswer, got ${answer.runtimeType}');
+            }
+            
+            result = question.validateAnswer(scaleStripAnswer);
+            
+            // Track scale strip specific metrics for analytics
+            await _trackScaleStripMetrics(question, scaleStripAnswer, result, timeSpent);
+          } else {
+            throw QuizControllerException('Question type mismatch: expected ScaleStripQuestion');
+          }
+          break;
+          
+        default:
+          // Handle other question types
+          result = question.validateAnswer(answer);
+          break;
+      }
 
       // Submit to session
       _currentSession!.submitAnswer(
@@ -201,6 +237,101 @@ class QuizController extends ChangeNotifier {
     } finally {
       _isProcessingAnswer = false;
       _safeNotifyListeners();
+    }
+  }
+
+  /// Track scale strip specific metrics for detailed analytics
+  Future<void> _trackScaleStripMetrics(
+    ScaleStripQuestion question,
+    ScaleStripAnswer answer,
+    QuestionResult result,
+    Duration timeSpent,
+  ) async {
+    try {
+      // Use calculateScore method to get the score since QuestionResult doesn't have a score property
+      final score = question.calculateScore(answer);
+      debugPrint('📊 Scale strip metrics: ${question.questionMode} - ${(score * 100).round()}%');
+      
+      // TODO: Implement detailed scale strip metrics tracking
+      // This could be expanded when ProgressTrackingService supports custom metrics
+    } catch (e) {
+      debugPrint('⚠️ Failed to track scale strip metrics: $e');
+      // Don't throw - metrics failure shouldn't break quiz flow
+    }
+  }
+
+  /// Get the current answer based on question type
+  dynamic getCurrentAnswer() {
+    if (currentQuestion == null) return null;
+    
+    final questionId = currentQuestion!.id;
+    final currentAnswers = _currentSession?.answers.values ?? [];
+    final existingAnswer = currentAnswers
+        .where((a) => a.questionId == questionId)
+        .lastOrNull;
+    
+    if (existingAnswer != null) {
+      return existingAnswer.answer; // Use 'answer' property, not 'selectedAnswer'
+    }
+
+    // Return appropriate empty answer based on question type
+    switch (currentQuestion!.type) {
+      case QuestionType.multipleChoice:
+        return null; // MultipleChoice uses null for no selection
+      case QuestionType.scaleStrip:
+        return const ScaleStripAnswer(
+          selectedPositions: {},
+          selectedNotes: {},
+        );
+      default:
+        return null;
+    }
+  }
+
+  /// Validate answer format for current question type
+  bool isValidAnswerFormat(dynamic answer) {
+    if (currentQuestion == null) return false;
+
+    switch (currentQuestion!.type) {
+      case QuestionType.multipleChoice:
+        return answer == null || answer is String || answer is List<String>;
+      case QuestionType.scaleStrip:
+        return answer is ScaleStripAnswer;
+      case QuestionType.interactive:
+      case QuestionType.trueFalse:
+      case QuestionType.fillInBlank:
+        return true; // Accept any format for unimplemented types
+      default:
+        return answer != null;
+    }
+  }
+
+  /// Get a human-readable summary of an answer for results display
+  String getAnswerSummary(dynamic answer) {
+    if (answer == null) return 'No answer selected';
+
+    if (answer is ScaleStripAnswer) {
+      final scaleAnswer = answer;
+      if (scaleAnswer.isEmpty) {
+        return 'No selection made';
+      }
+      
+      final positionCount = scaleAnswer.selectedPositions.length;
+      final notesList = scaleAnswer.selectedNotes.toList()..sort();
+      
+      if (notesList.isNotEmpty) {
+        return 'Selected $positionCount position${positionCount != 1 ? 's' : ''}: ${notesList.join(', ')}';
+      } else {
+        return 'Selected $positionCount position${positionCount != 1 ? 's' : ''}';
+      }
+    } else if (answer is String) {
+      return 'Selected: $answer';
+    } else if (answer is List) {
+      final selections = answer.cast<String>();
+      if (selections.isEmpty) return 'No selections made';
+      return 'Selected: ${selections.join(', ')}';
+    } else {
+      return answer.toString();
     }
   }
 
@@ -283,8 +414,7 @@ class QuizController extends ChangeNotifier {
       _safeNotifyListeners();
     } catch (e) {
       _lastError = 'Failed to navigate to question $index: $e';
-      throw QuizControllerException(
-          'Failed to navigate to question $index: $e');
+      throw QuizControllerException('Failed to navigate to question $index: $e');
     }
   }
 
@@ -320,7 +450,6 @@ class QuizController extends ChangeNotifier {
   }
 
   /// Completes the quiz and returns the result
-  /// ENHANCED: Now uses enhanced progress tracking with offline support
   Future<QuizResult> completeQuiz() async {
     if (_disposed || _currentSession == null) {
       throw QuizControllerException('No active quiz session');
@@ -334,7 +463,7 @@ class QuizController extends ChangeNotifier {
       // Store the result for display
       _lastResult = QuizResult.fromSession(_currentSession!);
 
-      // ENHANCED: Record progress using enhanced service with offline support
+      // Record progress using enhanced service with offline support
       await _recordQuizProgress(_lastResult!);
 
       // Clean up session
@@ -348,34 +477,28 @@ class QuizController extends ChangeNotifier {
     }
   }
 
-  /// ENHANCED: Records quiz progress using enhanced service with offline-first approach
+  /// Records quiz progress using enhanced service with offline-first approach
   Future<void> _recordQuizProgress(QuizResult result) async {
     try {
-      debugPrint(
-          '🎯 [QuizController] Recording quiz progress for ${_currentSession?.quizType}');
+      debugPrint('🎯 [QuizController] Recording quiz progress for ${_currentSession?.quizType}');
 
-      if (_currentSession?.quizType == QuizType.section &&
-          _currentSectionId != null) {
+      if (_currentSession?.quizType == QuizType.section && _currentSectionId != null) {
         // This is a section quiz - use section completion method
         await ProgressTrackingService.instance.recordSectionQuizCompletion(
           result: result,
           sectionId: _currentSectionId!,
         );
-        debugPrint(
-            '✅ [QuizController] Section quiz progress recorded for section: $_currentSectionId');
-      } else if (_currentSession?.quizType == QuizType.topic &&
-          _currentTopicId != null) {
+        debugPrint('✅ [QuizController] Section quiz progress recorded for section: $_currentSectionId');
+      } else if (_currentSession?.quizType == QuizType.topic && _currentTopicId != null) {
         // This is a topic quiz - use topic completion method
         await ProgressTrackingService.instance.recordQuizCompletion(
           result: result,
           topicId: _currentTopicId!,
           sectionId: _currentSectionId, // Pass section ID if available
         );
-        debugPrint(
-            '✅ [QuizController] Topic quiz progress recorded for topic: $_currentTopicId');
+        debugPrint('✅ [QuizController] Topic quiz progress recorded for topic: $_currentTopicId');
       } else {
-        debugPrint(
-            '⚠️ [QuizController] No progress tracking context available or unknown quiz type');
+        debugPrint('⚠️ [QuizController] No progress tracking context available or unknown quiz type');
       }
     } catch (e) {
       debugPrint('❌ [QuizController] Error recording quiz progress: $e');
@@ -531,7 +654,7 @@ class QuizController extends ChangeNotifier {
 
   @override
   void dispose() {
-    // ADDED: Set disposed flag first to prevent any further operations
+    // Set disposed flag first to prevent any further operations
     _disposed = true;
 
     // Proper cleanup on disposal

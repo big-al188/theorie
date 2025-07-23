@@ -171,6 +171,180 @@ Remember: Every professional musician was once a beginner too. The secret is to 
             'Share your progress with a friend',
           ],
         ),
+        LearningTopic(
+          id: 'scale-strip-quiz',
+          title: 'Scale Strip Quiz',
+          description: 'Interactive scale and chord exercises using the scale strip interface',
+          order: 4,
+          estimatedReadTime: const Duration(minutes: 10),
+          hasQuiz: true,
+          content: '''
+# Scale Strip Quiz
+
+Welcome to the interactive Scale Strip Quiz! This section introduces you to hands-on music theory exercises using our scale strip interface.
+
+## What is the Scale Strip?
+
+The scale strip is a visual representation of musical notes laid out in chromatic order. It shows all 12 notes of the chromatic scale, making it easy to see the relationships between notes, intervals, and scales.
+
+Think of it as a musical keyboard flattened out - every note from C to B is displayed in order, and you can see exactly how many steps (semitones) are between any two notes.
+
+## Types of Exercises
+
+### 1. Interval Recognition
+Learn to identify and select scale intervals by their numerical positions (1st, 2nd, 3rd, etc.). This helps you understand how scales are constructed using specific interval patterns.
+
+**Example**: "Fill out the intervals for a major scale"
+- You'll see a scale strip with note names
+- Select the positions that correspond to 1, 2, 3, 4, 5, 6, 7, 8
+- Learn the W-W-H-W-W-W-H pattern (W=whole step, H=half step)
+
+### 2. Missing Note Completion
+Practice completing scales by filling in missing notes. Some positions will be pre-highlighted, and you need to identify what's missing.
+
+**Example**: "Fill in the missing intervals for the minor scale"
+- Some scale degrees are already shown (like 1, 3, 5, 8)
+- You identify and select the missing intervals (2, 4, 6, 7)
+- Reinforces your understanding of scale construction
+
+### 3. Note Name Identification
+Develop your knowledge of note names by identifying missing notes in various scales and progressions.
+
+**Example**: "Label the missing notes in the chromatic scale"
+- Some notes are labeled (C, D, F, G)
+- You identify the missing sharps/flats (C#, D#, F#, G#, A, A#, B)
+- Strengthens your understanding of the chromatic sequence
+
+### 4. Chord Construction
+Learn to build chords by selecting the correct combination of notes from the scale strip.
+
+**Example**: "Construct a C Major Triad"
+- The scale strip shows all available notes
+- You select C, E, and G to build the triad
+- Understand how chords relate to scale degrees
+
+## Benefits of Scale Strip Exercises
+
+### Visual Learning
+- **See the physical relationships** between notes
+- **Understand interval distances** visually
+- **Connect theory concepts** to visual patterns
+- **Recognize common patterns** across different keys
+
+### Interactive Practice
+- **Hands-on engagement** reinforces learning
+- **Immediate feedback** on your selections
+- **Multiple attempts** to master concepts
+- **Real-time validation** shows correct answers
+
+### Pattern Recognition
+- **Identify common scale patterns** (major, minor, pentatonic)
+- **Recognize interval relationships** across different keys
+- **Build muscle memory** for theoretical concepts
+- **Connect patterns** to songs you know
+
+### Foundation Building
+- **Essential preparation** for advanced theory topics
+- **Bridge between basic note recognition** and complex harmony
+- **Practical application** of theoretical knowledge
+- **Strong foundation** for instrument playing
+
+## Getting Started
+
+1. **Read each question carefully** - Understand what type of selection is required
+2. **Use the visual cues** - Pre-highlighted notes and root indicators help guide you
+3. **Think in patterns** - Most scales and chords follow predictable patterns
+4. **Don't rush** - Take time to consider interval relationships
+5. **Learn from feedback** - Review explanations to understand your mistakes
+
+## Tips for Success
+
+### Major Scales
+- **Remember the pattern**: W-W-H-W-W-W-H (whole-whole-half-whole-whole-whole-half)
+- **Start from the root** and count intervals carefully
+- **All major scales** follow the same pattern, just starting from different notes
+
+### Minor Scales
+- **Natural minor pattern**: W-H-W-W-H-W-W
+- **Notice the flattened degrees**: 3rd, 6th, and 7th are lowered
+- **Compare to major**: Think of it as a major scale with ♭3, ♭6, ♭7
+
+### Chromatic Scales
+- **Include all 12 notes** within an octave
+- **No sharps between E-F and B-C** (these are natural half steps)
+- **Every other position** has a sharp/flat
+
+### Chord Construction
+- **Triads use the 1st, 3rd, and 5th degrees** of scales
+- **Major triads**: major 3rd (4 semitones) + perfect 5th (7 semitones)
+- **Minor triads**: minor 3rd (3 semitones) + perfect 5th (7 semitones)
+- **Count semitones** to verify your chord construction
+
+## Practice Strategy
+
+### Start Simple
+1. **Begin with C major scale** - no sharps or flats to confuse you
+2. **Master the major scale pattern** before moving to minor
+3. **Practice chromatic scale** to learn all note names
+4. **Build basic triads** (major and minor)
+
+### Build Complexity
+1. **Try different keys** - apply patterns to F, G, D major scales
+2. **Explore minor scales** - natural, harmonic, and melodic
+3. **Construct seventh chords** - add the 7th to your triads
+4. **Practice mode recognition** - identify Dorian, Mixolydian, etc.
+
+### Apply to Music
+1. **Find scales in songs you know** - identify the key and scale type
+2. **Analyze chord progressions** - see how chords relate to scales
+3. **Create your own progressions** - use the scale strip to experiment
+4. **Connect to your instrument** - apply what you learn to guitar, piano, etc.
+
+## Common Challenges and Solutions
+
+### "I keep forgetting which notes have sharps"
+- **Practice the chromatic scale** regularly
+- **Remember**: no sharps between E-F and B-C
+- **Use mnemonics**: "Every Good Boy Does Fine" for line notes
+
+### "The patterns seem random"
+- **Focus on the W-H patterns** rather than individual notes
+- **Count semitones** consistently
+- **Practice the same pattern** in different keys
+
+### "I can't remember chord formulas"
+- **Start with triads only** - master these first
+- **Count intervals from the root** - 1-3-5 for basic triads
+- **Use the scale strip** to visualize the distances
+
+### "It's hard to see the patterns"
+- **Use the highlighting features** to your advantage
+- **Focus on one octave** at a time
+- **Practice with familiar keys** first (C, G, F)
+
+Remember, these exercises are designed to build your foundational understanding of music theory through interactive practice. Take your time, think through each problem, and don't hesitate to review the explanations when you need clarification.
+
+The scale strip is a powerful tool for visualizing music theory concepts. With practice, you'll develop intuitive understanding of scales, intervals, and chords that will serve you throughout your musical journey.
+
+**Ready to start?** Try the quiz to test your understanding of scale strips and see how these concepts work in practice!
+''',
+          keyPoints: [
+            'Interactive visual learning with immediate feedback',
+            'Covers scales, intervals, chords, and note relationships',
+            'Multiple exercise types: intervals, notes, construction, patterns',
+            'Builds foundation for advanced music theory concepts',
+            'Pattern recognition across different keys and scales',
+            'Hands-on practice reinforces theoretical knowledge',
+          ],
+          examples: [
+            'Fill out intervals for major scales (1-2-3-4-5-6-7-8)',
+            'Complete missing notes in minor scales',
+            'Identify missing sharps/flats in chromatic sequences',
+            'Construct triads by selecting correct note combinations',
+            'Recognize scale patterns across different starting notes',
+            'Build chord progressions using scale relationships',
+          ],
+        ),
       ],
     );
   }

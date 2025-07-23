@@ -45,6 +45,7 @@ class LearningTopic {
   final List<String> examples;
   final int order;
   final Duration estimatedReadTime;
+  final bool hasQuiz; // Add this field
 
   const LearningTopic({
     required this.id,
@@ -55,6 +56,7 @@ class LearningTopic {
     required this.examples,
     required this.order,
     required this.estimatedReadTime,
+    this.hasQuiz = false, // Add this parameter
   });
 }
 

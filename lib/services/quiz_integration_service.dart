@@ -1,6 +1,7 @@
 // lib/services/quiz_integration_service.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../controllers/quiz_controller.dart';
 import '../controllers/unified_quiz_generator.dart';
@@ -23,9 +24,16 @@ class QuizIntegrationService {
     required LearningSection section,
     required QuizController quizController,
   }) async {
+    if (kDebugMode) {
+      debugPrint('🚀 [QuizIntegration] Navigating to section quiz: ${section.id}');
+    }
+    
     if (isSectionQuizImplemented(section.id)) {
       await _navigateToImplementedSectionQuiz(context, section, quizController);
     } else {
+      if (kDebugMode) {
+        debugPrint('⚠️ [QuizIntegration] Section ${section.id} not implemented, showing placeholder');
+      }
       await _navigateToPlaceholderQuiz(
         context: context,
         title: '${section.title} Section Quiz',
@@ -43,10 +51,32 @@ class QuizIntegrationService {
     required LearningSection section,
     required QuizController quizController,
   }) async {
-    if (isTopicQuizImplemented(section.id, topic.id)) {
+    if (kDebugMode) {
+      debugPrint('🚀 [QuizIntegration] Navigating to topic quiz: ${section.id}/${topic.id}');
+    }
+    
+    final isImplemented = isTopicQuizImplemented(section.id, topic.id);
+    final questionCount = getTopicQuestionCount(section.id, topic.id);
+    
+    if (kDebugMode) {
+      debugPrint('📊 [QuizIntegration] Topic implementation check:');
+      debugPrint('   - Section: ${section.id}');
+      debugPrint('   - Topic: ${topic.id}');
+      debugPrint('   - Implemented: $isImplemented');
+      debugPrint('   - Question Count: $questionCount');
+    }
+    
+    if (isImplemented && questionCount > 0) {
+      if (kDebugMode) {
+        debugPrint('✅ [QuizIntegration] Starting implemented topic quiz');
+      }
       await _navigateToImplementedTopicQuiz(
           context, topic, section, quizController);
     } else {
+      if (kDebugMode) {
+        debugPrint('⚠️ [QuizIntegration] Topic ${section.id}/${topic.id} not implemented, showing placeholder');
+        debugPrint('   - Reason: implemented=$isImplemented, questions=$questionCount');
+      }
       await _navigateToPlaceholderQuiz(
         context: context,
         title: '${topic.title} Quiz',
@@ -67,7 +97,10 @@ class QuizIntegrationService {
   ) async {
     try {
       // Check if context is still valid before starting
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        debugPrint('❌ [QuizIntegration] Context not mounted for section quiz');
+        return;
+      }
 
       // Generate quiz session with appropriate configuration
       final config = QuizGenerationConfig(
@@ -78,13 +111,22 @@ class QuizIntegrationService {
         passingScore: 0.7,
       );
 
+      if (kDebugMode) {
+        debugPrint('⚙️ [QuizIntegration] Creating section quiz session with config:');
+        debugPrint('   - Question Count: ${config.questionCount}');
+        debugPrint('   - Time Limit: ${config.timeLimit}');
+      }
+
       final session = _generator.createSectionQuizSession(
         sectionId: section.id,
         config: config,
       );
 
       // Check if context is still valid before starting quiz
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        debugPrint('❌ [QuizIntegration] Context not mounted after session creation');
+        return;
+      }
 
       // Start the quiz with section context for progress tracking
       await quizController.startQuiz(
@@ -149,8 +191,9 @@ class QuizIntegrationService {
           }
         }
       }
-    } catch (e) {
-      debugPrint('Error starting section quiz: $e');
+    } catch (e, stackTrace) {
+      debugPrint('❌ [QuizIntegration] Error starting section quiz: $e');
+      debugPrint('Stack trace: $stackTrace');
 
       // Show error only if context is still valid
       if (context.mounted) {
@@ -177,11 +220,22 @@ class QuizIntegrationService {
   ) async {
     try {
       // Check if context is still valid before starting
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        debugPrint('❌ [QuizIntegration] Context not mounted for topic quiz');
+        return;
+      }
 
       // Generate quiz session with appropriate configuration
       final questionCount =
           _generator.getTopicQuestionCount(section.id, topic.id);
+      
+      if (kDebugMode) {
+        debugPrint('📊 [QuizIntegration] Topic quiz details:');
+        debugPrint('   - Section: ${section.id}');
+        debugPrint('   - Topic: ${topic.id}');
+        debugPrint('   - Available Questions: $questionCount');
+      }
+      
       final config = QuizGenerationConfig(
         questionCount: questionCount,
         timeLimit: _getTopicTimeLimit(questionCount),
@@ -190,16 +244,37 @@ class QuizIntegrationService {
         passingScore: 0.75, // Slightly higher for individual topics
       );
 
+      if (kDebugMode) {
+        debugPrint('⚙️ [QuizIntegration] Creating topic quiz session with config:');
+        debugPrint('   - Question Count: ${config.questionCount}');
+        debugPrint('   - Time Limit: ${config.timeLimit}');
+      }
+
       final session = _generator.createTopicQuizSession(
         sectionId: section.id,
         topicId: topic.id,
         config: config,
       );
 
+      if (kDebugMode) {
+        debugPrint('✅ [QuizIntegration] Session created successfully:');
+        debugPrint('   - Session ID: ${session.id}');
+        debugPrint('   - Title: ${session.title}');
+        debugPrint('   - Questions: ${session.questions.length}');
+        debugPrint('   - Quiz Type: ${session.quizType}');
+      }
+
       // Check if context is still valid before starting quiz
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        debugPrint('❌ [QuizIntegration] Context not mounted after session creation');
+        return;
+      }
 
       // Start the quiz with both topic and section context
+      if (kDebugMode) {
+        debugPrint('🎯 [QuizIntegration] Starting quiz controller...');
+      }
+      
       await quizController.startQuiz(
         questions: session.questions,
         quizType: session.quizType,
@@ -213,11 +288,19 @@ class QuizIntegrationService {
         passingScore: session.passingScore,
       );
 
+      if (kDebugMode) {
+        debugPrint('✅ [QuizIntegration] Quiz controller started successfully');
+      }
+
       // Navigate to quiz page with proper route setup
       if (context.mounted) {
         // Store the current route for proper return navigation
         final currentRoute = ModalRoute.of(context);
         debugPrint('Starting topic quiz from: ${currentRoute?.settings.name}');
+
+        if (kDebugMode) {
+          debugPrint('🧭 [QuizIntegration] Navigating to QuizPage...');
+        }
 
         await Navigator.of(context).push<bool>(
           PageRouteBuilder(
@@ -263,8 +346,9 @@ class QuizIntegrationService {
           }
         }
       }
-    } catch (e) {
-      debugPrint('Error starting topic quiz: $e');
+    } catch (e, stackTrace) {
+      debugPrint('❌ [QuizIntegration] Error starting topic quiz: $e');
+      debugPrint('Stack trace: $stackTrace');
 
       // Show error only if context is still valid
       if (context.mounted) {
@@ -294,8 +378,13 @@ class QuizIntegrationService {
   }) async {
     if (!context.mounted) return;
 
+    if (kDebugMode) {
+      debugPrint('🚧 [QuizIntegration] Showing placeholder for: $title');
+    }
+
     // Store current route for proper return
     final currentRoute = ModalRoute.of(context);
+    debugPrint('Starting placeholder quiz from: ${currentRoute?.settings.name}');
 
     await Navigator.of(context).push(
       PageRouteBuilder(
@@ -384,22 +473,126 @@ class QuizIntegrationService {
 
   /// Check if a section has quiz implementation
   static bool isSectionQuizImplemented(String sectionId) {
-    return _generator.isSectionImplemented(sectionId);
+    try {
+      final isImplemented = _generator.isSectionImplemented(sectionId);
+      final questionCount = _generator.getSectionQuestionCount(sectionId);
+      
+      if (kDebugMode) {
+        debugPrint('🔍 [QuizIntegration] Section implementation check for $sectionId:');
+        debugPrint('   - Generator says implemented: $isImplemented');
+        debugPrint('   - Question count: $questionCount');
+        debugPrint('   - Final result: ${isImplemented && questionCount > 0}');
+      }
+      
+      return isImplemented && questionCount > 0;
+    } catch (e) {
+      debugPrint('❌ [QuizIntegration] Error checking section implementation: $e');
+      return false;
+    }
   }
 
   /// Check if a topic has quiz implementation
   static bool isTopicQuizImplemented(String sectionId, String topicId) {
-    return _generator.isTopicImplemented(sectionId, topicId);
+    try {
+      final isImplemented = _generator.isTopicImplemented(sectionId, topicId);
+      final questionCount = _generator.getTopicQuestionCount(sectionId, topicId);
+      
+      if (kDebugMode) {
+        debugPrint('🔍 [QuizIntegration] Topic implementation check for $sectionId/$topicId:');
+        debugPrint('   - Generator says implemented: $isImplemented');
+        debugPrint('   - Question count: $questionCount');
+        debugPrint('   - Final result: ${isImplemented && questionCount > 0}');
+      }
+      
+      return isImplemented && questionCount > 0;
+    } catch (e) {
+      debugPrint('❌ [QuizIntegration] Error checking topic implementation: $e');
+      return false;
+    }
   }
 
   /// Get quiz statistics for a section
   static Map<String, dynamic> getSectionQuizStats(String sectionId) {
-    return _generator.getSectionStats(sectionId);
+    try {
+      return _generator.getSectionStats(sectionId);
+    } catch (e) {
+      debugPrint('❌ [QuizIntegration] Error getting section stats: $e');
+      return {};
+    }
   }
 
   /// Get the number of questions available for a topic
   static int getTopicQuestionCount(String sectionId, String topicId) {
-    return _generator.getTopicQuestionCount(sectionId, topicId);
+    try {
+      final count = _generator.getTopicQuestionCount(sectionId, topicId);
+      if (kDebugMode) {
+        debugPrint('📊 [QuizIntegration] Question count for $sectionId/$topicId: $count');
+      }
+      return count;
+    } catch (e) {
+      debugPrint('❌ [QuizIntegration] Error getting topic question count: $e');
+      return 0;
+    }
+  }
+
+  /// Get the number of questions available for a section
+  static int getSectionQuestionCount(String sectionId) {
+    try {
+      final count = _generator.getSectionQuestionCount(sectionId);
+      if (kDebugMode) {
+        debugPrint('📊 [QuizIntegration] Section question count for $sectionId: $count');
+      }
+      return count;
+    } catch (e) {
+      debugPrint('❌ [QuizIntegration] Error getting section question count: $e');
+      return 0;
+    }
+  }
+
+  /// Get detailed topic statistics
+  static Map<String, dynamic> getTopicStats(String sectionId, String topicId) {
+    try {
+      return _generator.getTopicStats(sectionId, topicId);
+    } catch (e) {
+      debugPrint('❌ [QuizIntegration] Error getting topic stats: $e');
+      return {};
+    }
+  }
+
+  /// Test method for debugging quiz integration
+  static void debugQuizIntegration() {
+    if (!kDebugMode) return;
+    
+    debugPrint('🔍 [QuizIntegration] DEBUGGING QUIZ INTEGRATION');
+    debugPrint('===============================================');
+    
+    try {
+      // Test scale strip specifically
+      const sectionId = 'introduction';
+      const topicId = 'scale-strip-quiz';
+      
+      debugPrint('\n📊 Testing Scale Strip Integration:');
+      
+      final isImplemented = isTopicQuizImplemented(sectionId, topicId);
+      final questionCount = getTopicQuestionCount(sectionId, topicId);
+      final sectionStats = getSectionQuizStats(sectionId);
+      
+      debugPrint('   - Topic implemented: $isImplemented');
+      debugPrint('   - Question count: $questionCount');
+      debugPrint('   - Section has scale strip: ${sectionStats['hasScaleStripQuestions']}');
+      debugPrint('   - Section total questions: ${sectionStats['totalQuestions']}');
+      
+      if (isImplemented && questionCount > 0) {
+        debugPrint('✅ Scale strip quiz should work!');
+      } else {
+        debugPrint('❌ Scale strip quiz will show placeholder');
+        debugPrint('   - Reason: implemented=$isImplemented, questions=$questionCount');
+      }
+      
+    } catch (e, stackTrace) {
+      debugPrint('❌ Debug integration failed: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
   }
 }
 
@@ -464,6 +657,13 @@ class QuizPlaceholderPage extends StatelessWidget {
                 onPressed: () => _navigateBack(context),
                 child: const Text('Back to Learning'),
               ),
+              if (kDebugMode) ...[
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => QuizIntegrationService.debugQuizIntegration(),
+                  child: const Text('Debug Integration'),
+                ),
+              ],
             ],
           ),
         ),

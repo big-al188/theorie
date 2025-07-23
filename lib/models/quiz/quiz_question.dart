@@ -8,7 +8,28 @@ enum QuestionType {
   interactive,
   trueFalse,
   fillInBlank,
+  scaleStrip, // Add this new type
 }
+
+/// Extension to provide display names for question types
+extension QuestionTypeExtension on QuestionType {
+  String get displayName {
+    switch (this) {
+      case QuestionType.multipleChoice:
+        return 'Multiple Choice';
+      case QuestionType.interactive:
+        return 'Interactive';
+      case QuestionType.trueFalse:
+        return 'True/False';
+      case QuestionType.fillInBlank:
+        return 'Fill in Blank';
+      case QuestionType.scaleStrip:
+        return 'Scale Strip';
+    }
+  }
+}
+
+
 
 /// Enum representing difficulty levels for questions
 enum QuestionDifficulty {

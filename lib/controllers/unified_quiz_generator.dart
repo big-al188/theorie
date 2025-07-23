@@ -8,6 +8,7 @@ import '../models/quiz/quiz_session.dart';
 import '../models/quiz/sections/introduction/whattheory_quiz_questions.dart';
 import '../models/quiz/sections/introduction/whytheory_quiz_questions.dart';
 import '../models/quiz/sections/introduction/practicetips_quiz_questions.dart';
+import '../models/quiz/sections/introduction/scale_strip_quiz_questions.dart';
 
 // Fundamentals section imports
 import '../models/quiz/sections/fundamentals/musical_alphabet_quiz_questions.dart';
@@ -223,26 +224,75 @@ class UnifiedQuizGenerator {
     return totalCount;
   }
 
-  /// Get quiz statistics for a section
+  /// Get quiz statistics for a section with enhanced support for scale strip questions
   Map<String, dynamic> getSectionStats(String sectionId) {
     final topicIds = _getSectionTopicIds(sectionId);
     final topicCounts = <String, int>{};
+    final topicTypes = <String, Map<String, int>>{};
 
     for (final topicId in topicIds) {
-      topicCounts[topicId] = getTopicQuestionCount(sectionId, topicId);
+      final questions = _getTopicQuestions(sectionId, topicId);
+      topicCounts[topicId] = questions.length;
+      
+      // Count question types for better analytics
+      final typeCounts = <String, int>{};
+      for (final question in questions) {
+        final typeKey = question.type.toString().split('.').last;
+        typeCounts[typeKey] = (typeCounts[typeKey] ?? 0) + 1;
+      }
+      topicTypes[topicId] = typeCounts;
     }
 
-    final totalQuestions =
-        topicCounts.values.fold(0, (sum, count) => sum + count);
+    final totalQuestions = topicCounts.values.fold(0, (sum, count) => sum + count);
 
     return {
       'sectionId': sectionId,
       'totalQuestions': totalQuestions,
       'topicCounts': topicCounts,
+      'topicTypes': topicTypes,
       'availableTopics': topicIds,
-      'averageQuestionsPerTopic':
-          topicIds.isNotEmpty ? totalQuestions / topicIds.length : 0.0,
+      'averageQuestionsPerTopic': topicIds.isNotEmpty ? totalQuestions / topicIds.length : 0.0,
       'implemented': totalQuestions > 0,
+      'hasScaleStripQuestions': _hasScaleStripQuestions(sectionId),
+    };
+  }
+
+  /// Check if a section has any scale strip questions
+  bool _hasScaleStripQuestions(String sectionId) {
+    final topicIds = _getSectionTopicIds(sectionId);
+    for (final topicId in topicIds) {
+      final questions = _getTopicQuestions(sectionId, topicId);
+      if (questions.any((q) => q.type == QuestionType.scaleStrip)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Get detailed statistics for a specific topic
+  Map<String, dynamic> getTopicStats(String sectionId, String topicId) {
+    final questions = _getTopicQuestions(sectionId, topicId);
+    final typeCounts = <String, int>{};
+    final difficultyStats = <String, int>{};
+    
+    for (final question in questions) {
+      // Count by question type
+      final typeKey = question.type.toString().split('.').last;
+      typeCounts[typeKey] = (typeCounts[typeKey] ?? 0) + 1;
+      
+      // Count by difficulty
+      final difficultyKey = question.difficulty.toString().split('.').last;
+      difficultyStats[difficultyKey] = (difficultyStats[difficultyKey] ?? 0) + 1;
+    }
+
+    return {
+      'topicId': topicId,
+      'sectionId': sectionId,
+      'totalQuestions': questions.length,
+      'questionTypes': typeCounts,
+      'difficultyDistribution': difficultyStats,
+      'hasScaleStripQuestions': questions.any((q) => q.type == QuestionType.scaleStrip),
+      'implemented': questions.isNotEmpty,
     };
   }
 
@@ -259,7 +309,7 @@ class UnifiedQuizGenerator {
     }
   }
 
-  /// Get questions for Introduction section topics
+  /// Get questions for Introduction section topics with full scale strip support
   List<QuizQuestion> _getIntroductionTopicQuestions(String topicId) {
     switch (topicId) {
       case WhatTheoryQuizQuestions.topicId:
@@ -268,6 +318,8 @@ class UnifiedQuizGenerator {
         return WhyTheoryQuizQuestions.getQuestions();
       case PracticeTipsQuizQuestions.topicId:
         return PracticeTipsQuizQuestions.getQuestions();
+      case ScaleStripQuizQuestions.topicId:
+        return ScaleStripQuizQuestions.getQuestions();
       default:
         return [];
     }
@@ -309,7 +361,7 @@ class UnifiedQuizGenerator {
     }
   }
 
-  /// Get all topic IDs for a section
+  /// Get all topic IDs for a section - Updated to include scale strip quiz
   List<String> _getSectionTopicIds(String sectionId) {
     switch (sectionId) {
       case 'introduction':
@@ -317,6 +369,7 @@ class UnifiedQuizGenerator {
           WhatTheoryQuizQuestions.topicId,
           WhyTheoryQuizQuestions.topicId,
           PracticeTipsQuizQuestions.topicId,
+          ScaleStripQuizQuestions.topicId, // Added scale strip quiz to introduction topics
         ];
       case 'fundamentals':
         return [
@@ -378,7 +431,7 @@ class UnifiedQuizGenerator {
     }
   }
 
-  /// Get topic titles for Introduction section
+  /// Get topic titles for Introduction section with scale strip support
   String _getIntroductionTopicTitle(String topicId) {
     switch (topicId) {
       case WhatTheoryQuizQuestions.topicId:
@@ -387,6 +440,8 @@ class UnifiedQuizGenerator {
         return WhyTheoryQuizQuestions.topicTitle;
       case PracticeTipsQuizQuestions.topicId:
         return PracticeTipsQuizQuestions.topicTitle;
+      case ScaleStripQuizQuestions.topicId:
+        return ScaleStripQuizQuestions.topicTitle;
       default:
         return 'Unknown Topic';
     }
