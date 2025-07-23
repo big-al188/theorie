@@ -1,307 +1,325 @@
 // lib/utils/scale_strip_utils.dart
 
-/// Utility functions for scale strip question handling
-/// Provides note name resolution, octave calculations, and interval labeling
+import '../models/music/note.dart';
+import '../models/music/scale.dart';
+import '../models/music/chord.dart';
+import '../models/quiz/scale_strip_question.dart';
+
+/// Simplified utility functions for scale strip quiz integration with music theory models
 class ScaleStripUtils {
   
-  /// Standard chromatic scale starting from C
-  static const List<String> chromaticNotes = [
-    'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
-  ];
-
-  /// Mapping from flat notes to sharp equivalents
-  static const Map<String, String> flatToSharp = {
-    'Db': 'C#',
-    'Eb': 'D#', 
-    'Gb': 'F#',
-    'Ab': 'G#',
-    'Bb': 'A#',
-  };
-
-  /// Scale degree labels with accidentals for interval display
-  static const List<String> scaleDegreeLabels = [
-    '1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'
-  ];
-
-  /// Roman numeral labels for advanced theory
-  static const List<String> romanNumeralLabels = [
-    'I', '♭II', 'II', '♭III', 'III', 'IV', '♭V', 'V', '♭VI', 'VI', '♭VII', 'VII'
-  ];
-
-  /// Get note name for a chromatic position relative to a root note
-  /// 
-  /// [chromaticPosition] - Position 0-11 in chromatic scale
-  /// [rootNote] - Root note (e.g., 'C', 'D', 'F#', 'Bb')
-  /// Returns the note name at that position
-  static String getNoteNameForPosition(int chromaticPosition, String rootNote) {
-    // Normalize root note to sharp if it's a flat
-    final normalizedRoot = flatToSharp[rootNote] ?? rootNote;
-    
-    // Find root position in chromatic scale
-    int rootIndex = chromaticNotes.indexOf(normalizedRoot);
-    if (rootIndex == -1) {
-      throw ArgumentError('Invalid root note: $rootNote');
-    }
-    
-    // Calculate note index
-    final noteIndex = (chromaticPosition + rootIndex) % 12;
-    return chromaticNotes[noteIndex];
-  }
-
-  /// Get note name with octave for a position in multi-octave scale strip
-  /// 
-  /// [position] - Absolute position in scale strip (0-based)
-  /// [rootNote] - Root note of the scale
-  /// [startingOctave] - Starting octave number (default: 3)
-  /// Returns note name with octave (e.g., 'C4', 'F#5')
-  static String getNoteNameWithOctave(int position, String rootNote, {int startingOctave = 3}) {
-    final octave = startingOctave + (position ~/ 12);
-    final chromaticPosition = position % 12;
-    final noteName = getNoteNameForPosition(chromaticPosition, rootNote);
-    return '$noteName$octave';
-  }
-
-  /// Extract note name without octave from a note string
-  /// 
-  /// [noteWithOctave] - Note string like 'C4' or 'F#5'
-  /// Returns just the note name like 'C' or 'F#'
-  static String extractNoteName(String noteWithOctave) {
-    return noteWithOctave.replaceAll(RegExp(r'\d+$'), '');
-  }
-
-  /// Extract octave number from a note string
-  /// 
-  /// [noteWithOctave] - Note string like 'C4' or 'F#5'
-  /// Returns the octave number, or null if not present
-  static int? extractOctave(String noteWithOctave) {
-    final match = RegExp(r'\d+$').firstMatch(noteWithOctave);
-    return match != null ? int.tryParse(match.group(0)!) : null;
-  }
-
-  /// Check if a note string contains octave information
-  /// 
-  /// [note] - Note string to check
-  /// Returns true if octave is present
-  static bool hasOctaveInfo(String note) {
-    return RegExp(r'\d+$').hasMatch(note);
-  }
-
-  /// Convert a set of notes with octaves to notes without octaves
-  /// 
-  /// [notesWithOctaves] - Set of notes like {'C4', 'E4', 'G4'}
-  /// Returns set of notes without octaves like {'C', 'E', 'G'}
-  static Set<String> removeOctaveInfo(Set<String> notesWithOctaves) {
-    return notesWithOctaves.map(extractNoteName).toSet();
-  }
-
-  /// Get interval label for a chromatic position
-  /// 
-  /// [position] - Chromatic position (0-11)
-  /// [format] - Label format to use
-  /// Returns formatted interval label
-  static String getIntervalLabel(int position, IntervalLabelFormat format) {
-    final chromaticPos = position % 12;
-    
-    switch (format) {
-      case IntervalLabelFormat.numeric:
-        return (chromaticPos + 1).toString();
-      
-      case IntervalLabelFormat.scaleDegreesWithAccidentals:
-        return scaleDegreeLabels[chromaticPos];
-      
-      case IntervalLabelFormat.romanNumerals:
-        return romanNumeralLabels[chromaticPos];
-    }
-  }
-
-  /// Calculate positions for a major scale starting from a root note
-  /// 
-  /// [rootNote] - Root note of the scale
-  /// [octaveCount] - Number of octaves to include
-  /// Returns set of positions for the major scale
-  static Set<int> getMajorScalePositions(String rootNote, {int octaveCount = 1}) {
-    const majorScaleIntervals = [0, 2, 4, 5, 7, 9, 11]; // W-W-H-W-W-W-H
+  /// Calculate positions on the strip from notes relative to a root
+  static Set<int> calculatePositions(List<Note> notes, String stripRoot) {
+    final stripRootPc = Note.fromString(stripRoot).pitchClass;
     final positions = <int>{};
     
-    for (int octave = 0; octave < octaveCount; octave++) {
-      for (final interval in majorScaleIntervals) {
-        positions.add(octave * 12 + interval);
-      }
+    for (final note in notes) {
+      final position = (note.pitchClass - stripRootPc + 12) % 12;
+      positions.add(position);
     }
-    
-    // Add octave note
-    positions.add(octaveCount * 12);
     
     return positions;
   }
 
-  /// Calculate positions for a natural minor scale starting from a root note
-  /// 
-  /// [rootNote] - Root note of the scale
-  /// [octaveCount] - Number of octaves to include  
-  /// Returns set of positions for the natural minor scale
-  static Set<int> getNaturalMinorScalePositions(String rootNote, {int octaveCount = 1}) {
-    const minorScaleIntervals = [0, 2, 3, 5, 7, 8, 10]; // W-H-W-W-H-W-W
-    final positions = <int>{};
-    
-    for (int octave = 0; octave < octaveCount; octave++) {
-      for (final interval in minorScaleIntervals) {
-        positions.add(octave * 12 + interval);
-      }
+  /// Generate answer for any scale using the Scale model
+  static ScaleStripAnswer generateScaleAnswer(String scaleName, String rootNote, String stripRoot) {
+    final scale = Scale.get(scaleName);
+    if (scale == null) {
+      throw ArgumentError('Unknown scale: $scaleName');
     }
+
+    final rootNoteObj = Note.fromString(rootNote);
+    final scaleNotes = scale.getNotesForRoot(rootNoteObj);
     
-    // Add octave note
-    positions.add(octaveCount * 12);
+    return ScaleStripAnswer(
+      selectedPositions: calculatePositions(scaleNotes, stripRoot),
+      selectedNotes: scaleNotes.map((n) => n.name).toSet(),
+    );
+  }
+
+  /// Generate answer for any chord using the Chord model
+  static ScaleStripAnswer generateChordAnswer(String chordType, String rootNote, String stripRoot) {
+    final chord = Chord.get(chordType);
+    if (chord == null) {
+      throw ArgumentError('Unknown chord: $chordType');
+    }
+
+    final rootNoteObj = Note.fromString(rootNote);
+    final chordNotes = chord.getNotesForRoot(rootNoteObj);
+    
+    return ScaleStripAnswer(
+      selectedPositions: calculatePositions(chordNotes, stripRoot),
+      selectedNotes: chordNotes.map((n) => n.name).toSet(),
+    );
+  }
+
+  /// Get missing positions from a complete set (useful for fill-in questions)
+  static Set<int> getMissingPositions(Set<int> allPositions, Set<int> givenPositions) {
+    return allPositions.difference(givenPositions);
+  }
+
+  /// Get natural note positions for chromatic exercises
+  static Set<int> getNaturalNotePositions(String stripRoot) {
+    const naturalNotes = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+    final positions = <int>{};
+    final stripRootPc = Note.fromString(stripRoot).pitchClass;
+    
+    for (final noteName in naturalNotes) {
+      final notePc = Note.fromString(noteName).pitchClass;
+      final position = (notePc - stripRootPc + 12) % 12;
+      positions.add(position);
+    }
     
     return positions;
   }
 
-  /// Calculate positions for a major triad
-  /// 
-  /// [rootNote] - Root note of the triad
-  /// [octave] - Starting octave
-  /// Returns set of positions for the major triad
-  static Set<int> getMajorTriadPositions(String rootNote, {int octave = 0}) {
-    const triadIntervals = [0, 4, 7]; // Root, major third, perfect fifth
-    return triadIntervals.map((interval) => octave * 12 + interval).toSet();
+  /// Check if a chord needs multiple octaves
+  static bool needsMultipleOctaves(String chordType) {
+    final chord = Chord.get(chordType);
+    return chord?.intervals.any((interval) => interval > 12) ?? false;
   }
 
-  /// Calculate positions for a diminished triad
-  /// 
-  /// [rootNote] - Root note of the triad
-  /// [octave] - Starting octave
-  /// Returns set of positions for the diminished triad
-  static Set<int> getDiminishedTriadPositions(String rootNote, {int octave = 0}) {
-    const triadIntervals = [0, 3, 6]; // Root, minor third, diminished fifth
-    return triadIntervals.map((interval) => octave * 12 + interval).toSet();
+  /// Get all scales organized by difficulty
+  static Map<String, List<String>> getScalesByDifficulty() {
+    final allScales = Scale.all;
+    
+    return {
+      'Beginner': [
+        'Major',
+        'Natural Minor',
+        'Major Pentatonic',
+        'Minor Pentatonic',
+      ].where((name) => allScales.containsKey(name)).toList(),
+      
+      'Intermediate': [
+        'Blues',
+        'Dorian',
+        'Mixolydian',
+        'Harmonic Minor',
+      ].where((name) => allScales.containsKey(name)).toList(),
+      
+      'Advanced': [
+        'Melodic Minor',
+        'Lydian',
+        'Phrygian',
+        'Locrian',
+        'Altered',
+        'Whole Tone',
+        'Diminished',
+      ].where((name) => allScales.containsKey(name)).toList(),
+    };
   }
 
-  /// Calculate positions for a pentatonic scale
-  /// 
-  /// [rootNote] - Root note of the scale
-  /// [isMinor] - Whether to use minor pentatonic (default: false for major)
-  /// [octaveCount] - Number of octaves to include
-  /// Returns set of positions for the pentatonic scale
-  static Set<int> getPentatonicScalePositions(
-    String rootNote, {
-    bool isMinor = false,
-    int octaveCount = 1,
-  }) {
-    final intervals = isMinor 
-        ? [0, 3, 5, 7, 10] // Minor pentatonic: 1, ♭3, 4, 5, ♭7
-        : [0, 2, 4, 7, 9];  // Major pentatonic: 1, 2, 3, 5, 6
+  /// Get all chords organized by difficulty
+  static Map<String, List<String>> getChordsByDifficulty() {
+    final allChords = Chord.all;
+    
+    return {
+      'Beginner': [
+        'major',
+        'minor',
+        'diminished',
+        'augmented',
+      ].where((type) => allChords.containsKey(type)).toList(),
+      
+      'Intermediate': [
+        'sus2',
+        'sus4',
+        'major7',
+        'minor7',
+        'dominant7',
+        'major6',
+        'minor6',
+        'add9',
+      ].where((type) => allChords.containsKey(type)).toList(),
+      
+      'Advanced': [
+        'major9',
+        'minor9',
+        'dominant9',
+        'major11',
+        'minor11',
+        'dominant11',
+        'major13',
+        'minor13',
+        'dominant13',
+        '7alt',
+        'diminished7',
+        'half-diminished7',
+      ].where((type) => allChords.containsKey(type)).toList(),
+    };
+  }
+
+  /// Generate pre-highlighted positions for partial scales
+  static Set<int> generatePreHighlightedPositions(
+    String scaleName, 
+    String rootNote, 
+    List<int> degrees  // 1-based scale degrees to highlight
+  ) {
+    final scale = Scale.get(scaleName);
+    if (scale == null) return {};
     
     final positions = <int>{};
+    final rootPc = Note.fromString(rootNote).pitchClass;
     
-    for (int octave = 0; octave < octaveCount; octave++) {
-      for (final interval in intervals) {
-        positions.add(octave * 12 + interval);
+    for (final degree in degrees) {
+      if (degree > 0 && degree <= scale.intervals.length) {
+        final interval = scale.intervals[degree - 1]; // Convert to 0-based
+        final position = (rootPc + interval) % 12;
+        positions.add(position);
       }
     }
     
     return positions;
   }
 
-  /// Calculate chromatic scale positions
-  /// 
-  /// [octaveCount] - Number of octaves to include
-  /// Returns set of all chromatic positions
-  static Set<int> getChromaticScalePositions({int octaveCount = 1}) {
-    final positions = <int>{};
+  /// Generate note names for specific scale degrees
+  static Set<String> generateNoteNamesForDegrees(
+    String scaleName,
+    String rootNote,
+    List<int> degrees,
+  ) {
+    final scale = Scale.get(scaleName);
+    if (scale == null) return {};
+
+    final rootNoteObj = Note.fromString(rootNote);
+    final noteNames = <String>{};
     
-    for (int octave = 0; octave < octaveCount; octave++) {
-      for (int i = 0; i < 12; i++) {
-        positions.add(octave * 12 + i);
+    for (final degree in degrees) {
+      if (degree > 0 && degree <= scale.intervals.length) {
+        final interval = scale.intervals[degree - 1];
+        final note = rootNoteObj.transpose(interval);
+        noteNames.add(note.name);
       }
     }
     
-    // Add octave note
-    positions.add(octaveCount * 12);
+    return noteNames;
+  }
+
+  /// Get common root notes for exercises
+  static List<String> getCommonRoots() {
+    return ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  }
+
+  /// Get sharp/flat roots
+  static List<String> getAccidentalRoots() {
+    return ['C#', 'D#', 'F#', 'G#', 'A#', 'Db', 'Eb', 'Gb', 'Ab', 'Bb'];
+  }
+
+  /// Validate that notes form a valid scale
+  static bool validateScale(Set<String> noteNames, String scaleName, String rootNote) {
+    final expectedAnswer = generateScaleAnswer(scaleName, rootNote, rootNote);
+    return expectedAnswer.selectedNotes.difference(noteNames).isEmpty &&
+           noteNames.difference(expectedAnswer.selectedNotes).isEmpty;
+  }
+
+  /// Validate that notes form a valid chord
+  static bool validateChord(Set<String> noteNames, String chordType, String rootNote) {
+    final expectedAnswer = generateChordAnswer(chordType, rootNote, rootNote);
+    return expectedAnswer.selectedNotes.difference(noteNames).isEmpty &&
+           noteNames.difference(expectedAnswer.selectedNotes).isEmpty;
+  }
+
+  /// Get interval patterns for scales
+  static List<String> getScalePattern(String scaleName) {
+    final scale = Scale.get(scaleName);
+    if (scale == null) return [];
     
-    return positions;
+    final pattern = <String>[];
+    for (int i = 1; i < scale.intervals.length; i++) {
+      final diff = scale.intervals[i] - scale.intervals[i - 1];
+      pattern.add(diff == 1 ? 'H' : 'W'); // Half or Whole step
+    }
+    return pattern;
   }
 
-  /// Validate if user selections match expected positions with partial credit
-  /// 
-  /// [userPositions] - Positions selected by user
-  /// [correctPositions] - Expected correct positions
-  /// [allowOctaveVariation] - Whether to allow same notes in different octaves
-  /// Returns validation result with score and feedback
-  static ValidationResult validatePositions(
-    Set<int> userPositions,
-    Set<int> correctPositions, {
-    bool allowOctaveVariation = false,
-  }) {
-    if (allowOctaveVariation) {
-      // Reduce to chromatic positions only (ignore octaves)
-      final userChromatic = userPositions.map((pos) => pos % 12).toSet();
-      final correctChromatic = correctPositions.map((pos) => pos % 12).toSet();
-      
-      final intersection = userChromatic.intersection(correctChromatic);
-      final score = intersection.length / correctChromatic.length;
-      
-      return ValidationResult(
-        score: score,
-        isCorrect: score >= 0.7,
-        feedback: _generatePositionFeedback(score, allowOctaveVariation),
-      );
-    } else {
-      // Exact position matching
-      final intersection = userPositions.intersection(correctPositions);
-      final score = intersection.length / correctPositions.length;
-      
-      return ValidationResult(
-        score: score,
-        isCorrect: score >= 0.7,
-        feedback: _generatePositionFeedback(score, false),
-      );
+  /// Get chord quality description
+  static String getChordQuality(String chordType) {
+    final chord = Chord.get(chordType);
+    if (chord == null) return 'Unknown';
+    
+    if (chord.intervals.length == 2) {
+      return 'Power chord';
+    } else if (chord.intervals.length == 3) {
+      return 'Triad';
+    } else if (chord.intervals.contains(10) || chord.intervals.contains(11)) {
+      return 'Seventh chord';
+    } else if (chord.intervals.any((i) => i >= 14)) {
+      return 'Extended chord';
+    }
+    
+    return chord.category;
+  }
+
+  /// Get available modes for a scale
+  static List<String> getAvailableModes(String scaleName) {
+    final scale = Scale.get(scaleName);
+    if (scale == null) return [];
+    
+    if (scale.modeNames != null) {
+      return scale.modeNames!;
+    }
+    
+    return List.generate(scale.length, (i) => 'Mode ${i + 1}');
+  }
+
+  /// Generate explanation text for scales
+  static String generateScaleExplanation(String scaleName, String rootNote) {
+    final scale = Scale.get(scaleName);
+    if (scale == null) return 'Unknown scale';
+    
+    final pattern = getScalePattern(scaleName);
+    final patternText = pattern.isNotEmpty ? ' (${pattern.join('-')})' : '';
+    
+    return 'The $rootNote ${scale.name.toLowerCase()} scale follows the pattern$patternText. '
+           'This scale contains ${scale.length} notes with the degrees: ${scale.degrees.join('-')}.';
+  }
+
+  /// Generate explanation text for chords
+  static String generateChordExplanation(String chordType, String rootNote) {
+    final chord = Chord.get(chordType);
+    if (chord == null) return 'Unknown chord';
+    
+    final quality = getChordQuality(chordType);
+    final intervals = chord.intervals.map((i) => '$i semitones').join(', ');
+    
+    return 'The $rootNote ${chord.displayName.toLowerCase()} is a $quality. '
+           'It uses intervals of $intervals from the root note.';
+  }
+
+  /// Get random selection of items from a list
+  static List<T> getRandomSelection<T>(List<T> items, int count) {
+    if (items.length <= count) return List.from(items);
+    
+    final shuffled = List<T>.from(items)..shuffle();
+    return shuffled.take(count).toList();
+  }
+
+  /// Debug helper to verify music theory calculations
+  static void debugMusicTheory(String scaleName, String chordType, String rootNote) {
+    print('=== Music Theory Debug ===');
+    
+    if (scaleName.isNotEmpty) {
+      final scale = Scale.get(scaleName);
+      if (scale != null) {
+        final scaleAnswer = generateScaleAnswer(scaleName, rootNote, rootNote);
+        print('$rootNote $scaleName:');
+        print('  Intervals: ${scale.intervals}');
+        print('  Notes: ${scaleAnswer.selectedNotes.join('-')}');
+        print('  Positions: ${scaleAnswer.selectedPositions}');
+      }
+    }
+    
+    if (chordType.isNotEmpty) {
+      final chord = Chord.get(chordType);
+      if (chord != null) {
+        final chordAnswer = generateChordAnswer(chordType, rootNote, rootNote);
+        print('$rootNote $chordType:');
+        print('  Intervals: ${chord.intervals}');
+        print('  Notes: ${chordAnswer.selectedNotes.join('-')}');
+        print('  Positions: ${chordAnswer.selectedPositions}');
+        print('  Octaves needed: ${needsMultipleOctaves(chordType) ? 2 : 1}');
+      }
     }
   }
-
-  /// Generate feedback message based on validation score
-  static String _generatePositionFeedback(double score, bool allowedOctaveVariation) {
-    if (score == 1.0) {
-      return 'Perfect! All positions are correct.';
-    } else if (score >= 0.8) {
-      return 'Excellent! Most positions are correct.';
-    } else if (score >= 0.6) {
-      return allowedOctaveVariation 
-          ? 'Good! Correct notes, consider the octave placement.'
-          : 'Good progress! Check a few more positions.';
-    } else if (score >= 0.3) {
-      return 'Some positions are correct. Review the pattern.';
-    } else {
-      return 'Review the scale pattern and try again.';
-    }
-  }
-}
-
-/// Result of position validation
-class ValidationResult {
-  const ValidationResult({
-    required this.score,
-    required this.isCorrect,
-    required this.feedback,
-    this.detailedErrors = const [],
-  });
-
-  /// Score from 0.0 to 1.0
-  final double score;
-  
-  /// Whether the answer is considered correct
-  final bool isCorrect;
-  
-  /// Feedback message
-  final String feedback;
-  
-  /// Detailed error information
-  final List<String> detailedErrors;
-}
-
-/// Import the required enum if not already imported
-/// This should be imported from the scale_strip_question.dart file
-enum IntervalLabelFormat {
-  numeric,
-  scaleDegreesWithAccidentals,
-  romanNumerals,
 }
