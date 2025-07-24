@@ -424,36 +424,6 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
                         ),
                         textAlign: TextAlign.center,
                       ),
-                    // Root indicator
-                    if (position == 0 && config.highlightRoot)
-                      Container(
-                        margin: const EdgeInsets.only(top: 2),
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: textColor,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    // PRESERVED: Improved octave indicator
-                    if (isOctavePosition)
-                      Container(
-                        margin: const EdgeInsets.only(top: 2),
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'OCT',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: fontSize * 0.6,
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
