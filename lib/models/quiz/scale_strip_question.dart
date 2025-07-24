@@ -354,6 +354,7 @@ class ScaleStripQuestion extends QuizQuestion {
     this.questionMode = ScaleStripQuestionMode.notes,
     String? explanation,
     List<String>? hints,
+    List<String>? tags,
     Map<String, dynamic>? metadata,
   }) : _correctAnswer = correctAnswer,
        super(
@@ -364,6 +365,7 @@ class ScaleStripQuestion extends QuizQuestion {
           pointValue: pointValue,
           explanation: explanation,
           hints: hints ?? const [],
+          tags: tags ?? const [],
         );
 
   final ScaleStripConfiguration configuration;
@@ -392,19 +394,28 @@ class ScaleStripQuestion extends QuizQuestion {
   }
 
   QuestionResult _validateScaleStripAnswer(ScaleStripAnswer answer) {
+    // Debug logging for troubleshooting
+    if (kDebugMode) {
+      print('=== VALIDATION DEBUG ===');
+      print('Validation mode: ${configuration.validationMode}');
+      print('Display mode: ${configuration.displayMode}');
+      print('Key context: ${configuration.keyContext}');
+      print('======================');
+    }
+    
     switch (configuration.validationMode) {
       case ValidationMode.exactPositions:
         return _validateExactPositions(answer);
       case ValidationMode.noteNames:
-        return _validateNoteNames(answer);
+        return _validateNoteNamesWithEnharmonicCredit(answer);
       case ValidationMode.noteNamesWithEnharmonicCredit:
         return _validateNoteNamesWithEnharmonicCredit(answer);
       case ValidationMode.noteNamesWithOctaves:
-        return _validateNoteNamesWithOctaves(answer);
+        return _validateNoteNamesWithEnharmonicCredit(answer);
       case ValidationMode.pattern:
-        return _validatePattern(answer);
+        return _validateExactPositions(answer);
       case ValidationMode.noteNamesWithPartialCredit:
-        return _validateNoteNamesWithPartialCredit(answer);
+        return _validateNoteNamesWithEnharmonicCredit(answer);
     }
   }
 
@@ -424,115 +435,109 @@ class ScaleStripQuestion extends QuizQuestion {
     );
   }
 
-  QuestionResult _validateNoteNames(ScaleStripAnswer answer) {
-    final correctNotes = _correctAnswer.selectedNotes;
-    final userNotes = answer.selectedNotes;
-    
-    final isCorrect = setEquals(correctNotes, userNotes);
-    
-    return QuestionResult(
-      isCorrect: isCorrect,
-      userAnswer: answer,
-      correctAnswer: _correctAnswer,
-      feedback: isCorrect
-          ? 'Perfect! You identified all the correct notes.'
-          : 'Some notes are incorrect. Review the scale pattern.',
-    );
-  }
-
+  /// FIXED: Enhanced validation with better enharmonic handling for dropdown questions
   QuestionResult _validateNoteNamesWithEnharmonicCredit(ScaleStripAnswer answer) {
     final correctNotes = _correctAnswer.selectedNotes;
     final userNotes = answer.selectedNotes;
     
-    int exactMatches = 0;
+    // Debug logging for development
+    if (kDebugMode) {
+      print('Validating answer:');
+      print('Correct notes: $correctNotes');
+      print('User notes: $userNotes');
+      print('User positions: ${answer.selectedPositions}');
+      print('Correct positions: ${_correctAnswer.selectedPositions}');
+      print('Key context: ${configuration.keyContext}');
+    }
+    
+    // FIXED: For fill-in-the-blank questions, validate based on positions first
+    if (configuration.displayMode == ScaleStripMode.fillInBlanks) {
+      return _validateFillInBlanksQuestion(answer);
+    }
+    
+    if (correctNotes.isEmpty || userNotes.isEmpty) {
+      return QuestionResult(
+        isCorrect: false,
+        userAnswer: answer,
+        correctAnswer: _correctAnswer,
+        feedback: 'Please select some notes to answer the question.',
+      );
+    }
+    
+    // FIXED: Instead of comparing against stored correct notes,
+    // generate the contextually correct spellings for the selected positions
+    final expectedNotesForPositions = <String>{};
+    final keyContext = configuration.keyContext ?? configuration.rootNote;
+    
+    for (final position in _correctAnswer.selectedPositions) {
+      final contextuallyCorrectNote = configuration.getPreferredNoteForPosition(position);
+      expectedNotesForPositions.add(contextuallyCorrectNote);
+    }
+    
+    if (kDebugMode) {
+      print('Expected notes for positions: $expectedNotesForPositions');
+    }
+    
+    int contextuallyCorrectMatches = 0;
     int enharmonicMatches = 0;
-    final totalExpected = correctNotes.length;
+    final totalExpected = expectedNotesForPositions.length;
     
-    // Convert notes to pitch classes for enharmonic comparison
-    final correctPitchClasses = <int>{};
-    final userPitchClasses = <int>{};
-    
-    for (final note in correctNotes) {
-      try {
-        final pitchClass = _getNotePitchClass(note);
-        correctPitchClasses.add(pitchClass);
-      } catch (e) {
-        // Skip invalid notes
+    // Check for contextually correct matches first (these get full credit)
+    for (final note in userNotes) {
+      if (expectedNotesForPositions.contains(note)) {
+        contextuallyCorrectMatches++;
       }
     }
     
-    for (final note in userNotes) {
-      try {
-        final pitchClass = _getNotePitchClass(note);
-        userPitchClasses.add(pitchClass);
-      } catch (e) {
-        // Skip invalid notes
-      }
-    }
+    // Check for enharmonic matches (notes not already counted as contextually correct)
+    final unmatchedUserNotes = userNotes.where((note) => !expectedNotesForPositions.contains(note)).toList();
+    final unmatchedExpectedNotes = expectedNotesForPositions.where((note) => !userNotes.contains(note)).toList();
     
-    // Check for exact matches first
-    for (final note in userNotes) {
-      if (correctNotes.contains(note)) {
-        exactMatches++;
-      }
-    }
-    
-    // Check for enharmonic matches (notes not already counted as exact)
-    final unmatchedUserPcs = <int>[];
-    final unmatchedCorrectPcs = <int>[];
-    
-    for (final note in userNotes) {
-      if (!correctNotes.contains(note)) {
-        try {
-          unmatchedUserPcs.add(_getNotePitchClass(note));
-        } catch (e) {
-          // Skip invalid notes
+    for (final userNote in unmatchedUserNotes) {
+      final userPc = _getNotePitchClass(userNote);
+      for (final expectedNote in unmatchedExpectedNotes) {
+        final expectedPc = _getNotePitchClass(expectedNote);
+        if (userPc == expectedPc) {
+          enharmonicMatches++;
+          break; // Each user note can only match one expected note
         }
       }
     }
     
-    for (final note in correctNotes) {
-      if (!userNotes.contains(note)) {
-        try {
-          unmatchedCorrectPcs.add(_getNotePitchClass(note));
-        } catch (e) {
-          // Skip invalid notes
-        }
-      }
-    }
+    final totalMatches = contextuallyCorrectMatches + enharmonicMatches;
+    final isCorrect = contextuallyCorrectMatches == totalExpected && userNotes.length == totalExpected;
+    final hasPartialCredit = !isCorrect && totalMatches > 0;
     
-    // Count enharmonic matches
-    for (final userPc in unmatchedUserPcs) {
-      if (unmatchedCorrectPcs.contains(userPc)) {
-        enharmonicMatches++;
-      }
+    if (kDebugMode) {
+      print('Contextually correct: $contextuallyCorrectMatches');
+      print('Enharmonic matches: $enharmonicMatches');
+      print('Total matches: $totalMatches');
+      print('Is correct: $isCorrect');
     }
-    
-    final totalMatches = exactMatches + enharmonicMatches;
-    final isCorrect = totalMatches == totalExpected && userNotes.length == totalExpected;
-    final hasPartialCredit = enharmonicMatches > 0 && !isCorrect;
     
     // Calculate partial credit score
     double? partialCreditScore;
-    if (hasPartialCredit || (!isCorrect && totalMatches > 0)) {
-      final exactScore = exactMatches / totalExpected;
-      final enharmonicScore = (enharmonicMatches / totalExpected) * 0.75; // 75% credit
+    if (hasPartialCredit) {
+      final correctScore = contextuallyCorrectMatches / totalExpected;
+      final enharmonicScore = (enharmonicMatches / totalExpected) * 0.75; // 75% credit for enharmonics
       final excessPenalty = userNotes.length > totalExpected ? 
           (userNotes.length - totalExpected) / totalExpected * 0.25 : 0.0;
-      partialCreditScore = (exactScore + enharmonicScore - excessPenalty).clamp(0.0, 1.0);
+      partialCreditScore = (correctScore + enharmonicScore - excessPenalty).clamp(0.0, 1.0);
     }
     
     String feedback;
     if (isCorrect) {
-      feedback = 'Excellent! All notes are correct with proper spelling.';
+      feedback = 'Excellent! All notes are correct with proper spelling for the key of $keyContext.';
     } else if (totalMatches == totalExpected && userNotes.length > totalExpected) {
       feedback = 'Good work! You have the right notes but selected too many. Remove the extras.';
-    } else if (enharmonicMatches > 0) {
-      feedback = 'Good work! Some notes are enharmonically correct but not the preferred spelling for this key.';
+    } else if (enharmonicMatches > 0 && contextuallyCorrectMatches < totalExpected) {
+      feedback = 'Good work! Some notes are enharmonically correct but the key of $keyContext prefers different spellings.';
+    } else if (contextuallyCorrectMatches > 0) {
+      feedback = 'You\'re on the right track! ${contextuallyCorrectMatches} out of ${totalExpected} notes have the correct spelling for $keyContext.';
     } else if (totalMatches > 0) {
-      feedback = 'You\'re on the right track! Some notes are correct, but others need attention.';
+      feedback = 'You have some correct notes but they need proper spelling for the key of $keyContext.';
     } else {
-      feedback = 'Some notes need correction. Consider the key context for proper spelling.';
+      feedback = 'Focus on the correct notes and their proper spelling for the key of $keyContext.';
     }
     
     return QuestionResult(
@@ -544,19 +549,149 @@ class ScaleStripQuestion extends QuizQuestion {
     );
   }
 
-  QuestionResult _validateNoteNamesWithOctaves(ScaleStripAnswer answer) {
-    // Similar to note names but considering octave information
-    return _validateNoteNames(answer);
+  /// NEW: Specialized validation for fill-in-the-blank questions
+  QuestionResult _validateFillInBlanksQuestion(ScaleStripAnswer answer) {
+    final correctPositions = _correctAnswer.selectedPositions;
+    final userPositions = answer.selectedPositions;
+    final preHighlighted = configuration.preHighlightedPositions;
+    
+    // For fill-in-the-blank, we need to check only the positions that should be filled in
+    final missingPositions = correctPositions.difference(preHighlighted);
+    final userFilledPositions = userPositions.difference(preHighlighted);
+    
+    if (kDebugMode) {
+      print('Fill-in validation:');
+      print('Missing positions to fill: $missingPositions');
+      print('User filled positions: $userFilledPositions');
+      print('Pre-highlighted: $preHighlighted');
+    }
+    
+    // Check if user filled the correct positions
+    final correctFills = missingPositions.intersection(userFilledPositions);
+    final incorrectFills = userFilledPositions.difference(missingPositions);
+    
+    final totalMissing = missingPositions.length;
+    final correctFillCount = correctFills.length;
+    final incorrectFillCount = incorrectFills.length;
+    
+    final isCorrect = correctFillCount == totalMissing && incorrectFillCount == 0;
+    
+    // Calculate partial credit
+    double? partialCreditScore;
+    if (!isCorrect && correctFillCount > 0) {
+      final correctRatio = correctFillCount / totalMissing;
+      final incorrectPenalty = incorrectFillCount / totalMissing * 0.5; // 50% penalty for wrong fills
+      partialCreditScore = (correctRatio - incorrectPenalty).clamp(0.0, 1.0);
+    }
+    
+    // Now validate the note names for the filled positions
+    if (configuration.useDropdownSelection && answer.selectedNotes.isNotEmpty) {
+      return _validateDropdownNoteNames(answer, correctFills, incorrectFills, partialCreditScore);
+    }
+    
+    String feedback;
+    if (isCorrect) {
+      feedback = 'Perfect! You filled in all the missing notes correctly.';
+    } else if (correctFillCount > 0) {
+      feedback = 'Good work! You got ${correctFillCount} out of ${totalMissing} missing notes correct.';
+      if (incorrectFillCount > 0) {
+        feedback += ' Watch out for ${incorrectFillCount} incorrect selections.';
+      }
+    } else {
+      feedback = 'Keep trying! Focus on which positions need to be filled in.';
+    }
+    
+    return QuestionResult(
+      isCorrect: isCorrect,
+      userAnswer: answer,
+      correctAnswer: _correctAnswer,
+      partialCreditScore: partialCreditScore,
+      feedback: feedback,
+    );
   }
 
-  QuestionResult _validatePattern(ScaleStripAnswer answer) {
-    // Validate based on pattern recognition
-    return _validateExactPositions(answer);
-  }
-
-  QuestionResult _validateNoteNamesWithPartialCredit(ScaleStripAnswer answer) {
-    // Enhanced validation with partial credit system
-    return _validateNoteNamesWithEnharmonicCredit(answer);
+  /// NEW: Validate note names for dropdown selections
+  QuestionResult _validateDropdownNoteNames(
+    ScaleStripAnswer answer, 
+    Set<int> correctFills, 
+    Set<int> incorrectFills,
+    double? basePartialScore,
+  ) {
+    final userNotes = answer.selectedNotes;
+    final keyContext = configuration.keyContext ?? configuration.rootNote;
+    
+    // FIXED: Build expected notes based on key context, not stored correct notes
+    final expectedNotesForFills = <String>{};
+    for (final position in correctFills) {
+      final expectedNote = configuration.getPreferredNoteForPosition(position);
+      expectedNotesForFills.add(expectedNote);
+    }
+    
+    if (kDebugMode) {
+      print('Dropdown validation:');
+      print('Correct fill positions: $correctFills');
+      print('Expected notes for fills: $expectedNotesForFills');
+      print('User notes: $userNotes');
+    }
+    
+    int contextuallyCorrectMatches = 0;
+    int enharmonicMatches = 0;
+    
+    // Check note name accuracy with key context priority
+    for (final userNote in userNotes) {
+      if (expectedNotesForFills.contains(userNote)) {
+        contextuallyCorrectMatches++;
+      } else {
+        // Check for enharmonic equivalents
+        final userPc = _getNotePitchClass(userNote);
+        for (final expectedNote in expectedNotesForFills) {
+          final expectedPc = _getNotePitchClass(expectedNote);
+          if (userPc == expectedPc) {
+            enharmonicMatches++;
+            break;
+          }
+        }
+      }
+    }
+    
+    final totalCorrectFills = correctFills.length;
+    final contextualAccuracy = totalCorrectFills > 0 ? contextuallyCorrectMatches / totalCorrectFills : 0.0;
+    final enharmonicAccuracy = totalCorrectFills > 0 ? enharmonicMatches / totalCorrectFills : 0.0;
+    
+    // Combine position accuracy with note name accuracy
+    double? finalPartialScore;
+    if (basePartialScore != null) {
+      // Weight: 60% position accuracy, 40% note spelling accuracy
+      final noteAccuracy = contextualAccuracy + (enharmonicAccuracy * 0.75);
+      finalPartialScore = (basePartialScore * 0.6 + noteAccuracy * 0.4).clamp(0.0, 1.0);
+    } else if (contextuallyCorrectMatches > 0 || enharmonicMatches > 0) {
+      finalPartialScore = (contextualAccuracy + enharmonicAccuracy * 0.75).clamp(0.0, 1.0);
+    }
+    
+    final isCorrect = correctFills.length == totalCorrectFills && 
+                     incorrectFills.isEmpty && 
+                     contextuallyCorrectMatches == totalCorrectFills;
+    
+    String feedback;
+    if (isCorrect) {
+      feedback = 'Excellent! All positions and note spellings are correct for the key of $keyContext.';
+    } else if ((contextuallyCorrectMatches + enharmonicMatches) >= totalCorrectFills && incorrectFills.isEmpty) {
+      if (enharmonicMatches > 0) {
+        feedback = 'Good work! All notes are correct, but some spellings could be improved for the key of $keyContext.';
+      } else {
+        feedback = 'Nice job on the note names! Check your position selections.';
+      }
+    } else {
+      feedback = 'Focus on both the correct positions and their proper spellings for the key of $keyContext.';
+    }
+    
+    return QuestionResult(
+      isCorrect: isCorrect,
+      userAnswer: answer,
+      correctAnswer: _correctAnswer,
+      partialCreditScore: finalPartialScore,
+      feedback: feedback,
+    );
   }
 
   int _getNotePitchClass(String noteName) {

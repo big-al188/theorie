@@ -49,15 +49,39 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     final answer = widget.selectedAnswer;
     _selectedPositions = answer?.selectedPositions.toSet() ?? <int>{};
     
-    // Initialize dropdown selections from existing answer
+    // FIXED: Better initialization of dropdown selections
     _dropdownSelections = <int, String>{};
-    if (answer?.selectedNotes != null) {
+    
+    if (answer?.selectedNotes != null && answer!.selectedNotes.isNotEmpty) {
       // For dropdown questions, we need to map notes back to positions
-      // This is a simplified approach - in practice you might want more sophisticated mapping
-      final notesList = answer!.selectedNotes.toList();
-      final positionsList = answer.selectedPositions.toList();
-      for (int i = 0; i < positionsList.length && i < notesList.length; i++) {
-        _dropdownSelections[positionsList[i]] = notesList[i];
+      final config = widget.question.configuration;
+      final selectedNotesList = answer.selectedNotes.toList();
+      
+      // Try to match notes to their positions
+      for (int position in _selectedPositions) {
+        // Find the best matching note for this position
+        final preferredNote = config.getPreferredNoteForPosition(position);
+        
+        // Look for exact match first
+        if (selectedNotesList.contains(preferredNote)) {
+          _dropdownSelections[position] = preferredNote;
+          continue;
+        }
+        
+        // Look for enharmonic equivalents
+        bool found = false;
+        for (final note in selectedNotesList) {
+          if (_areEnharmonicallyEquivalent(note, preferredNote)) {
+            _dropdownSelections[position] = note;
+            found = true;
+            break;
+          }
+        }
+        
+        // If no match found, use the first available note (fallback)
+        if (!found && selectedNotesList.isNotEmpty) {
+          _dropdownSelections[position] = selectedNotesList.first;
+        }
       }
     }
 
@@ -296,7 +320,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
       backgroundColor = theme.colorScheme.surface;
     }
 
-    // Determine display text
+    // FIXED: Determine display text with proper root note handling
     String displayText = '';
     if (config.showNoteLabels || (config.showPreHighlightedLabels && isPreHighlighted)) {
       final noteName = _getNoteNameForPosition(position);
@@ -519,11 +543,21 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
   void _notifyAnswerChange() {
     // FIXED: Properly construct the answer with selected notes from dropdowns
     final selectedNotes = <String>{};
+    
+    // Only include notes for selected positions
     for (final position in _selectedPositions) {
       final note = _dropdownSelections[position];
       if (note != null && note != '?') {
         selectedNotes.add(note);
       }
+    }
+    
+    // Debug logging for development
+    if (mounted) {
+      print('Answer update:');
+      print('Selected positions: $_selectedPositions');
+      print('Dropdown selections: $_dropdownSelections');
+      print('Final selected notes: $selectedNotes');
     }
     
     final answer = ScaleStripAnswer(
@@ -533,6 +567,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     widget.onAnswerSelected?.call(answer);
   }
 
+  /// FIXED: Get note name for position with proper root handling
   String _getNoteNameForPosition(int position) {
     final config = widget.question.configuration;
     
@@ -545,7 +580,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
       return _dropdownSelections[position]!;
     }
     
-    // Calculate note name based on position relative to strip root
+    // FIXED: Use proper key context for note naming
     return config.getPreferredNoteForPosition(position);
   }
 
@@ -554,6 +589,17 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
       '1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'
     ];
     return intervalLabels[positionInOctave % 12];
+  }
+
+  /// NEW: Helper method to check enharmonic equivalence
+  bool _areEnharmonicallyEquivalent(String note1, String note2) {
+    try {
+      final pc1 = Note.fromString(note1).pitchClass;
+      final pc2 = Note.fromString(note2).pitchClass;
+      return pc1 == pc2;
+    } catch (e) {
+      return false;
+    }
   }
 
   Widget _buildControlButtons(ThemeData theme) {

@@ -106,7 +106,7 @@ class ScaleStripUtils {
     final positions = <int>{};
     final notes = <String>{};
     
-    // Generate all 12 chromatic positions
+    // Generate all 12 chromatic positions with proper key context
     for (int i = 0; i < 12; i++) {
       positions.add(i);
       notes.add(getPreferredNoteNameForPosition(rootNote, i));
@@ -124,15 +124,45 @@ class ScaleStripUtils {
     );
   }
 
-  /// Get the preferred note name for a position based on key context and circle of fifths
+  /// Generate chromatic answer for fill-in-the-blank questions
+  /// Returns only the missing notes (sharps/flats) that need to be filled in
+  static ScaleStripAnswer generateChromaticFillAnswer(String rootNote, {bool includeOctave = true}) {
+    final naturalPositions = getNaturalNotePositions(rootNote);
+    final allPositions = List.generate(12, (i) => i).toSet();
+    final missingPositions = allPositions.difference(naturalPositions);
+    
+    final missingNotes = <String>{};
+    for (final position in missingPositions) {
+      missingNotes.add(getPreferredNoteNameForPosition(rootNote, position));
+    }
+    
+    // Add octave if needed
+    if (includeOctave && !naturalPositions.contains(12)) {
+      missingPositions.add(12);
+      missingNotes.add(rootNote);
+    }
+    
+    return ScaleStripAnswer(
+      selectedPositions: missingPositions,
+      selectedNotes: missingNotes,
+    );
+  }
+
+  /// FIXED: Get the preferred note name for a position based on key context and circle of fifths
   static String getPreferredNoteNameForPosition(String keyContext, int position) {
+    // For position 0 (root), always return the key context as-is
+    if (position == 0) {
+      return keyContext;
+    }
+    
     final keySignature = MusicUtils.getKeySignature(keyContext);
     final preferFlats = keySignature['flats'] > 0;
     
     final rootPc = _getNotePitchClass(keyContext);
     final targetPc = (rootPc + position) % 12;
     
-    return _getNoteNameFromPitchClass(targetPc, preferFlats: preferFlats);
+    // FIXED: Use circle of fifths logic for better note naming
+    return _getNoteNameFromPitchClass(targetPc, preferFlats: preferFlats, keyContext: keyContext);
   }
 
   /// FIXED: Get all available note names for a position (including enharmonic equivalents)
@@ -313,10 +343,10 @@ class ScaleStripUtils {
     final position = calculateIntervalPosition(questionRoot, stripRoot, intervalSemitones);
     final positions = <int>{position};
     
-    // Calculate the target note name
+    // Calculate the target note name using key context
     final questionRootPc = _getNotePitchClass(questionRoot);
     final targetPc = (questionRootPc + intervalSemitones) % 12;
-    final targetNote = _getNoteNameFromPitchClass(targetPc);
+    final targetNote = _getNoteNameFromPitchClass(targetPc, keyContext: questionRoot);
     
     // Handle octave position for interval = 12
     if (intervalSemitones == 12 && includeOctave) {
@@ -380,9 +410,19 @@ class ScaleStripUtils {
     return noteMap[cleanNote] ?? 0;
   }
 
-  static String _getNoteNameFromPitchClass(int pitchClass, {bool preferFlats = false}) {
+  /// FIXED: Enhanced note naming with key context consideration
+  static String _getNoteNameFromPitchClass(int pitchClass, {bool preferFlats = false, String? keyContext}) {
     const sharpNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
     const flatNames = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+    
+    // Special handling for specific key contexts
+    if (keyContext != null) {
+      // For flat keys, prefer the specific flat/sharp preference based on circle of fifths
+      final keySignature = MusicUtils.getKeySignature(keyContext);
+      final actualPreferFlats = keySignature['flats'] > 0;
+      final names = actualPreferFlats ? flatNames : sharpNames;
+      return names[pitchClass % 12];
+    }
     
     final names = preferFlats ? flatNames : sharpNames;
     return names[pitchClass % 12];

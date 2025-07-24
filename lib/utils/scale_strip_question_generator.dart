@@ -44,6 +44,12 @@ class ScaleStripQuestionGenerator {
         scaleType: 'octave',
         questionMode: ScaleStripQuestionMode.intervals,
         explanation: _generateOctaveExplanation(rootNote),
+        hints: [
+          'An octave is 12 semitones from the starting note',
+          'Both positions represent the same note name',
+          'The octave appears at position 13 on the scale strip',
+        ],
+        tags: ['octave', 'intervals', 'recognition'],
       );
       questions.add(question);
       questionId++;
@@ -55,7 +61,7 @@ class ScaleStripQuestionGenerator {
   /// Generate enhanced chromatic scale questions with proper enharmonic handling
   /// FIXED: Each question uses its own root note as the strip root
   static List<ScaleStripQuestion> generateChromaticQuestions({
-    List<String> rootNotes = const ['C', 'F#', 'Gb', 'Bb', 'G'],
+    List<String> rootNotes = const ['C', 'F#', 'Gb', 'Bb', 'G', 'Db', 'A', 'Eb'],
   }) {
     final questions = <ScaleStripQuestion>[];
     var questionId = 1;
@@ -75,20 +81,22 @@ class ScaleStripQuestionGenerator {
           rootNote: rootNote,  // Strip root matches question root
           octaveCount: 1,
           includeOctaveNote: true,
-          validationMode: ValidationMode.noteNamesWithEnharmonicCredit,
+          validationMode: ValidationMode.noteNamesWithEnharmonicCredit, // FIXED: Enhanced validation
           preHighlightedPositions: _getNaturalNotePositions(rootNote),
           showEmptyPositions: true,
           lockPreHighlighted: true,
           useDropdownSelection: true,
           showPreHighlightedLabels: true,
-          keyContext: rootNote,
+          keyContext: rootNote, // FIXED: Proper key context
           allowEnharmonicPartialCredit: true,
           fillScreenWidth: true,
         ),
-        correctAnswer: _generateChromaticAnswer(rootNote),
+        correctAnswer: _generateChromaticAnswer(rootNote), // FIXED: Uses proper fill-in method
         scaleType: 'chromatic',
         questionMode: ScaleStripQuestionMode.notes,
-        explanation: _generateChromaticExplanation(rootNote),
+        explanation: _generateChromaticExplanation(rootNote), // FIXED: Enhanced explanation
+        hints: _generateChromaticHints(rootNote), // FIXED: Key-specific hints
+        tags: ['chromatic', 'note-names', 'sharps-flats', 'fill-in-blanks'],
       );
       questions.add(question);
       questionId++;
@@ -166,9 +174,11 @@ class ScaleStripQuestionGenerator {
     );
   }
 
-  /// Generate chromatic answer for a given root note
+  /// FIXED: Generate chromatic answer for fill-in-the-blank questions
   static ScaleStripAnswer _generateChromaticAnswer(String rootNote) {
-    return ScaleStripUtils.generateChromaticAnswer(rootNote, includeOctave: true);
+    // Use the specialized method for fill-in-the-blank questions
+    // This returns only the missing notes (sharps/flats) that need to be filled in
+    return ScaleStripUtils.generateChromaticFillAnswer(rootNote, includeOctave: true);
   }
 
   /// Get natural note positions relative to the given root
@@ -214,6 +224,12 @@ class ScaleStripQuestionGenerator {
       correctAnswer: answer,
       questionMode: ScaleStripQuestionMode.intervals,
       explanation: _generateIntervalExplanation(rootNote, interval, answer),
+      hints: [
+        'Count ${interval.semitones} semitones from the root',
+        'The root note is already highlighted',
+        interval.isPerfect ? 'This is a perfect interval' : 'This is a major/minor interval',
+      ],
+      tags: ['intervals', 'recognition', interval.name.toLowerCase().replaceAll(' ', '-')],
     );
   }
 
@@ -255,6 +271,8 @@ class ScaleStripQuestionGenerator {
         scaleType: scaleType,
         questionMode: ScaleStripQuestionMode.construction,
         explanation: _generateScaleExplanation(rootNote, scaleType, answer),
+        hints: _generateScaleHints(scaleType),
+        tags: ['scales', scaleType, 'construction'],
       );
     } catch (e) {
       // Scale type not found or other error
@@ -262,6 +280,7 @@ class ScaleStripQuestionGenerator {
     }
   }
 
+  // Difficulty assessment methods
   static QuestionDifficulty _getIntervalDifficulty(Interval interval) {
     switch (interval.semitones) {
       case 0: // Unison
@@ -292,6 +311,7 @@ class ScaleStripQuestionGenerator {
     }
   }
 
+  // Explanation generation methods
   static String _generateOctaveExplanation(String rootNote) {
     return '''
 An octave is the interval between a note and the next occurrence of the same note name, either higher or lower in pitch. 
@@ -302,20 +322,113 @@ The octave is one of the most fundamental intervals in music - it sounds so simi
     ''';
   }
 
+  /// FIXED: Enhanced chromatic explanation with proper key context
   static String _generateChromaticExplanation(String rootNote) {
     final keySignature = MusicUtils.getKeySignature(rootNote);
     final preferFlats = keySignature['flats'] > 0;
-    final accidentalType = preferFlats ? 'flats' : 'sharps';
     
-    return '''
-The chromatic scale contains all 12 different pitches within an octave, starting from $rootNote.
+    // Generate the complete chromatic scale with proper spellings
+    final chromaticNotes = <String>[];
+    for (int i = 0; i < 12; i++) {
+      chromaticNotes.add(ScaleStripUtils.getPreferredNoteNameForPosition(rootNote, i));
+    }
+    chromaticNotes.add(rootNote); // Add octave
+    
+    String explanation = '''
+The chromatic scale contains all 12 different pitches within an octave. Starting from $rootNote, the complete chromatic scale is:
 
-Since $rootNote is a ${preferFlats ? 'flat' : 'sharp'} key context, we typically use $accidentalType for the missing notes. However, both sharp and flat spellings are acceptable - for example, C# and Db are the same pitch, just spelled differently.
+${chromaticNotes.join(' - ')}
 
-The natural notes are already provided. You need to fill in the missing chromatic notes between them, plus the octave $rootNote at the end.
+''';
+    
+    if (preferFlats) {
+      explanation += '''
+Since $rootNote is a flat key (${keySignature['flats']} flats in the key signature), we typically prefer flat notation for the accidentals. You'll get:
+• **Full credit** for using flats: ${_getExpectedFlats(rootNote)}
+• **75% partial credit** for using sharp equivalents
 
-Remember: There are no sharps or flats between E-F and B-C because these pairs are already a half-step apart!
+''';
+    } else if (keySignature['sharps'] > 0) {
+      explanation += '''
+Since $rootNote is a sharp key (${keySignature['sharps']} sharps in the key signature), we typically prefer sharp notation for the accidentals. You'll get:
+• **Full credit** for using sharps: ${_getExpectedSharps(rootNote)}
+• **75% partial credit** for using flat equivalents
+
+''';
+    } else {
+      explanation += '''
+Since $rootNote has no sharps or flats in its key signature, we typically use sharp notation for the chromatic notes. You'll get:
+• **Full credit** for using sharps: ${_getExpectedSharps(rootNote)}
+• **75% partial credit** for using flat equivalents
+
+''';
+    }
+    
+    explanation += '''
+The natural notes (${_getNaturalNotesForRoot(rootNote)}) are already provided. You need to fill in the missing chromatic notes between them.
+
+**Remember**: There are no sharps or flats between E-F and B-C because these pairs are already a half-step apart!
     ''';
+    
+    return explanation;
+  }
+
+  /// NEW: Generate key-specific hints for chromatic questions
+  static List<String> _generateChromaticHints(String rootNote) {
+    final keySignature = MusicUtils.getKeySignature(rootNote);
+    final preferFlats = keySignature['flats'] > 0;
+    
+    final hints = <String>[
+      'The chromatic scale includes every semitone',
+      'Remember: no sharps between E-F and B-C',
+      'Click on empty positions to select notes',
+    ];
+    
+    if (preferFlats) {
+      hints.add('In the key of $rootNote, flat spellings are preferred');
+      hints.add('You get full credit for flats, partial credit for sharps');
+    } else {
+      hints.add('In the key of $rootNote, sharp spellings are preferred');
+      hints.add('You get full credit for sharps, partial credit for flats');
+    }
+    
+    return hints;
+  }
+
+  /// NEW: Generate scale-specific hints
+  static List<String> _generateScaleHints(String scaleType) {
+    switch (scaleType.toLowerCase()) {
+      case 'major':
+        return [
+          'Major scales follow the W-W-H-W-W-W-H pattern',
+          'Count whole and half steps from the root',
+          'Include the octave note at the end',
+        ];
+      case 'minor':
+        return [
+          'Minor scales have a ♭3, ♭6, and ♭7 compared to major',
+          'The pattern is W-H-W-W-H-W-W',
+          'Listen for the characteristic minor sound',
+        ];
+      case 'dorian':
+        return [
+          'Dorian is like natural minor with a raised 6th',
+          'It\'s the 2nd mode of the major scale',
+          'Has a distinctive modal character',
+        ];
+      case 'mixolydian':
+        return [
+          'Mixolydian is like major with a ♭7',
+          'It\'s the 5th mode of the major scale',
+          'Common in blues and rock music',
+        ];
+      default:
+        return [
+          'Follow the specific interval pattern for this scale',
+          'Count carefully from the root note',
+          'Include the octave note',
+        ];
+    }
   }
 
   static String _generateIntervalExplanation(String rootNote, Interval interval, ScaleStripAnswer answer) {
@@ -354,6 +467,56 @@ This scale follows the ${scaleType} scale pattern and includes ${answer.selected
 
 Each note has its specific function within the scale and contributes to the characteristic sound of the ${scaleType} mode.
     ''';
+  }
+
+  // Helper methods for explanation generation
+  static String _getExpectedFlats(String rootNote) {
+    final expectedNotes = <String>[];
+    final naturalPositions = ScaleStripUtils.getNaturalNotePositions(rootNote);
+    
+    for (int i = 0; i < 12; i++) {
+      if (!naturalPositions.contains(i)) {
+        final note = ScaleStripUtils.getPreferredNoteNameForPosition(rootNote, i);
+        if (note.contains('b')) {
+          expectedNotes.add(note);
+        }
+      }
+    }
+    
+    return expectedNotes.join(', ');
+  }
+
+  static String _getExpectedSharps(String rootNote) {
+    final expectedNotes = <String>[];
+    final naturalPositions = ScaleStripUtils.getNaturalNotePositions(rootNote);
+    
+    for (int i = 0; i < 12; i++) {
+      if (!naturalPositions.contains(i)) {
+        final note = ScaleStripUtils.getPreferredNoteNameForPosition(rootNote, i);
+        if (note.contains('#')) {
+          expectedNotes.add(note);
+        }
+      }
+    }
+    
+    return expectedNotes.join(', ');
+  }
+
+  static String _getNaturalNotesForRoot(String rootNote) {
+    const naturalNotes = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+    final naturalPositions = ScaleStripUtils.getNaturalNotePositions(rootNote);
+    final presentNaturals = <String>[];
+    
+    for (int i = 0; i < 12; i++) {
+      if (naturalPositions.contains(i)) {
+        final note = ScaleStripUtils.getPreferredNoteNameForPosition(rootNote, i);
+        if (naturalNotes.contains(note)) {
+          presentNaturals.add(note);
+        }
+      }
+    }
+    
+    return presentNaturals.join(', ');
   }
 
   static String _capitalizeFirst(String text) {
