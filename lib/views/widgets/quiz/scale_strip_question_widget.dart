@@ -294,7 +294,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
                        config.firstNotePosition == position;
     final isOctavePosition = position == 12; // Special handling for octave position
 
-    // Enhanced color logic
+    // FIXED: Enhanced color logic - improved octave position styling
     Color backgroundColor;
     Color textColor = theme.colorScheme.onSurface;
     Color borderColor = theme.colorScheme.outline.withOpacity(0.3);
@@ -314,8 +314,11 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
       backgroundColor = theme.colorScheme.secondary.withOpacity(0.3);
       borderColor = theme.colorScheme.secondary;
     } else if (isOctavePosition) {
-      backgroundColor = theme.colorScheme.tertiary.withOpacity(0.2);
-      borderColor = theme.colorScheme.tertiary;
+      // FIXED: Make octave position styling more consistent with other positions
+      // Instead of using tertiary color which looks optional, use a subtle variant
+      // of the normal surface color with a distinct but not "optional-looking" border
+      backgroundColor = theme.colorScheme.surface;
+      borderColor = theme.colorScheme.primary.withOpacity(0.4); // Subtle primary color hint
     } else {
       backgroundColor = theme.colorScheme.surface;
     }
@@ -350,7 +353,10 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
           decoration: BoxDecoration(
             color: backgroundColor,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: borderColor, width: 1.5),
+            border: Border.all(
+              color: borderColor, 
+              width: isOctavePosition ? 2.0 : 1.5, // FIXED: Slightly thicker border for octave
+            ),
             boxShadow: isSelected || isCorrect
                 ? [
                     BoxShadow(
@@ -374,6 +380,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
                   ),
                   textAlign: TextAlign.center,
                 ),
+              // Root indicator
               if (position == 0 && config.highlightRoot)
                 Container(
                   margin: const EdgeInsets.only(top: 2),
@@ -384,15 +391,22 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
                     shape: BoxShape.circle,
                   ),
                 ),
+              // FIXED: Improved octave indicator - more prominent and clear
               if (isOctavePosition)
                 Container(
                   margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Text(
-                    '8',
+                    'OCT',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: fontSize * 0.7,
-                      color: textColor.withOpacity(0.8),
-                      fontWeight: FontWeight.w500,
+                      fontSize: fontSize * 0.6,
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ),
