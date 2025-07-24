@@ -7,6 +7,7 @@ import '../../../models/music/note.dart';
 import '../../../utils/music_utils.dart';
 
 /// Enhanced scale strip question widget with improved layout and dropdown functionality
+/// UPDATED: Added automatic root note selection and locked position handling
 class ScaleStripQuestionWidget extends StatefulWidget {
   const ScaleStripQuestionWidget({
     Key? key,
@@ -47,14 +48,16 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
 
   void _initializeAnswer() {
     final answer = widget.selectedAnswer;
+    final config = widget.question.configuration;
+    
+    // NEW: Initialize with user selections only (exclude pre-highlighted positions)
     _selectedPositions = answer?.selectedPositions.toSet() ?? <int>{};
     
-    // FIXED: Better initialization of dropdown selections
+    // PRESERVED: Better initialization of dropdown selections
     _dropdownSelections = <int, String>{};
     
     if (answer?.selectedNotes != null && answer!.selectedNotes.isNotEmpty) {
       // For dropdown questions, we need to map notes back to positions
-      final config = widget.question.configuration;
       final selectedNotesList = answer.selectedNotes.toList();
       
       // Try to match notes to their positions
@@ -99,7 +102,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Question instructions
+        // ENHANCED: Question instructions with auto-selection context
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
@@ -124,6 +127,39 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              // NEW: Show auto-selection info if applicable
+              if (_hasAutoSelection()) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.secondary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: theme.colorScheme.secondary.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.lock,
+                        size: 16,
+                        color: theme.colorScheme.secondary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Root note automatically selected and locked',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.secondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -139,7 +175,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
         
         const SizedBox(height: 16),
         
-        // Control buttons
+        // ENHANCED: Control buttons with selection info
         _buildControlButtons(theme),
         
         // Answer feedback
@@ -151,8 +187,34 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     );
   }
 
+  /// NEW: Check if this question has automatic selection
+  bool _hasAutoSelection() {
+    final config = widget.question.configuration;
+    return config.preHighlightedPositions.isNotEmpty && config.lockPreHighlighted;
+  }
+
+  /// ENHANCED: Instruction text with auto-selection context
   String _getInstructionText() {
     final config = widget.question.configuration;
+    
+    // NEW: Enhanced instructions for automatic root selection
+    if (config.preHighlightedPositions.isNotEmpty && config.lockPreHighlighted) {
+      switch (widget.question.questionMode) {
+        case ScaleStripQuestionMode.intervals:
+          return 'The root note is automatically selected and locked. Select the target interval position.';
+        case ScaleStripQuestionMode.construction:
+          return 'Select the positions that correspond to the scale intervals.';
+        case ScaleStripQuestionMode.notes:
+          if (config.useDropdownSelection) {
+            return 'Tap empty positions to select notes from the dropdown.';
+          }
+          return 'Tap positions to select the correct note names.';
+        case ScaleStripQuestionMode.pattern:
+          return 'Select notes that follow the specified pattern.';
+      }
+    }
+    
+    // PRESERVED: Default instructions for questions without automatic selection
     switch (widget.question.questionMode) {
       case ScaleStripQuestionMode.construction:
         return 'Select the positions that correspond to the scale intervals.';
@@ -294,10 +356,13 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
                        config.firstNotePosition == position;
     final isOctavePosition = position == 12; // Special handling for octave position
 
-    // FIXED: Enhanced color logic - improved octave position styling
+    // ENHANCED: Color logic with auto-selection styling
     Color backgroundColor;
     Color textColor = theme.colorScheme.onSurface;
     Color borderColor = theme.colorScheme.outline.withOpacity(0.3);
+    
+    // NEW: Add visual indicator for locked pre-highlighted positions
+    bool showLockIndicator = isPreHighlighted && config.lockPreHighlighted;
 
     if (isCorrect && widget.showCorrectAnswer) {
       backgroundColor = Colors.green.withOpacity(0.8);
@@ -311,19 +376,19 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
       backgroundColor = Colors.orange.withOpacity(0.3);
       borderColor = Colors.orange;
     } else if (isPreHighlighted) {
-      backgroundColor = theme.colorScheme.secondary.withOpacity(0.3);
+      // NEW: Enhanced styling for auto-selected root notes
+      backgroundColor = theme.colorScheme.secondary.withOpacity(0.6);
+      textColor = theme.colorScheme.onSecondary;
       borderColor = theme.colorScheme.secondary;
     } else if (isOctavePosition) {
-      // FIXED: Make octave position styling more consistent with other positions
-      // Instead of using tertiary color which looks optional, use a subtle variant
-      // of the normal surface color with a distinct but not "optional-looking" border
+      // PRESERVED: Make octave position styling more consistent with other positions
       backgroundColor = theme.colorScheme.surface;
-      borderColor = theme.colorScheme.primary.withOpacity(0.4); // Subtle primary color hint
+      borderColor = theme.colorScheme.primary.withOpacity(0.4);
     } else {
       backgroundColor = theme.colorScheme.surface;
     }
 
-    // FIXED: Determine display text with proper root note handling
+    // PRESERVED: Determine display text with proper root note handling
     String displayText = '';
     if (config.showNoteLabels || (config.showPreHighlightedLabels && isPreHighlighted)) {
       final noteName = _getNoteNameForPosition(position);
@@ -331,7 +396,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     } else if (config.showIntervalLabels) {
       displayText = _getIntervalLabel(positionInOctave);
     } else if (config.useDropdownSelection && !isPreHighlighted) {
-      // FIXED: Show selected note name instead of "?"
+      // PRESERVED: Show selected note name instead of "?"
       displayText = _dropdownSelections[position] ?? '?';
     }
 
@@ -347,7 +412,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
       width: width,
       margin: const EdgeInsets.symmetric(horizontal: 1),
       child: GestureDetector(
-        onTap: isLocked ? null : () => _onPositionTapped(position),
+        onTap: isLocked ? () => _showLockedPositionMessage(position) : () => _onPositionTapped(position),
         child: Container(
           height: 70,
           decoration: BoxDecoration(
@@ -355,58 +420,86 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: borderColor, 
-              width: isOctavePosition ? 2.0 : 1.5, // FIXED: Slightly thicker border for octave
+              width: isOctavePosition ? 2.0 : 1.5,
             ),
-            boxShadow: isSelected || isCorrect
+            // NEW: Enhanced shadow for locked positions
+            boxShadow: isSelected || isCorrect || showLockIndicator
                 ? [
                     BoxShadow(
                       color: borderColor.withOpacity(0.3),
-                      blurRadius: 4,
+                      blurRadius: showLockIndicator ? 6 : 4,
                       offset: const Offset(0, 2),
                     ),
                   ]
                 : null,
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
             children: [
-              if (displayText.isNotEmpty)
-                Text(
-                  displayText,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w600,
-                    color: textColor,
-                  ),
-                  textAlign: TextAlign.center,
+              // Main content
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (displayText.isNotEmpty)
+                      Text(
+                        displayText,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: fontSize,
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    // Root indicator
+                    if (position == 0 && config.highlightRoot)
+                      Container(
+                        margin: const EdgeInsets.only(top: 2),
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: textColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    // PRESERVED: Improved octave indicator
+                    if (isOctavePosition)
+                      Container(
+                        margin: const EdgeInsets.only(top: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'OCT',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: fontSize * 0.6,
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              // Root indicator
-              if (position == 0 && config.highlightRoot)
-                Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: textColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              // FIXED: Improved octave indicator - more prominent and clear
-              if (isOctavePosition)
-                Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'OCT',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: fontSize * 0.6,
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
+              ),
+              
+              // NEW: Lock indicator for pre-highlighted positions
+              if (showLockIndicator)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.secondary,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.lock,
+                      size: 10,
+                      color: theme.colorScheme.onSecondary,
                     ),
                   ),
                 ),
@@ -431,6 +524,29 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
            (config.lockReferenceNote && config.firstNotePosition == position);
   }
 
+  /// NEW: Show message when user tries to interact with locked position
+  void _showLockedPositionMessage(int position) {
+    final config = widget.question.configuration;
+    final noteName = _getNoteNameForPosition(position);
+    final theme = Theme.of(context);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Root note $noteName is automatically selected and cannot be changed',
+          style: const TextStyle(fontSize: 14),
+        ),
+        duration: const Duration(seconds: 2),
+        backgroundColor: theme.colorScheme.secondary,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      ),
+    );
+    
+    // Provide haptic feedback for locked interaction attempt
+    HapticFeedback.mediumImpact();
+  }
+
   void _onPositionTapped(int position) {
     if (!widget.enabled) return;
 
@@ -450,7 +566,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
   }
 
   void _showNoteSelectionDropdown(int position) {
-    // FIXED: Show ALL possible note names, not just position-specific ones
+    // PRESERVED: Show ALL possible note names, not just position-specific ones
     final allNotes = _getAllPossibleNoteNames();
     
     showDialog(
@@ -483,7 +599,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     );
   }
 
-  // FIXED: Return ALL possible note names for educational purposes
+  // PRESERVED: Return ALL possible note names for educational purposes
   List<String> _getAllPossibleNoteNames() {
     return const [
       'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 
@@ -493,11 +609,11 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
 
   void _selectNoteForPosition(int position, String note) {
     setState(() {
-      // FIXED: Properly update all state variables
+      // PRESERVED: Properly update all state variables
       _dropdownSelections[position] = note;
       _selectedPositions.add(position);
     });
-    // FIXED: Call notification after setState completes
+    // PRESERVED: Call notification after setState completes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _notifyAnswerChange();
     });
@@ -555,7 +671,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
   }
 
   void _notifyAnswerChange() {
-    // FIXED: Properly construct the answer with selected notes from dropdowns
+    // PRESERVED: Properly construct the answer with selected notes from dropdowns
     final selectedNotes = <String>{};
     
     // Only include notes for selected positions
@@ -581,7 +697,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     widget.onAnswerSelected?.call(answer);
   }
 
-  /// FIXED: Get note name for position with proper root handling
+  /// PRESERVED: Get note name for position with proper root handling
   String _getNoteNameForPosition(int position) {
     final config = widget.question.configuration;
     
@@ -594,7 +710,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
       return _dropdownSelections[position]!;
     }
     
-    // FIXED: Use proper key context for note naming
+    // PRESERVED: Use proper key context for note naming
     return config.getPreferredNoteForPosition(position);
   }
 
@@ -605,7 +721,7 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     return intervalLabels[positionInOctave % 12];
   }
 
-  /// NEW: Helper method to check enharmonic equivalence
+  /// PRESERVED: Helper method to check enharmonic equivalence
   bool _areEnharmonicallyEquivalent(String note1, String note2) {
     try {
       final pc1 = Note.fromString(note1).pitchClass;
@@ -616,7 +732,12 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
     }
   }
 
+  /// ENHANCED: Control buttons with auto-selection info
   Widget _buildControlButtons(ThemeData theme) {
+    final config = widget.question.configuration;
+    final preHighlightedCount = config.preHighlightedPositions.length;
+    final userSelectedCount = _selectedPositions.length;
+    
     return Row(
       children: [
         ElevatedButton.icon(
@@ -629,12 +750,29 @@ class _ScaleStripQuestionWidgetState extends State<ScaleStripQuestionWidget> {
           ),
         ),
         const SizedBox(width: 12),
-        Text(
-          'Selected: ${_selectedPositions.length}',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+        
+        // NEW: Enhanced selection info with auto vs manual breakdown
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Selected: $userSelectedCount',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (preHighlightedCount > 0)
+              Text(
+                'Auto-selected: $preHighlightedCount',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.secondary,
+                  fontSize: 11,
+                ),
+              ),
+          ],
         ),
+        
         if (widget.question.configuration.keyContext != null) ...[
           const Spacer(),
           Container(
