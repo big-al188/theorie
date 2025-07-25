@@ -1,9 +1,9 @@
-// lib/views/pages/topic_detail_page.dart - Updated for separated models
+// lib/views/pages/topic_detail_page.dart - Fixed to display topic content
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/learning/learning_content.dart';
-import '../../models/user/user_progress.dart';  // ADDED: Import separated models
+import '../../models/user/user_progress.dart';
 import '../../constants/ui_constants.dart';
 import '../../controllers/quiz_controller.dart';
 import '../../services/quiz_integration_service.dart';
@@ -103,6 +103,10 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
           const SizedBox(height: 24),
           _buildTopicContent(context, deviceType),
           const SizedBox(height: 32),
+          _buildKeyPointsSection(context, deviceType),
+          const SizedBox(height: 24),
+          _buildExamplesSection(context, deviceType),
+          const SizedBox(height: 32),
           _buildQuizSection(context, deviceType),
           const SizedBox(height: 100), // Extra space for floating button
         ],
@@ -128,7 +132,6 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
             }
 
             final userProgress = snapshot.data ?? UserProgress.empty();
-            // UPDATED: Use separated model to check completion
             final isCompleted = userProgress.completedTopics.contains(widget.topic.id);
 
             return Card(
@@ -161,54 +164,34 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                                   color: isCompleted ? Colors.green.shade700 : null,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 8),
                               Text(
-                                'Section: ${widget.section.title}',
+                                widget.topic.description,
                                 style: TextStyle(
                                   fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
                                   color: Colors.grey.shade600,
+                                  height: 1.4,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        // UPDATED: Real-time completion indicator
-                        if (isCompleted)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(20),
+                        Column(
+                          children: [
+                            Icon(
+                              isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                              color: isCompleted ? Colors.green : Colors.grey.shade400,
+                              size: deviceType == DeviceType.mobile ? 24.0 : 28.0,
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(Icons.check_circle, color: Colors.white, size: 16),
-                                SizedBox(width: 4),
-                                Text(
-                                  'COMPLETED',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(height: 8),
+                            Text(
+                              '${widget.topic.estimatedReadTime.inMinutes} min',
+                              style: TextStyle(
+                                fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
+                                color: Colors.grey.shade600,
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Icon(Icons.schedule, size: 16, color: Colors.grey.shade600),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Estimated reading time: ${widget.topic.estimatedReadTime.inMinutes} minutes',
-                          style: TextStyle(
-                            fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
-                            color: Colors.grey.shade600,
-                          ),
+                          ],
                         ),
                       ],
                     ),
@@ -234,60 +217,172 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Topic Overview',
+              'Content',
+              style: TextStyle(
+                fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // FIXED: Display actual topic content using Markdown
+            MarkdownBody(
+              data: widget.topic.content,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet(
+                h1: TextStyle(
+                  fontSize: deviceType == DeviceType.mobile ? 20.0 : 24.0,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+                h2: TextStyle(
+                  fontSize: deviceType == DeviceType.mobile ? 18.0 : 22.0,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+                h3: TextStyle(
+                  fontSize: deviceType == DeviceType.mobile ? 16.0 : 20.0,
+                  fontWeight: FontWeight.bold,
+                ),
+                p: TextStyle(
+                  fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                  height: 1.6,
+                  color: Colors.grey.shade800,
+                ),
+                listBullet: TextStyle(
+                  fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                  height: 1.6,
+                ),
+                strong: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+                em: const TextStyle(
+                  fontStyle: FontStyle.italic,
+                ),
+                code: TextStyle(
+                  backgroundColor: Colors.grey.shade100,
+                  fontFamily: 'monospace',
+                  fontSize: deviceType == DeviceType.mobile ? 13.0 : 15.0,
+                ),
+                codeblockDecoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                blockquote: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                  fontStyle: FontStyle.italic,
+                ),
+                blockquoteDecoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border(
+                    left: BorderSide(
+                      color: Theme.of(context).primaryColor,
+                      width: 4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKeyPointsSection(BuildContext context, DeviceType deviceType) {
+    if (widget.topic.keyPoints.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Key Points',
               style: TextStyle(
                 fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              widget.topic.description,
-              style: TextStyle(
-                fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                color: Colors.grey.shade700,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Content would go here - using placeholder for now
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Column(
+            ...widget.topic.keyPoints.map((point) => Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.article,
-                    size: 48,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Topic Content',
-                    style: TextStyle(
-                      fontSize: deviceType == DeviceType.mobile ? 16.0 : 18.0,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
+                  Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(top: 8, right: 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor,
+                      shape: BoxShape.circle,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Detailed content for this topic will be displayed here. This includes explanations, examples, and interactive elements to help you learn ${widget.topic.title}.',
-                    style: TextStyle(
-                      fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                      color: Colors.grey.shade600,
-                      height: 1.4,
+                  Expanded(
+                    child: Text(
+                      point,
+                      style: TextStyle(
+                        fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                        height: 1.5,
+                        color: Colors.grey.shade700,
+                      ),
                     ),
-                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
+            )).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExamplesSection(BuildContext context, DeviceType deviceType) {
+    if (widget.topic.examples.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Examples',
+              style: TextStyle(
+                fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+                fontWeight: FontWeight.bold,
+              ),
             ),
+            const SizedBox(height: 12),
+            ...widget.topic.examples.map((example) => Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Text(
+                example,
+                style: TextStyle(
+                  fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                  height: 1.5,
+                  color: Colors.blue.shade800,
+                ),
+              ),
+            )).toList(),
           ],
         ),
       ),
@@ -354,19 +449,14 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
             }
 
             final userProgress = snapshot.data ?? UserProgress.empty();
-            // UPDATED: Use separated model to check completion
-            final isCompleted = userProgress.completedTopics.contains(widget.topic.id);
+            final topicAttempts = userProgress.getTopicAttempts(widget.topic.id);
+            final hasAttempted = topicAttempts.isNotEmpty;
+            final latestResult = hasAttempted ? topicAttempts.last : null;
 
             return Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: isCompleted
-                      ? Colors.green.withOpacity(0.3)
-                      : _getLevelColor(widget.section.level).withOpacity(0.3),
-                  width: 1,
-                ),
               ),
               child: Padding(
                 padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
@@ -375,77 +465,63 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.quiz,
-                          color: _getLevelColor(widget.section.level),
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
                         Expanded(
-                          child: Text(
-                            'Topic Quiz',
-                            style: TextStyle(
-                              fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
-                              fontWeight: FontWeight.bold,
-                              color: isCompleted ? Colors.green.shade700 : null,
-                            ),
-                          ),
-                        ),
-                        // UPDATED: Real-time completion status
-                        if (isCompleted)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(Icons.check_circle, color: Colors.white, size: 14),
-                                SizedBox(width: 4),
-                                Text(
-                                  'PASSED',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Test Your Knowledge',
+                                style: TextStyle(
+                                  fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                hasAttempted
+                                    ? 'Take the quiz again to improve your score'
+                                    : 'Ready to test what you\'ve learned about ${widget.topic.title}?',
+                                style: TextStyle(
+                                  fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              if (latestResult != null) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: _getScoreColor(latestResult.score * 100).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: _getScoreColor(latestResult.score * 100).withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Last Score: ${(latestResult.score * 100).round()}%',
+                                    style: TextStyle(
+                                      fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
+                                      fontWeight: FontWeight.w500,
+                                      color: _getScoreColor(latestResult.score * 100),
+                                    ),
                                   ),
                                 ),
                               ],
+                            ],
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => _startTopicQuiz(context),
+                          icon: const Icon(Icons.quiz, size: 20),
+                          label: Text(hasAttempted ? 'Retake Quiz' : 'Start Quiz'),
+                          style: ElevatedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: deviceType == DeviceType.mobile ? 16.0 : 20.0,
+                              vertical: deviceType == DeviceType.mobile ? 12.0 : 16.0,
                             ),
                           ),
+                        ),
                       ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Test your understanding of this topic with interactive questions.',
-                      style: TextStyle(
-                        fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _navigateToQuiz(context),
-                        icon: const Icon(Icons.play_arrow, size: 20),
-                        label: Text(
-                          isCompleted ? 'Retake Quiz' : 'Take Quiz',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isCompleted
-                              ? Colors.green
-                              : _getLevelColor(widget.section.level),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -458,62 +534,29 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
   }
 
   Widget? _buildFloatingActionButton(BuildContext context, DeviceType deviceType) {
+    if (!_showFloatingButton) return null;
+
     final hasQuiz = QuizIntegrationService.isTopicQuizImplemented(
         widget.section.id, widget.topic.id);
 
-    if (!hasQuiz || !_showFloatingButton) {
-      return null;
-    }
+    if (!hasQuiz) return null;
 
-    return Consumer<AppState>(
-      builder: (context, appState, child) {
-        return FutureBuilder<UserProgress>(
-          future: _getUserProgress(appState),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return FloatingActionButton(
-                onPressed: null,
-                backgroundColor: Colors.grey.shade300,
-                child: const CircularProgressIndicator(strokeWidth: 2),
-              );
-            }
-
-            final userProgress = snapshot.data ?? UserProgress.empty();
-            // UPDATED: Use separated model to check completion
-            final isCompleted = userProgress.completedTopics.contains(widget.topic.id);
-
-            return FloatingActionButton.extended(
-              onPressed: () => _navigateToQuiz(context),
-              backgroundColor: isCompleted ? Colors.green : _getLevelColor(widget.section.level),
-              icon: const Icon(Icons.quiz, color: Colors.white),
-              label: Text(
-                isCompleted ? 'Retake Quiz' : 'Take Quiz',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            );
-          },
-        );
-      },
+    return FloatingActionButton.extended(
+      onPressed: () => _startTopicQuiz(context),
+      icon: const Icon(Icons.quiz),
+      label: const Text('Quiz'),
+      backgroundColor: Theme.of(context).primaryColor,
     );
   }
 
-  /// ADDED: Helper method to get user progress
-  Future<UserProgress> _getUserProgress(AppState appState) async {
-    if (appState.currentUser == null) {
-      return UserProgress.empty();
-    }
-
-    try {
-      // Try to get progress from the progress tracking service
-      return await ProgressTrackingService.instance.getCurrentProgress();
-    } catch (e) {
-      debugPrint('Error getting user progress: $e');
-      // Fallback to cached progress in AppState
-      return appState.currentUserProgress ?? UserProgress.empty();
-    }
+  Future<void> _startTopicQuiz(BuildContext context) async {
+    final quizController = context.read<QuizController>();
+    await QuizIntegrationService.navigateToTopicQuiz(
+      context: context,
+      topic: widget.topic,
+      section: widget.section,
+      quizController: quizController,
+    );
   }
 
   double _getPadding(DeviceType deviceType, bool isLandscape) {
@@ -534,7 +577,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
       case LearningLevel.intermediate:
         return Colors.orange;
       case LearningLevel.advanced:
-        return Colors.red;
+        return Colors.deepOrange;
       case LearningLevel.professional:
         return Colors.purple;
       case LearningLevel.master:
@@ -544,17 +587,21 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
     }
   }
 
-  void _navigateToQuiz(BuildContext context) {
-    final quizController = Provider.of<QuizController>(context, listen: false);
+  Color _getScoreColor(double percentage) {
+    if (percentage >= 90) return Colors.green;
+    if (percentage >= 80) return Colors.lightGreen;
+    if (percentage >= 70) return Colors.orange;
+    if (percentage >= 60) return Colors.deepOrange;
+    return Colors.red;
+  }
 
-    QuizIntegrationService.navigateToTopicQuiz(
-      context: context,
-      topic: widget.topic,
-      section: widget.section,
-      quizController: quizController,
-    ).then((_) {
-      // Progress will be automatically updated via the listener
-      // No need for manual refresh here
-    });
+  Future<UserProgress> _getUserProgress(AppState appState) async {
+    try {
+      // Use ProgressTrackingService to get current progress
+      return await ProgressTrackingService.instance.getCurrentProgress();
+    } catch (e) {
+      // Fallback to cached progress in AppState
+      return appState.currentUserProgress ?? UserProgress.empty();
+    }
   }
 }
