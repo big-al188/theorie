@@ -1,4 +1,4 @@
-// lib/models/fretboard/fretboard_instance.dart - Fixed octave calculation
+// lib/models/fretboard/fretboard_instance.dart - Fixed ViewMode references
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
@@ -58,18 +58,18 @@ class FretboardInstance {
       selectedIntervals: {0},
       tuning: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
       stringCount: 6,
+      showScaleStrip: true,
       showNoteNames: false,
       visibleFretEnd: 12,
     );
   }
 
   /// Convert to FretboardConfig
-  /// FIXED: Now respects user's octave selection for all modes
   FretboardConfig toConfig({
     required FretboardLayout layout,
     required int globalFretCount,
   }) {
-    // FIXED: Always respect the user's selected octaves
+    // Always respect the user's selected octaves
     Set<int> octavesToUse = Set.from(selectedOctaves);
 
     if (octavesToUse.isEmpty) {
@@ -78,9 +78,9 @@ class FretboardInstance {
       octavesToUse = {3};
     }
 
-    // FIXED: For chord mode, we still respect user selection but may add adjacent octaves
+    // For chord inversion mode, we still respect user selection but may add adjacent octaves
     // if the chord voicing naturally extends beyond the selected range
-    if (viewMode == ViewMode.chords) {
+    if (viewMode == ViewMode.chordInversions) { // FIXED: Updated reference
       final chord = Chord.get(chordType);
       if (chord != null) {
         // Get the user's primary octave selection
@@ -100,7 +100,7 @@ class FretboardInstance {
           final minOctave = (minMidi ~/ 12) - 1;
           final maxOctave = (maxMidi ~/ 12) - 1;
 
-          // FIXED: Only add additional octaves if the voicing actually extends beyond
+          // Only add additional octaves if the voicing actually extends beyond
           // the user's selection, and only add the necessary adjacent octaves
           final voicingOctaves = <int>{};
           for (int i = minOctave; i <= maxOctave; i++) {
@@ -146,6 +146,8 @@ class FretboardInstance {
       showFretboard: true,
       showChordName: false,
       showNoteNames: showNoteNames,
+      width: 400.0, // FIXED: Provide default width
+      height: 300.0, // FIXED: Provide default height
       padding: EdgeInsets.zero,
       visibleFretStart: visibleFretStart,
       visibleFretEnd: visibleFretEnd.clamp(1, globalFretCount),

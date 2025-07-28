@@ -1,49 +1,34 @@
-// lib/controllers/fretboard_controller.dart - Fixed chord highlighting
+// lib/controllers/fretboard_controller.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../models/fretboard/fretboard_config.dart';
 import '../models/music/note.dart';
 import '../models/music/scale.dart';
 import '../models/music/chord.dart';
-import '../models/fretboard/fretboard_config.dart';
 import '../utils/color_utils.dart';
 import 'music_controller.dart';
 
-/// Controller for fretboard logic and calculations
+/// Controller for fretboard display logic and interactions
 class FretboardController {
   /// Generate highlight map for scale mode
   static Map<int, Color> getScaleHighlightMap(FretboardConfig config) {
+    final map = <int, Color>{};
     final scale = Scale.get(config.scale);
     if (scale == null) return {};
 
-    final effectiveRoot = config.isScaleMode
-        ? MusicController.getModeRoot(
-            config.root, config.scale, config.modeIndex)
-        : config.root;
+    // Get the effective root for the mode
+    final effectiveRoot = MusicController.getModeRoot(
+        config.root, config.scale, config.modeIndex);
 
-    final rootNote = Note.fromString('${effectiveRoot}0');
-    final pitchClasses = scale.getModeIntervals(config.modeIndex);
-    final map = <int, Color>{};
-    final octaves =
-        config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+    for (final octave in config.selectedOctaves) {
+      final rootNote = Note.fromString('$effectiveRoot$octave');
 
-    for (final octave in octaves) {
-      // Create the root note for this octave
-      final octaveRootNote = Note.fromString('$effectiveRoot$octave');
-      final octaveRootMidi = octaveRootNote.midi;
-
-      // For scale mode, we want to show notes from root to root+octave
-      // This means we include all scale notes from the root up to (but not including) the next root
-      for (int i = 0; i < pitchClasses.length; i++) {
-        final interval = pitchClasses[i];
-        final noteMidi = octaveRootMidi + interval;
-
-        // Only include notes within the musical octave (root to root+12)
-        if (interval >= 0 && interval <= 12) {
-          map[noteMidi] = ColorUtils.colorForDegree(interval);
-        }
+      for (int i = 0; i < scale.intervals.length; i++) {
+        final interval = scale.intervals[i];
+        final note = rootNote.transpose(interval);
+        final color = ColorUtils.colorForDegree(i);
+        map[note.midi] = color;
       }
-
-      // Always include the octave (root + 12)
-      map[octaveRootMidi + 12] = ColorUtils.colorForDegree(12);
     }
 
     return map;
@@ -52,8 +37,14 @@ class FretboardController {
   /// Generate highlight map for interval mode
   static Map<int, Color> getIntervalHighlightMap(FretboardConfig config) {
     final map = <int, Color>{};
-    final octaves =
-        config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+
+    // Handle empty intervals
+    if (config.selectedIntervals.isEmpty) return {};
+
+    // Use the configured octaves, or default to octave 3
+    final octaves = config.selectedOctaves.isNotEmpty
+        ? config.selectedOctaves
+        : {3};
     final referenceOctave = config.minSelectedOctave;
     final rootNote = Note.fromString('${config.root}$referenceOctave');
 
@@ -69,8 +60,8 @@ class FretboardController {
     return map;
   }
 
-  /// Generate highlight map for chord mode with FIXED close voicing support
-  static Map<int, Color> getChordHighlightMap(FretboardConfig config) {
+  /// Generate highlight map for chord inversion mode with FIXED close voicing support
+  static Map<int, Color> getChordInversionHighlightMap(FretboardConfig config) {
     final map = <int, Color>{};
     final chord = Chord.get(config.chordType);
     if (chord == null) return {};
@@ -112,6 +103,14 @@ class FretboardController {
     return map;
   }
 
+  /// Generate highlight map for unimplemented chord modes (placeholder)
+  static Map<int, Color> getUnimplementedChordHighlightMap(FretboardConfig config) {
+    // For now, return empty map for unimplemented modes
+    // This can be expanded when these modes are implemented
+    debugPrint('${config.viewMode.displayName} mode is not yet implemented');
+    return <int, Color>{};
+  }
+
   /// Get complete highlight map based on view mode
   static Map<int, Color> getHighlightMap(FretboardConfig config) {
     switch (config.viewMode) {
@@ -119,74 +118,211 @@ class FretboardController {
         return getScaleHighlightMap(config);
       case ViewMode.intervals:
         return getIntervalHighlightMap(config);
-      case ViewMode.chords:
-        return getChordHighlightMap(config);
+      case ViewMode.chordInversions:
+        return getChordInversionHighlightMap(config);
+      case ViewMode.openChords:
+      case ViewMode.barreChords:
+      case ViewMode.advancedChords:
+        return getUnimplementedChordHighlightMap(config);
     }
   }
 
   /// Handle fretboard tap in interval mode
   static void handleIntervalModeTap(FretboardConfig config, int stringIndex,
       int fretIndex, Function(Set<int>) onIntervalsChanged,
-      {Function(String, Set<int>)? onRootChanged}) {
-    final openStringNote = Note.fromString(config.tuning[stringIndex]);
-    final tappedNote = openStringNote.transpose(fretIndex);
+      {Function(String, Set<int>)? onRootAndOctavesChanged}) {
+    
+    // Calculate tapped note
+    final openString = Note.fromString(config.tuning[stringIndex]);
+    final tappedNote = openString.transpose(fretIndex);
+    final tappedMidi = tappedNote.midi;
 
-    final sortedOctaves = config.selectedOctaves.toList()..sort();
-    final referenceOctave = sortedOctaves.isNotEmpty ? sortedOctaves.first : 3;
+    // Get reference octave
+    final referenceOctave = config.selectedOctaves.isNotEmpty
+        ? config.selectedOctaves.reduce((a, b) => a < b ? a : b)
+        : 3;
     final rootNote = Note.fromString('${config.root}$referenceOctave');
-    final extendedInterval = tappedNote.midi - rootNote.midi;
 
-    debugPrint(
-        'Interval mode tap: tappedMidi=${tappedNote.midi}, rootMidi=${rootNote.midi}, extendedInterval=$extendedInterval');
+    // Calculate extended interval
+    final extendedInterval = tappedMidi - rootNote.midi;
 
-    if (extendedInterval >= 0 && extendedInterval < 48) {
-      final newIntervals = Set<int>.from(config.selectedIntervals);
-      if (newIntervals.contains(extendedInterval)) {
-        if (newIntervals.length > 1 || extendedInterval != 0) {
-          newIntervals.remove(extendedInterval);
+    var newIntervals = Set<int>.from(config.selectedIntervals);
+    var newOctaves = Set<int>.from(config.selectedOctaves);
+    var newRoot = config.root;
+
+    // Handle based on current state
+    if (newIntervals.isEmpty) {
+      // No notes selected - this becomes the new root
+      newRoot = tappedNote.name;
+      newIntervals = {0};
+      newOctaves = {tappedNote.octave};
+    } else if (newIntervals.contains(extendedInterval)) {
+      // Removing existing interval
+      newIntervals.remove(extendedInterval);
+      
+      if (newIntervals.isEmpty) {
+        // Empty state
+      } else if (extendedInterval == 0) {
+        // Root removal - find new root
+        final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
+        final newRootMidi = rootNote.midi + lowestInterval;
+        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+        newRoot = newRootNote.name;
+        newOctaves = {newRootNote.octave};
+
+        // Adjust all intervals relative to new root
+        final adjustedIntervals = <int>{};
+        for (final interval in newIntervals) {
+          final adjustedInterval = interval - lowestInterval;
+          adjustedIntervals.add(adjustedInterval);
+          
+          final noteMidi = newRootMidi + adjustedInterval;
+          final noteOctave = Note.fromMidi(noteMidi).octave;
+          newOctaves.add(noteOctave);
         }
+        newIntervals = adjustedIntervals;
+      } else if (newIntervals.length == 1 && !newIntervals.contains(0)) {
+        // Single interval becomes root
+        final singleInterval = newIntervals.first;
+        final newRootMidi = rootNote.midi + singleInterval;
+        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+        newRoot = newRootNote.name;
+        newOctaves = {newRootNote.octave};
+        newIntervals = {0};
+      }
+    } else {
+      // Adding new interval
+      if (extendedInterval < 0) {
+        // Note below current root - extend octaves downward
+        final octavesDown = ((-extendedInterval - 1) ~/ 12) + 1;
+        final newReferenceOctave = referenceOctave - octavesDown;
+
+        // Add lower octaves
+        for (int i = 0; i < octavesDown; i++) {
+          newOctaves.add(referenceOctave - i - 1);
+        }
+
+        // Recalculate intervals from new reference
+        final newRootNote = Note.fromString('${config.root}$newReferenceOctave');
+        
+        final adjustedIntervals = <int>{};
+        for (final interval in newIntervals) {
+          adjustedIntervals.add(interval + (octavesDown * 12));
+        }
+
+        final adjustedNewInterval = tappedMidi - newRootNote.midi;
+        adjustedIntervals.add(adjustedNewInterval);
+        
+        newIntervals = adjustedIntervals;
+      } else {
+        // Normal case - just add interval
+        newIntervals.add(extendedInterval);
+        
+        if (!newOctaves.contains(tappedNote.octave)) {
+          newOctaves.add(tappedNote.octave);
+        }
+      }
+    }
+
+    // Apply changes
+    if (onRootAndOctavesChanged != null && newRoot != config.root) {
+      onRootAndOctavesChanged(newRoot, newOctaves);
+    }
+    onIntervalsChanged(newIntervals);
+  }
+
+  /// Handle scale note tap (from scale strip)
+  static void handleScaleNoteTap(FretboardConfig config, int midiNote,
+      Function(Set<int>) onIntervalsChanged,
+      {Function(String, Set<int>)? onRootAndOctavesChanged}) {
+    
+    if (config.viewMode != ViewMode.intervals) return;
+
+    final clickedNote = Note.fromMidi(midiNote);
+    
+    // Calculate extended interval
+    final referenceOctave = config.selectedOctaves.isEmpty
+        ? 3
+        : config.selectedOctaves.reduce((a, b) => a < b ? a : b);
+    final rootNote = Note.fromString('${config.root}$referenceOctave');
+    final extendedInterval = midiNote - rootNote.midi;
+
+    var newIntervals = Set<int>.from(config.selectedIntervals);
+    var newOctaves = Set<int>.from(config.selectedOctaves);
+    var newRoot = config.root;
+
+    // Handle similar to fret tap logic
+    if (newIntervals.isEmpty) {
+      newRoot = clickedNote.name;
+      newIntervals = {0};
+      newOctaves = {clickedNote.octave};
+    } else if (newIntervals.contains(extendedInterval)) {
+      // Remove interval
+      newIntervals.remove(extendedInterval);
+      
+      if (newIntervals.isEmpty) {
+        // Empty state
+      } else if (extendedInterval == 0) {
+        // Root removal
+        final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
+        final newRootMidi = rootNote.midi + lowestInterval;
+        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+        newRoot = newRootNote.name;
+        newOctaves = {newRootNote.octave};
+
+        final adjustedIntervals = <int>{};
+        for (final interval in newIntervals) {
+          final adjustedInterval = interval - lowestInterval;
+          adjustedIntervals.add(adjustedInterval);
+          
+          final noteMidi = newRootMidi + adjustedInterval;
+          final noteOctave = Note.fromMidi(noteMidi).octave;
+          newOctaves.add(noteOctave);
+        }
+        newIntervals = adjustedIntervals;
+      } else if (newIntervals.length == 1 && !newIntervals.contains(0)) {
+        final singleInterval = newIntervals.first;
+        final newRootMidi = rootNote.midi + singleInterval;
+        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+        newRoot = newRootNote.name;
+        newOctaves = {newRootNote.octave};
+        newIntervals = {0};
+      }
+    } else {
+      // Add new interval
+      if (extendedInterval < 0) {
+        final octavesDown = ((-extendedInterval - 1) ~/ 12) + 1;
+        final newReferenceOctave = referenceOctave - octavesDown;
+
+        for (int i = 0; i < octavesDown; i++) {
+          newOctaves.add(referenceOctave - i - 1);
+        }
+
+        final newRootNote = Note.fromString('${config.root}$newReferenceOctave');
+        
+        final adjustedIntervals = <int>{};
+        for (final interval in newIntervals) {
+          adjustedIntervals.add(interval + (octavesDown * 12));
+        }
+
+        final adjustedNewInterval = midiNote - newRootNote.midi;
+        adjustedIntervals.add(adjustedNewInterval);
+        
+        newIntervals = adjustedIntervals;
       } else {
         newIntervals.add(extendedInterval);
-      }
-
-      // Check if we should change root
-      if (newIntervals.length == 1 &&
-          !newIntervals.contains(0) &&
-          onRootChanged != null) {
-        final selectedInterval = newIntervals.first;
-        final newRootNote = rootNote.transpose(selectedInterval);
-        onRootChanged(newRootNote.name, {newRootNote.octave});
-        // Return {0} as the new intervals since we're changing the root
-        onIntervalsChanged({0});
-      } else {
-        onIntervalsChanged(newIntervals);
+        
+        if (!newOctaves.contains(clickedNote.octave)) {
+          newOctaves.add(clickedNote.octave);
+        }
       }
     }
-  }
 
-  /// Calculate visible fret range with corrections
-  static int getCorrectedFretCount(FretboardConfig config) {
-    if (config.visibleFretStart == 0) {
-      return config.visibleFretCount;
-    } else {
-      // For non-zero start, add 1 to include both endpoints
-      return config.visibleFretCount + 1;
+    // Apply changes
+    if (onRootAndOctavesChanged != null && newRoot != config.root) {
+      onRootAndOctavesChanged(newRoot, newOctaves);
     }
-  }
-
-  /// Get fret position for a note on a string
-  static int? getFretForNote(
-      Note targetNote, Note openStringNote, int maxFrets) {
-    final fretNumber = targetNote.midi - openStringNote.midi;
-    if (fretNumber >= 0 && fretNumber <= maxFrets) {
-      return fretNumber;
-    }
-    return null;
-  }
-
-  /// Check if a note should be highlighted
-  static bool shouldHighlightNote(int midi, Map<int, Color> highlightMap) {
-    return highlightMap.containsKey(midi);
+    onIntervalsChanged(newIntervals);
   }
 
   /// Get interval label for display with defensive programming
@@ -247,6 +383,31 @@ class FretboardController {
     return getIntervalLabel(interval);
   }
 
+  /// Calculate visible fret range with corrections
+  static int getCorrectedFretCount(FretboardConfig config) {
+    if (config.visibleFretStart == 0) {
+      return config.visibleFretCount;
+    } else {
+      // For non-zero start, add 1 to include both endpoints
+      return config.visibleFretCount + 1;
+    }
+  }
+
+  /// Get fret position for a note on a string
+  static int? getFretForNote(
+      Note targetNote, Note openStringNote, int maxFrets) {
+    final fretNumber = targetNote.midi - openStringNote.midi;
+    if (fretNumber >= 0 && fretNumber <= maxFrets) {
+      return fretNumber;
+    }
+    return null;
+  }
+
+  /// Check if a note should be highlighted
+  static bool shouldHighlightNote(int midi, Map<int, Color> highlightMap) {
+    return highlightMap.containsKey(midi);
+  }
+
   /// Check if single interval will become root
   static bool willIntervalBecomeRoot(FretboardConfig config, int midiNote) {
     if (!config.isIntervalMode ||
@@ -261,5 +422,23 @@ class FretboardController {
     final noteInterval = midiNote - rootNote.midi;
 
     return config.selectedIntervals.contains(noteInterval);
+  }
+
+  /// Helper method to check if mode is any chord mode
+  static bool isAnyChordMode(ViewMode viewMode) {
+    return viewMode == ViewMode.chordInversions ||
+           viewMode == ViewMode.openChords ||
+           viewMode == ViewMode.barreChords ||
+           viewMode == ViewMode.advancedChords;
+  }
+
+  /// Helper method to check if mode is implemented
+  static bool isModeImplemented(ViewMode viewMode) {
+    return viewMode.isImplemented;
+  }
+
+  /// Legacy support for old isChordMode checks
+  static bool isChordMode(ViewMode viewMode) {
+    return viewMode == ViewMode.chordInversions;
   }
 }

@@ -1,6 +1,7 @@
 // lib/views/pages/fretboard_page.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:math' as math;
 import '../../models/fretboard/fretboard_config.dart';
 import '../../models/app_state.dart';
 import '../../models/fretboard/fretboard_instance.dart';
@@ -239,22 +240,23 @@ class _FretboardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final config = fretboard.toConfig(
-      layout: globalState.layout,
-      globalFretCount: globalState.fretCount,
-    );
-
-    final adjustedFretboard = fretboard.visibleFretEnd > globalState.fretCount
-        ? fretboard.copyWith(visibleFretEnd: globalState.fretCount)
-        : fretboard;
-
     // Auto-compact for mobile in clean view mode
     final shouldForceCompact = cleanViewMode &&
         ResponsiveConstants.getDeviceType(screenWidth) == DeviceType.mobile;
 
-    final finalFretboard = shouldForceCompact && !adjustedFretboard.isCompact
-        ? adjustedFretboard.copyWith(isCompact: true)
-        : adjustedFretboard;
+    final finalFretboard = shouldForceCompact && !fretboard.isCompact
+        ? fretboard.copyWith(isCompact: true)
+        : fretboard;
+
+    // Adjust fret end if needed
+    final adjustedFretboard = finalFretboard.visibleFretEnd > globalState.fretCount
+        ? finalFretboard.copyWith(visibleFretEnd: globalState.fretCount)
+        : finalFretboard;
+
+    // Check if this mode is not yet implemented
+    if (!adjustedFretboard.viewMode.isImplemented) {
+      return _buildUnimplementedCard(context, adjustedFretboard);
+    }
 
     return Card(
       margin: cleanViewMode ? EdgeInsets.zero : null,
@@ -262,36 +264,198 @@ class _FretboardCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!cleanViewMode) _buildHeader(context, config),
-          if (!cleanViewMode && !finalFretboard.isCompact)
+          if (!cleanViewMode) _buildHeader(context, adjustedFretboard),
+          if (!cleanViewMode && !adjustedFretboard.isCompact)
             FretboardControls(
-              instance: finalFretboard,
+              instance: adjustedFretboard,
               onUpdate: onUpdate,
               globalFretCount: globalState.fretCount,
             ),
-          Padding(
-            padding: EdgeInsets.all(_getCardPadding()),
-            child: FretboardWidget(
-              config: config.copyWith(
-                showChordName: cleanViewMode && config.isChordMode,
-              ),
-              onFretTap: (stringIndex, fretIndex) {
-                _handleFretTap(stringIndex, fretIndex);
-              },
-              onScaleNoteTap: (midiNote) {
-                _handleScaleNoteTap(midiNote);
-              },
-              onRangeChanged: cleanViewMode
-                  ? null
-                  : (newStart, newEnd) {
-                      onUpdate(finalFretboard.copyWith(
-                        visibleFretStart: newStart,
-                        visibleFretEnd: newEnd,
-                      ));
-                    },
-            ),
-          ),
+          // FIXED: Proper FretboardWidget layout with constraints
+          _buildFretboardSection(context, adjustedFretboard),
         ],
+      ),
+    );
+  }
+
+  // RESTORED: Proper fretboard section with responsive layout
+  Widget _buildFretboardSection(BuildContext context, FretboardInstance instance) {
+    final config = instance.toConfig(
+      layout: globalState.layout,
+      globalFretCount: globalState.fretCount,
+    );
+
+    // Calculate responsive dimensions
+    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
+    final availableWidth = screenWidth - _getHorizontalPadding(deviceType);
+    
+    // Calculate heights using responsive constants
+    final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
+    final fretboardHeight = (instance.stringCount + 1) * stringHeight;
+    
+    // FIXED: For chord modes, be more conservative about octave expansion
+    int actualOctaveCount = instance.selectedOctaves.isEmpty ? 1 : instance.selectedOctaves.length;
+    
+    if (instance.showScaleStrip && config.isAnyChordMode) {
+      // For chord modes, limit octave expansion to prevent overflow
+      final chord = Chord.get(instance.chordType);
+      if (chord != null) {
+        final userOctave = instance.selectedOctaves.isEmpty ? 3 : instance.selectedOctaves.first;
+        final rootNote = Note.fromString('${instance.root}$userOctave');
+        
+        try {
+          final voicingMidiNotes = chord.buildVoicing(
+            root: rootNote,
+            inversion: instance.chordInversion,
+          );
+          
+          if (voicingMidiNotes.isNotEmpty) {
+            final minNote = Note.fromMidi(voicingMidiNotes.reduce(math.min));
+            final maxNote = Note.fromMidi(voicingMidiNotes.reduce(math.max));
+            final voicingSpan = maxNote.octave - minNote.octave + 1;
+            
+            // FIXED: Limit octave count to prevent overflow (max 3 octaves for chord modes)
+            actualOctaveCount = math.min(voicingSpan, 3);
+          }
+        } catch (e) {
+          debugPrint('Error calculating chord voicing octaves: $e');
+          actualOctaveCount = 1; // Fallback to single octave
+        }
+      }
+    }
+    
+    // Calculate scale strip height with proper octave count
+    final scaleStripHeight = instance.showScaleStrip 
+        ? _calculateScaleStripHeight(actualOctaveCount)
+        : 0.0;
+    
+    // Add spacing between fretboard and scale strip only when both are shown
+    final spacingHeight = (instance.showScaleStrip && config.showFretboard) 
+        ? ResponsiveConstants.getFretboardScaleStripSpacing(screenWidth)
+        : 0.0;
+    
+    // Chord name height if needed
+    final chordNameHeight = (config.showChordName && config.isAnyChordMode) ? 30.0 : 0.0;
+    
+    // FIXED: More generous height calculation for chord modes
+    final baseHeight = fretboardHeight + scaleStripHeight + spacingHeight + chordNameHeight;
+    final minContainerHeight = fretboardHeight + chordNameHeight + 
+        (config.isAnyChordMode ? 60.0 : 40.0); // Extra space for chord modes
+    final totalHeight = instance.showScaleStrip ? baseHeight : math.max(baseHeight, minContainerHeight);
+
+    return Container(
+      padding: EdgeInsets.all(_getCardPadding()),
+      // FIXED: Add background color to ensure proper visual appearance
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(8.0),
+      ),
+      child: SizedBox(
+        width: availableWidth,
+        height: totalHeight,
+        child: FretboardWidget(
+          config: config.copyWith(
+            width: availableWidth,
+            height: totalHeight,
+            showChordName: cleanViewMode && config.isAnyChordMode,
+          ),
+          onFretTap: (stringIndex, fretIndex) {
+            _handleFretTap(stringIndex, fretIndex);
+          },
+          onScaleNoteTap: (midiNote) {
+            _handleScaleNoteTap(midiNote);
+          },
+          onRangeChanged: cleanViewMode
+              ? null
+              : (newStart, newEnd) {
+                  onUpdate(instance.copyWith(
+                    visibleFretStart: newStart,
+                    visibleFretEnd: newEnd,
+                  ));
+                },
+        ),
+      ),
+    );
+  }
+
+  // RESTORED: Proper responsive calculations
+  double _calculateScaleStripHeight(int octaveCount) {
+    final noteRowHeight = ResponsiveConstants.getNoteRowHeight(screenWidth);
+    final paddingPerOctave = ResponsiveConstants.getScaleStripPaddingPerOctave(screenWidth);
+    
+    return UIConstants.scaleStripLabelSpace +
+        (octaveCount * noteRowHeight) +
+        (octaveCount * paddingPerOctave);
+  }
+
+  double _getHorizontalPadding(DeviceType deviceType) {
+    switch (deviceType) {
+      case DeviceType.mobile:
+        return 32.0; // Account for card margins and padding
+      case DeviceType.tablet:
+        return 48.0;
+      case DeviceType.desktop:
+        return 64.0;
+    }
+  }
+
+  Widget _buildUnimplementedCard(BuildContext context, FretboardInstance instance) {
+    return Card(
+      margin: cleanViewMode ? EdgeInsets.zero : null,
+      elevation: cleanViewMode ? 0 : null,
+      child: Container(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.construction,
+              size: 48,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '${instance.viewMode.displayName} Mode',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Coming Soon!',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'This chord mode is currently under development and will be available in a future update.',
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton.icon(
+                  onPressed: () => onUpdate(fretboard.copyWith(viewMode: ViewMode.chordInversions)),
+                  icon: const Icon(Icons.music_note),
+                  label: const Text('Try Chord Inversions'),
+                ),
+                const SizedBox(width: 16),
+                if (canRemove)
+                  TextButton.icon(
+                    onPressed: onRemove,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Remove'),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -305,7 +469,12 @@ class _FretboardCard extends StatelessWidget {
     return ResponsiveConstants.getCardPadding(screenWidth, fretboard.isCompact);
   }
 
-  Widget _buildHeader(BuildContext context, config) {
+  Widget _buildHeader(BuildContext context, FretboardInstance instance) {
+    final config = instance.toConfig(
+      layout: globalState.layout,
+      globalFretCount: globalState.fretCount,
+    );
+    
     String headerText = _getHeaderText(config);
 
     // Responsive header font size
@@ -334,14 +503,14 @@ class _FretboardCard extends StatelessWidget {
         children: [
           IconButton(
             icon: Icon(
-                fretboard.isCompact ? Icons.expand_more : Icons.expand_less),
-            tooltip: fretboard.isCompact ? 'Show Controls' : 'Hide Controls',
+                instance.isCompact ? Icons.expand_more : Icons.expand_less),
+            tooltip: instance.isCompact ? 'Show Controls' : 'Hide Controls',
             iconSize: ResponsiveConstants.getDeviceType(screenWidth) ==
                     DeviceType.mobile
                 ? 20.0
                 : 24.0,
             onPressed: () {
-              onUpdate(fretboard.copyWith(isCompact: !fretboard.isCompact));
+              onUpdate(instance.copyWith(isCompact: !instance.isCompact));
             },
           ),
           const SizedBox(width: 8),
@@ -361,8 +530,8 @@ class _FretboardCard extends StatelessWidget {
           ),
           IconButton(
             icon: Icon(
-              fretboard.showScaleStrip ? Icons.piano : Icons.piano_off,
-              color: fretboard.showScaleStrip
+              instance.showScaleStrip ? Icons.piano : Icons.piano_off,
+              color: instance.showScaleStrip
                   ? Theme.of(context).primaryColor
                   : null,
             ),
@@ -372,14 +541,14 @@ class _FretboardCard extends StatelessWidget {
                 : 24.0,
             tooltip: 'Toggle Scale Strip',
             onPressed: () {
-              onUpdate(fretboard.copyWith(
-                  showScaleStrip: !fretboard.showScaleStrip));
+              onUpdate(instance.copyWith(
+                  showScaleStrip: !instance.showScaleStrip));
             },
           ),
           IconButton(
             icon: Icon(
-              fretboard.showNoteNames ? Icons.abc : Icons.numbers,
-              color: fretboard.showNoteNames
+              instance.showNoteNames ? Icons.abc : Icons.numbers,
+              color: instance.showNoteNames
                   ? Theme.of(context).primaryColor
                   : null,
             ),
@@ -388,10 +557,10 @@ class _FretboardCard extends StatelessWidget {
                 ? 20.0
                 : 24.0,
             tooltip:
-                fretboard.showNoteNames ? 'Show Intervals' : 'Show Note Names',
+                instance.showNoteNames ? 'Show Intervals' : 'Show Note Names',
             onPressed: () {
               onUpdate(
-                  fretboard.copyWith(showNoteNames: !fretboard.showNoteNames));
+                  instance.copyWith(showNoteNames: !instance.showNoteNames));
             },
           ),
           if (canRemove)
@@ -409,11 +578,11 @@ class _FretboardCard extends StatelessWidget {
     );
   }
 
-  String _getHeaderText(config) {
+  String _getHeaderText(FretboardConfig config) {
     final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
     final isCompact = deviceType == DeviceType.mobile;
 
-    if (config.isChordMode) {
+    if (config.isAnyChordMode) {
       if (isCompact) {
         return '${config.currentChordName} - ${config.tuning.length}str';
       }
@@ -423,11 +592,17 @@ class _FretboardCard extends StatelessWidget {
         return '${config.effectiveRoot} Intervals - ${config.tuning.length}str';
       }
       return '${config.effectiveRoot} Intervals - ${config.tuning.length} strings - ${config.layout.displayName}';
-    } else {
+    } else if (config.isScaleMode) {
       if (isCompact) {
         return '${config.effectiveRoot} ${config.currentModeName} - ${config.tuning.length}str';
       }
       return '${config.effectiveRoot} ${config.currentModeName} - ${config.tuning.length} strings - ${config.layout.displayName}';
+    } else {
+      // For unimplemented chord modes
+      if (isCompact) {
+        return '${config.viewMode.displayName} - ${config.tuning.length}str';
+      }
+      return '${config.viewMode.displayName} - ${config.tuning.length} strings - ${config.layout.displayName}';
     }
   }
 

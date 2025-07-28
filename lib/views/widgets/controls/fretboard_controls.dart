@@ -104,7 +104,7 @@ class FretboardControls extends StatelessWidget {
                     },
                   ),
                 )
-              else if (instance.viewMode == ViewMode.chords)
+              else if (instance.viewMode == ViewMode.chordInversions)
                 Expanded(
                   flex: 2,
                   child: ChordSelector(
@@ -116,6 +116,11 @@ class FretboardControls extends StatelessWidget {
                       ));
                     },
                   ),
+                )
+              else if (_isUnimplementedChordMode(instance.viewMode))
+                Expanded(
+                  flex: 2,
+                  child: _buildUnimplementedSelector(context, instance.viewMode),
                 )
               else
                 const Expanded(flex: 2, child: SizedBox()),
@@ -133,7 +138,7 @@ class FretboardControls extends StatelessWidget {
                     },
                   ),
                 )
-              else if (instance.viewMode == ViewMode.chords)
+              else if (instance.viewMode == ViewMode.chordInversions)
                 Expanded(
                   flex: 2,
                   child: _ChordInversionSelector(
@@ -143,6 +148,11 @@ class FretboardControls extends StatelessWidget {
                       onUpdate(instance.copyWith(chordInversion: inversion));
                     },
                   ),
+                )
+              else if (_isUnimplementedChordMode(instance.viewMode))
+                Expanded(
+                  flex: 2,
+                  child: _buildUnimplementedVariationSelector(context, instance.viewMode),
                 )
               else
                 const Expanded(flex: 2, child: SizedBox()),
@@ -156,7 +166,7 @@ class FretboardControls extends StatelessWidget {
               Expanded(
                 child: OctaveSelector(
                   selectedOctaves: instance.selectedOctaves,
-                  isChordMode: instance.viewMode == ViewMode.chords, // FIXED: Added required parameter
+                  isChordMode: _isAnyChordMode(instance.viewMode),
                   onChanged: (octaves) {
                     onUpdate(instance.copyWith(selectedOctaves: octaves));
                   },
@@ -167,8 +177,8 @@ class FretboardControls extends StatelessWidget {
                 Expanded(
                   child: IntervalSelector(
                     selectedIntervals: instance.selectedIntervals,
-                    selectedOctaves: instance.selectedOctaves,
-                    onChanged: (intervals) { // FIXED: Changed from onIntervalsChanged to onChanged
+                    selectedOctaves: instance.selectedOctaves, // FIXED: Added missing parameter
+                    onChanged: (intervals) {
                       onUpdate(instance.copyWith(selectedIntervals: intervals));
                     },
                   ),
@@ -177,35 +187,48 @@ class FretboardControls extends StatelessWidget {
                 const Expanded(child: SizedBox()),
             ],
           ),
-
-          // Tuning selector
           const SizedBox(height: 12),
+
+          // Third row: Advanced settings
           Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        const Text('Tuning',
-                            style: TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w500)),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${instance.stringCount} strings',
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.blue.shade700),
-                        ),
-                      ],
-                    ),
+                    const Text('Tuning',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 4),
                     TuningSelector(
                       tuning: instance.tuning,
-                      onChanged: (tuning) { // FIXED: Changed from onTuningChanged to onChanged, removed stringCount
+                      onChanged: (tuning) { // FIXED: Changed from onTuningChanged to onChanged
                         onUpdate(instance.copyWith(
                           tuning: tuning,
-                          stringCount: tuning.length, // Update string count based on tuning length
+                          stringCount: tuning.length,
+                        ));
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Fret Range',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 4),
+                    _FretRangeSlider( // RESTORED: Use slider instead of dropdowns
+                      start: instance.visibleFretStart,
+                      end: instance.visibleFretEnd,
+                      maxFrets: globalFretCount,
+                      onChanged: (start, end) {
+                        onUpdate(instance.copyWith(
+                          visibleFretStart: start,
+                          visibleFretEnd: end,
                         ));
                       },
                     ),
@@ -214,32 +237,94 @@ class FretboardControls extends StatelessWidget {
               ),
             ],
           ),
-
-          // Improved fret range selector
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _FretRangeSelector(
-                  visibleFretStart: instance.visibleFretStart,
-                  visibleFretEnd: instance.visibleFretEnd,
-                  maxFrets: globalFretCount, // Use actual global fret count
-                  onChanged: (start, end) {
-                    onUpdate(instance.copyWith(
-                      visibleFretStart: start,
-                      visibleFretEnd: end,
-                    ));
-                  },
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
+
+  // Helper methods
+  bool _isAnyChordMode(ViewMode viewMode) {
+    return viewMode == ViewMode.chordInversions ||
+           viewMode == ViewMode.openChords ||
+           viewMode == ViewMode.barreChords ||
+           viewMode == ViewMode.advancedChords;
+  }
+
+  bool _isUnimplementedChordMode(ViewMode viewMode) {
+    return viewMode == ViewMode.openChords ||
+           viewMode == ViewMode.barreChords ||
+           viewMode == ViewMode.advancedChords;
+  }
+
+  Widget _buildUnimplementedSelector(BuildContext context, ViewMode viewMode) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('${viewMode.displayName.split(' ').first} Type',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 4),
+        Container(
+          height: 40,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(4),
+            color: Colors.grey.shade50,
+          ),
+          child: const Center(
+            child: Text(
+              'Coming Soon',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUnimplementedVariationSelector(BuildContext context, ViewMode viewMode) {
+    String label = 'Variation';
+    if (viewMode == ViewMode.openChords) {
+      label = 'Position';
+    } else if (viewMode == ViewMode.barreChords) {
+      label = 'Barre Type';
+    } else if (viewMode == ViewMode.advancedChords) {
+      label = 'Extension';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 4),
+        Container(
+          height: 40,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(4),
+            color: Colors.grey.shade50,
+          ),
+          child: const Center(
+            child: Text(
+              'Coming Soon',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
+// Chord inversion selector widget
 class _ChordInversionSelector extends StatelessWidget {
   final String chordType;
   final ChordInversion value;
@@ -254,11 +339,7 @@ class _ChordInversionSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chord = Chord.get(chordType);
-    if (chord == null) return const SizedBox();
-
-    final availableInversions = chord.availableInversions;
-    final currentInversion =
-        availableInversions.contains(value) ? value : ChordInversion.root;
+    final availableInversions = chord?.availableInversions ?? [ChordInversion.root];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -267,14 +348,16 @@ class _ChordInversionSelector extends StatelessWidget {
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
         const SizedBox(height: 4),
         DropdownButton<ChordInversion>(
-          value: currentInversion,
+          value: availableInversions.contains(value) ? value : availableInversions.first,
           isExpanded: true,
           underline: const SizedBox(),
           items: availableInversions
               .map((inversion) => DropdownMenuItem(
                     value: inversion,
-                    child: Text(inversion.displayName,
-                        style: const TextStyle(fontSize: 12)),
+                    child: Text(
+                      inversion.displayName,
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ))
               .toList(),
           onChanged: (inversion) {
@@ -288,58 +371,47 @@ class _ChordInversionSelector extends StatelessWidget {
   }
 }
 
-// IMPROVED: Dual-handle range slider for fret range selection
-class _FretRangeSelector extends StatelessWidget {
-  final int visibleFretStart;
-  final int visibleFretEnd;
+// Fret range slider widget - RESTORED from original implementation
+class _FretRangeSlider extends StatelessWidget {
+  final int start;
+  final int end;
   final int maxFrets;
   final Function(int, int) onChanged;
 
-  const _FretRangeSelector({
-    required this.visibleFretStart,
-    required this.visibleFretEnd,
+  const _FretRangeSlider({
+    required this.start,
+    required this.end,
     required this.maxFrets,
     required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Ensure values are within bounds
-    final safeStart = visibleFretStart.clamp(0, maxFrets - 1);
-    final safeEnd = visibleFretEnd.clamp(safeStart + 1, maxFrets);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Range display
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Visible Fret Range',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            Text(
+              'Fret $start',
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
             Text(
-              '$safeStart - $safeEnd',
-              style: TextStyle(
-                fontSize: 11, 
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).primaryColor,
-              ),
+              'Fret $end',
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        
-        // Dual-handle range slider
+        const SizedBox(height: 4),
+        // Range slider
         RangeSlider(
-          values: RangeValues(safeStart.toDouble(), safeEnd.toDouble()),
-          min: 0,
+          values: RangeValues(start.toDouble(), end.toDouble()),
+          min: 0.0,
           max: maxFrets.toDouble(),
           divisions: maxFrets,
-          labels: RangeLabels(
-            safeStart.toString(),
-            safeEnd.toString(),
-          ),
+          labels: RangeLabels('$start', '$end'),
           onChanged: (RangeValues values) {
             final newStart = values.start.round();
             final newEnd = values.end.round();
@@ -349,30 +421,8 @@ class _FretRangeSelector extends StatelessWidget {
               onChanged(newStart, newEnd);
             }
           },
-        ),
-        
-        // Helper text showing fret range info
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Range: ${safeEnd - safeStart} frets',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              Text(
-                'Max: $maxFrets frets',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ),
+          activeColor: Theme.of(context).primaryColor,
+          inactiveColor: Theme.of(context).primaryColor.withOpacity(0.3),
         ),
       ],
     );

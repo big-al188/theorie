@@ -1,13 +1,12 @@
-// lib/models/fretboard/fretboard_config.dart - Fixed octave calculation
+// lib/models/fretboard/fretboard_config.dart
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
-import '../../constants/app_constants.dart';
 import '../music/chord.dart';
 import '../music/note.dart';
-import '../../controllers/music_controller.dart';
 import '../../controllers/fretboard_controller.dart';
+import '../../controllers/music_controller.dart';
+import '../../utils/color_utils.dart';
 
-/// Configuration for a fretboard display
+/// Configuration for fretboard display and behavior
 class FretboardConfig {
   final int stringCount;
   final int fretCount;
@@ -25,8 +24,8 @@ class FretboardConfig {
   final bool showNoteNames;
   final Set<int> selectedOctaves;
   final Set<int> selectedIntervals;
-  final double? width;
-  final double? height;
+  final double width;
+  final double height;
   final EdgeInsets padding;
   final int visibleFretStart;
   final int visibleFretEnd;
@@ -42,48 +41,38 @@ class FretboardConfig {
     required this.modeIndex,
     required this.chordType,
     required this.chordInversion,
-    this.showScaleStrip = false,
-    this.showFretboard = true,
-    this.showChordName = false,
-    this.showNoteNames = false,
-    this.selectedOctaves = const {3},
-    this.selectedIntervals = const {0},
-    this.width,
-    this.height,
-    this.padding = const EdgeInsets.all(16),
-    this.visibleFretStart = 0,
-    int? visibleFretEnd,
-  }) : visibleFretEnd = visibleFretEnd ?? fretCount;
-
-  /// Create default configuration
-  factory FretboardConfig.defaults() {
-    return FretboardConfig(
-      stringCount: AppConstants.defaultStringCount,
-      fretCount: AppConstants.defaultFretCount,
-      tuning: const ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
-      layout: FretboardLayout.rightHandedBassTop,
-      root: AppConstants.defaultRoot,
-      viewMode: ViewMode.intervals,
-      scale: AppConstants.defaultScale,
-      modeIndex: 0,
-      chordType: 'major',
-      chordInversion: ChordInversion.root,
-    );
-  }
+    required this.showScaleStrip,
+    required this.showFretboard,
+    required this.showChordName,
+    required this.showNoteNames,
+    required this.selectedOctaves,
+    required this.selectedIntervals,
+    required this.width,
+    required this.height,
+    required this.padding,
+    required this.visibleFretStart,
+    required this.visibleFretEnd,
+  });
 
   // Derived properties
   bool get isLeftHanded => layout.isLeftHanded;
   bool get isBassTop => layout.isBassTop;
   bool get isScaleMode => viewMode == ViewMode.scales;
   bool get isIntervalMode => viewMode == ViewMode.intervals;
-  bool get isChordMode => viewMode == ViewMode.chords;
+  bool get isChordInversionMode => viewMode == ViewMode.chordInversions;
+  bool get isOpenChordMode => viewMode == ViewMode.openChords;
+  bool get isBarreChordMode => viewMode == ViewMode.barreChords;
+  bool get isAdvancedChordMode => viewMode == ViewMode.advancedChords;
+  
+  // Legacy support - maps to chord inversion mode
+  bool get isChordMode => isChordInversionMode;
+  
+  // General chord mode check for any chord-related mode
+  bool get isAnyChordMode => isChordInversionMode || isOpenChordMode || isBarreChordMode || isAdvancedChordMode;
 
-  // FIXED: Octave count calculation now respects user's selection
-  int get octaveCount {
-    // Always return the actual count of selected octaves
-    // Don't override based on chord voicing calculations
-    return selectedOctaves.isEmpty ? 1 : selectedOctaves.length;
-  }
+  int get octaveSpan => selectedOctaves.isEmpty
+      ? 1 
+      : selectedOctaves.length;
 
   int get maxSelectedOctave => selectedOctaves.isEmpty
       ? 3
@@ -93,7 +82,7 @@ class FretboardConfig {
       : selectedOctaves.reduce((a, b) => a < b ? a : b);
 
   int get selectedChordOctave {
-    if (!isChordMode || selectedOctaves.isEmpty) return 3;
+    if (!isAnyChordMode || selectedOctaves.isEmpty) return 3;
     return selectedOctaves.first;
   }
 
@@ -191,9 +180,16 @@ enum FretboardLayout {
 /// View modes for the fretboard
 enum ViewMode {
   intervals('Intervals'),
-  scales('Scales'),
-  chords('Chords');
+  scales('Scales'), 
+  chordInversions('Chord Inversions'),
+  openChords('Open Chords'),
+  barreChords('Barre Chords'),
+  advancedChords('Advanced Chords');
 
   const ViewMode(this.displayName);
   final String displayName;
+  
+  // Helper methods for mode categories
+  bool get isChordMode => this == chordInversions || this == openChords || this == barreChords || this == advancedChords;
+  bool get isImplemented => this == intervals || this == scales || this == chordInversions;
 }

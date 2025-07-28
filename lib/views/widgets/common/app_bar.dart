@@ -291,15 +291,21 @@ class ViewModeToggle extends StatelessWidget {
     );
   }
 
-  /// Get appropriate icon for each view mode
+  /// Get appropriate icon for each view mode - UPDATED for new ViewMode structure
   IconData _getIconForViewMode(ViewMode mode) {
     switch (mode) {
       case ViewMode.intervals:
         return Icons.analytics;
       case ViewMode.scales:
         return Icons.music_note;
-      case ViewMode.chords:
+      case ViewMode.chordInversions:
         return Icons.piano;
+      case ViewMode.openChords:
+        return Icons.audio_file;
+      case ViewMode.barreChords:
+        return Icons.horizontal_rule;
+      case ViewMode.advancedChords:
+        return Icons.auto_awesome;
     }
   }
 }

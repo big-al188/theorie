@@ -1,9 +1,10 @@
-// lib/views/pages/home_page.dart - Fixed mobile landscape layout with TheorieAppBar
+// lib/views/pages/home_page.dart - Updated for new chord modes
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../constants/app_constants.dart';
 import '../../constants/ui_constants.dart';
+import '../../models/fretboard/fretboard_config.dart';
 import '../widgets/controls/root_selector.dart';
 import '../widgets/controls/view_mode_selector.dart';
 import '../widgets/controls/scale_selector.dart';
@@ -190,8 +191,8 @@ class HomePage extends StatelessWidget {
           builder: (context, state, child) {
             if (state.isScaleMode) {
               return _buildSmallSettingItem(context, 'Scale:', const ScaleSelector());
-            } else if (state.isChordMode) {
-              return _buildChordModeInfo(context, compact: true);
+            } else if (_isAnyChordMode(state.viewMode)) {
+              return _buildChordModeInfo(context, state.viewMode, compact: true);
             }
             return const SizedBox.shrink();
           },
@@ -240,8 +241,8 @@ class HomePage extends StatelessWidget {
                 'Scale:',
                 const SizedBox(width: double.infinity, child: ScaleSelector()),
               );
-            } else if (state.isChordMode) {
-              return _buildChordModeInfo(context, compact: true);
+            } else if (_isAnyChordMode(state.viewMode)) {
+              return _buildChordModeInfo(context, state.viewMode, compact: true);
             }
             return const SizedBox.shrink();
           },
@@ -290,8 +291,8 @@ class HomePage extends StatelessWidget {
                   const SizedBox(height: 16),
                 ],
               );
-            } else if (state.isChordMode) {
-              return _buildChordModeInfo(context);
+            } else if (_isAnyChordMode(state.viewMode)) {
+              return _buildChordModeInfo(context, state.viewMode);
             }
             return const SizedBox.shrink();
           },
@@ -300,7 +301,33 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildChordModeInfo(BuildContext context, {bool compact = false}) {
+  // Helper method to check if a ViewMode is any chord mode
+  bool _isAnyChordMode(ViewMode viewMode) {
+    return viewMode == ViewMode.chordInversions ||
+           viewMode == ViewMode.openChords ||
+           viewMode == ViewMode.barreChords ||
+           viewMode == ViewMode.advancedChords;
+  }
+
+  Widget _buildChordModeInfo(BuildContext context, ViewMode viewMode, {bool compact = false}) {
+    String message;
+    IconData icon;
+    Color? iconColor;
+
+    if (viewMode == ViewMode.chordInversions) {
+      message = 'Open fretboard for chord inversions';
+      icon = Icons.music_note;
+      iconColor = Theme.of(context).colorScheme.primary;
+    } else if (!viewMode.isImplemented) {
+      message = '${viewMode.displayName} mode coming soon!';
+      icon = Icons.construction;
+      iconColor = Theme.of(context).colorScheme.secondary;
+    } else {
+      message = 'Open fretboard for chord selection';
+      icon = Icons.info_outline;
+      iconColor = Theme.of(context).colorScheme.primary;
+    }
+
     return Container(
       padding: EdgeInsets.all(compact ? 8.0 : 12.0),
       decoration: BoxDecoration(
@@ -314,14 +341,14 @@ class HomePage extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.info_outline,
+            icon,
             size: compact ? 16 : 20,
-            color: Theme.of(context).colorScheme.primary,
+            color: iconColor,
           ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
-              'Open fretboard for chord selection',
+              message,
               style: TextStyle(
                 fontSize: compact ? 12.0 : 14.0,
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),

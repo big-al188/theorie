@@ -1,4 +1,4 @@
-// lib/models/app_state.dart - Updated for separated user models
+// lib/models/app_state.dart - Updated for new ViewMode structure
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
@@ -98,12 +98,16 @@ class AppState extends ChangeNotifier {
   Set<int> get selectedIntervals => Set.unmodifiable(_selectedIntervals);
   bool get hasSelectedIntervals => _selectedIntervals.isNotEmpty;
 
-  // Derived getters
+  // Derived getters - UPDATED for new ViewMode structure
   bool get isLeftHanded => _defaultLayout.isLeftHanded;
   bool get isBassTop => _defaultLayout.isBassTop;
   bool get isScaleMode => _viewMode == ViewMode.scales;
   bool get isIntervalMode => _viewMode == ViewMode.intervals;
-  bool get isChordMode => _viewMode == ViewMode.chords;
+  bool get isChordMode => _viewMode.isChordMode; // UPDATED: Use ViewMode helper
+  bool get isChordInversionMode => _viewMode == ViewMode.chordInversions;
+  bool get isOpenChordMode => _viewMode == ViewMode.openChords;
+  bool get isBarreChordMode => _viewMode == ViewMode.barreChords;
+  bool get isAdvancedChordMode => _viewMode == ViewMode.advancedChords;
 
   String get effectiveRoot => isScaleMode
       ? MusicController.getModeRoot(_root, _scale, _modeIndex)
@@ -478,7 +482,7 @@ class AppState extends ChangeNotifier {
     _defaultViewMode = mode;
     if (mode == ViewMode.intervals) {
       _defaultSelectedIntervals = {0};
-    } else if (mode == ViewMode.chords) {
+    } else if (mode.isChordMode) { // UPDATED: Use ViewMode helper
       _ensureSingleOctaveForDefaults();
     }
     saveUserPreferences();
@@ -501,7 +505,7 @@ class AppState extends ChangeNotifier {
   void setDefaultSelectedOctaves(Set<int> octaves) {
     final validOctaves = octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
     if (validOctaves.isNotEmpty) {
-      if (_defaultViewMode == ViewMode.chords && validOctaves.length > 1) {
+      if (_defaultViewMode.isChordMode && validOctaves.length > 1) { // UPDATED: Use ViewMode helper
         _defaultSelectedOctaves = {validOctaves.first};
       } else {
         _defaultSelectedOctaves = validOctaves;
@@ -563,7 +567,7 @@ class AppState extends ChangeNotifier {
     _viewMode = mode;
     if (mode == ViewMode.intervals) {
       _selectedIntervals = {0};
-    } else if (mode == ViewMode.chords) {
+    } else if (mode.isChordMode) { // UPDATED: Use ViewMode helper
       _ensureSingleOctaveForCurrent();
     }
     notifyListeners();
@@ -640,7 +644,7 @@ class AppState extends ChangeNotifier {
   void setSelectedOctaves(Set<int> octaves) {
     final validOctaves = octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
     if (validOctaves.isNotEmpty) {
-      if (isChordMode && validOctaves.length > 1) {
+      if (isChordMode && validOctaves.length > 1) { // UPDATED: Use isChordMode getter
         _selectedOctaves = {validOctaves.first};
       } else {
         _selectedOctaves = validOctaves;
@@ -652,7 +656,7 @@ class AppState extends ChangeNotifier {
   void toggleOctave(int octave) {
     if (octave < 0 || octave > AppConstants.maxOctaves) return;
 
-    if (isChordMode) {
+    if (isChordMode) { // UPDATED: Use isChordMode getter
       _selectedOctaves = {octave};
       notifyListeners();
       return;
@@ -672,7 +676,7 @@ class AppState extends ChangeNotifier {
   void setOctaveRange(int start, int end) {
     if (start < 0 || end > AppConstants.maxOctaves || start > end) return;
 
-    if (isChordMode) {
+    if (isChordMode) { // UPDATED: Use isChordMode getter
       _selectedOctaves = {start};
     } else {
       final newOctaves = <int>{};
@@ -685,7 +689,7 @@ class AppState extends ChangeNotifier {
   }
 
   void selectAllOctaves() {
-    if (isChordMode) return;
+    if (isChordMode) return; // UPDATED: Use isChordMode getter
     _selectedOctaves = List.generate(AppConstants.maxOctaves + 1, (i) => i).toSet();
     notifyListeners();
   }
