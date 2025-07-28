@@ -107,6 +107,9 @@ class _FretboardWidgetState extends State<FretboardWidget> {
       BuildContext context, double boardHeight, double screenWidth) {
     // Use responsive top padding for fret labels
     final topPadding = ResponsiveConstants.getFretLabelPadding(screenWidth);
+    
+    // Get theme information for painter
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Listener(
       onPointerSignal: _handlePointerSignal,
@@ -125,6 +128,7 @@ class _FretboardWidgetState extends State<FretboardWidget> {
               config: widget.config,
               highlightMap: FretboardController.getHighlightMap(widget.config),
               screenWidth: screenWidth, // Pass screen width to painter
+              isDarkMode: isDarkMode, // FIXED: Pass theme information
             ),
           ),
         ),
@@ -152,6 +156,9 @@ class _FretboardWidgetState extends State<FretboardWidget> {
   ) {
     // Use responsive top padding for fret labels
     final topPadding = ResponsiveConstants.getFretLabelPadding(screenWidth);
+    
+    // Get theme information for painter
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Column(
       children: [
@@ -174,6 +181,7 @@ class _FretboardWidgetState extends State<FretboardWidget> {
                   highlightMap:
                       FretboardController.getHighlightMap(widget.config),
                   screenWidth: screenWidth, // Pass screen width to painter
+                  isDarkMode: isDarkMode, // FIXED: Pass theme information
                 ),
               ),
             ),
@@ -293,54 +301,44 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     final headWidth = width * UIConstants.headWidthRatio;
     final availableWidth =
         width - (widget.config.visibleFretStart == 0 ? headWidth : 0);
+
     final correctedFretCount =
         FretboardController.getCorrectedFretCount(widget.config);
     final fretWidth = availableWidth / correctedFretCount;
 
-    // Use responsive string height for calculations
+    // Use responsive string height
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
 
-    // Determine which string was clicked with proper centering
-    // Strings are drawn at positions: stringHeight, 2*stringHeight, 3*stringHeight, etc.
-    // Click regions should be centered around these positions
-    final visualRow = (adjustedY / stringHeight).floor();
+    // Calculate string and fret indices
+    final stringIndex = (adjustedY / stringHeight).floor() - 1;
 
-    // Validate string index with bounds checking
-    if (visualRow < 0 || visualRow >= widget.config.stringCount) {
-      return; // Click outside valid string range
-    }
+    if (stringIndex < 0 || stringIndex >= widget.config.stringCount) return;
 
-    // Adjust for bass top/bottom
-    final actualStringIndex = widget.config.isBassTop
-        ? visualRow
-        : widget.config.stringCount - 1 - visualRow;
+    double fretStartX = widget.config.visibleFretStart == 0 ? headWidth : 0;
+    final relativeX = adjustedX - fretStartX;
 
-    // Determine which fret was clicked with precise boundaries
-    int fretIndex;
-
-    if (widget.config.visibleFretStart == 0) {
-      // With headstock visible
-      if (adjustedX < headWidth) {
-        // Clicked on headstock - open string (fret 0)
-        fretIndex = 0;
-      } else {
-        // Calculate fret from the nut
-        final fretPositionFromNut = (adjustedX - headWidth) / fretWidth;
-        fretIndex = fretPositionFromNut.floor() + 1;
-
-        // Clamp to valid range
-        fretIndex = fretIndex.clamp(1, widget.config.visibleFretEnd);
+    if (relativeX < 0) {
+      // Tapped in headstock area (open string)
+      if (widget.config.visibleFretStart == 0) {
+        widget.onFretTap!(stringIndex, 0);
       }
     } else {
-      // No headstock - calculate from visible start
-      final fretPositionInView = adjustedX / fretWidth;
-      fretIndex = widget.config.visibleFretStart + fretPositionInView.floor();
+      // Calculate which fret was tapped
+      final fretIndex = (relativeX / fretWidth).floor();
 
-      // Clamp to valid range
-      fretIndex = fretIndex.clamp(
-          widget.config.visibleFretStart, widget.config.visibleFretEnd);
+      if (widget.config.visibleFretStart == 0) {
+        // Standard mode: fret numbers start from 1
+        final actualFret = fretIndex + 1;
+        if (actualFret <= widget.config.visibleFretEnd) {
+          widget.onFretTap!(stringIndex, actualFret);
+        }
+      } else {
+        // Zoomed mode: calculate actual fret based on visible range
+        final actualFret = widget.config.visibleFretStart + fretIndex;
+        if (actualFret <= widget.config.visibleFretEnd) {
+          widget.onFretTap!(stringIndex, actualFret);
+        }
+      }
     }
-
-    widget.onFretTap!(actualStringIndex, fretIndex);
   }
 }

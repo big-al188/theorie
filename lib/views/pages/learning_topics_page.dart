@@ -124,6 +124,50 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
     );
   }
 
+  /// ADDED: Helper method to get progress text color based on theme mode
+  Color _getProgressTextColor(BuildContext context) {
+    // Always use the same gray color for consistency
+    return Colors.grey.shade600;
+  }
+
+  /// ADDED: Helper method to get percentage color based on theme mode and completion
+  Color _getPercentageColor(BuildContext context, double progressPercentage) {
+    // Completed topics are always green
+    if (progressPercentage == 1.0) {
+      return Colors.green;
+    }
+    
+    // Check if we're in dark mode
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    
+    if (isDarkMode) {
+      // Dark mode - use same gray as topics text
+      return Colors.grey.shade600;
+    } else {
+      // Light mode - use primary color
+      return Theme.of(context).primaryColor;
+    }
+  }
+
+  /// ADDED: Helper method to get progress bar color based on theme mode
+  Color _getProgressBarColor(BuildContext context, double progressPercentage) {
+    // Completed progress is always green
+    if (progressPercentage == 1.0) {
+      return Colors.green;
+    }
+    
+    // Check if we're in dark mode
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    
+    if (isDarkMode) {
+      // Dark mode - use blue for progress bar
+      return Colors.blue;
+    } else {
+      // Light mode - use primary color
+      return Theme.of(context).primaryColor;
+    }
+  }
+
   Widget _buildSectionStats(BuildContext context, DeviceType deviceType) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
@@ -208,7 +252,7 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
                           '$completedTopics / $totalTopics topics completed',
                           style: TextStyle(
                             fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                            color: Colors.grey.shade600,
+                            color: _getProgressTextColor(context),
                           ),
                         ),
                         Text(
@@ -216,7 +260,7 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
                           style: TextStyle(
                             fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
                             fontWeight: FontWeight.bold,
-                            color: progressPercentage == 1.0 ? Colors.green : Theme.of(context).primaryColor,
+                            color: _getPercentageColor(context, progressPercentage),
                           ),
                         ),
                       ],
@@ -234,7 +278,7 @@ class _LearningTopicsPageState extends State<LearningTopicsPage> {
                           value: progressPercentage,
                           backgroundColor: Colors.transparent,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            progressPercentage == 1.0 ? Colors.green : Theme.of(context).primaryColor,
+                            _getProgressBarColor(context, progressPercentage),
                           ),
                           minHeight: 8,
                         ),

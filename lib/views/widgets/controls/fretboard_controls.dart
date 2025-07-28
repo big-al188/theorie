@@ -16,11 +16,13 @@ import 'tuning_selector.dart';
 class FretboardControls extends StatelessWidget {
   final FretboardInstance instance;
   final Function(FretboardInstance) onUpdate;
+  final int globalFretCount; // Added for proper fret count handling
 
   const FretboardControls({
     super.key,
     required this.instance,
     required this.onUpdate,
+    required this.globalFretCount, // Added parameter
   });
 
   @override
@@ -77,18 +79,9 @@ class FretboardControls extends StatelessWidget {
                         final newIntervals = mode == ViewMode.intervals
                             ? {0}
                             : instance.selectedIntervals;
-                        var newOctaves = instance.selectedOctaves;
-
-                        // Ensure single octave for chord mode
-                        if (mode == ViewMode.chords && newOctaves.length > 1) {
-                          newOctaves = {newOctaves.first};
-                        }
-
                         onUpdate(instance.copyWith(
                           viewMode: mode,
                           selectedIntervals: newIntervals,
-                          selectedOctaves: newOctaves,
-                          chordInversion: ChordInversion.root,
                         ));
                       },
                     ),
@@ -97,25 +90,18 @@ class FretboardControls extends StatelessWidget {
               ),
               const SizedBox(width: 8),
 
-              // Scale/Chord selector based on mode
+              // Scale/Chord selector
               if (instance.viewMode == ViewMode.scales)
                 Expanded(
                   flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Scale',
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w500)),
-                      const SizedBox(height: 4),
-                      ScaleSelector(
-                        value: instance.scale,
-                        onChanged: (scale) {
-                          onUpdate(
-                              instance.copyWith(scale: scale, modeIndex: 0));
-                        },
-                      ),
-                    ],
+                  child: ScaleSelector(
+                    value: instance.scale,
+                    onChanged: (scale) {
+                      onUpdate(instance.copyWith(
+                        scale: scale,
+                        modeIndex: 0,
+                      ));
+                    },
                   ),
                 )
               else if (instance.viewMode == ViewMode.chords)
@@ -164,97 +150,72 @@ class FretboardControls extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // Tuning selector
-          Row(
-            children: [
-              Expanded(
-                flex: 5,
-                child: TuningSelector(
-                  tuning: instance.tuning,
-                  onChanged: (tuning) {
-                    onUpdate(instance.copyWith(
-                      tuning: tuning,
-                      stringCount: tuning.length,
-                    ));
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Octave selector
+          // Second row: Octaves and Intervals
           Row(
             children: [
               Expanded(
                 child: OctaveSelector(
                   selectedOctaves: instance.selectedOctaves,
-                  isChordMode: instance.viewMode == ViewMode.chords,
+                  isChordMode: instance.viewMode == ViewMode.chords, // FIXED: Added required parameter
                   onChanged: (octaves) {
                     onUpdate(instance.copyWith(selectedOctaves: octaves));
                   },
                 ),
               ),
-            ],
-          ),
-          // Interval selector (only for interval mode)
-          if (instance.viewMode == ViewMode.intervals) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
+              const SizedBox(width: 16),
+              if (instance.viewMode == ViewMode.intervals)
                 Expanded(
                   child: IntervalSelector(
                     selectedIntervals: instance.selectedIntervals,
                     selectedOctaves: instance.selectedOctaves,
-                    onChanged: (intervals) {
-                      // Check if we should change root
-                      if (intervals.length == 1 && !intervals.contains(0)) {
-                        final referenceOctave = instance.selectedOctaves.isEmpty
-                            ? 3
-                            : instance.selectedOctaves.reduce((a, b) => a < b ? a : b);
-                        final rootNote = Note.fromString('${instance.root}$referenceOctave');
-                        final newRootNote = rootNote.transpose(intervals.first);
-                        
-                        debugPrint('FretboardControls: Single interval selected, changing root to ${newRootNote.name}');
-                        
-                        onUpdate(instance.copyWith(
-                          root: newRootNote.name,
-                          selectedOctaves: {newRootNote.octave},
-                          selectedIntervals: {0},
-                        ));
-                      } else {
-                        onUpdate(instance.copyWith(selectedIntervals: intervals));
-                      }
+                    onChanged: (intervals) { // FIXED: Changed from onIntervalsChanged to onChanged
+                      onUpdate(instance.copyWith(selectedIntervals: intervals));
                     },
                   ),
-                ),
-              ],
-            ),
-            // Add helper text
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Tip: When only one interval is selected, it becomes the new root note.',
-                      style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+                )
+              else
+                const Expanded(child: SizedBox()),
+            ],
+          ),
 
-          // Fret range selector
+          // Tuning selector
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('Tuning',
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w500)),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${instance.stringCount} strings',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.blue.shade700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    TuningSelector(
+                      tuning: instance.tuning,
+                      onChanged: (tuning) { // FIXED: Changed from onTuningChanged to onChanged, removed stringCount
+                        onUpdate(instance.copyWith(
+                          tuning: tuning,
+                          stringCount: tuning.length, // Update string count based on tuning length
+                        ));
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // Improved fret range selector
           const SizedBox(height: 12),
           Row(
             children: [
@@ -262,7 +223,7 @@ class FretboardControls extends StatelessWidget {
                 child: _FretRangeSelector(
                   visibleFretStart: instance.visibleFretStart,
                   visibleFretEnd: instance.visibleFretEnd,
-                  maxFrets: 24, // This should come from global state
+                  maxFrets: globalFretCount, // Use actual global fret count
                   onChanged: (start, end) {
                     onUpdate(instance.copyWith(
                       visibleFretStart: start,
@@ -327,6 +288,7 @@ class _ChordInversionSelector extends StatelessWidget {
   }
 }
 
+// IMPROVED: Dual-handle range slider for fret range selection
 class _FretRangeSelector extends StatelessWidget {
   final int visibleFretStart;
   final int visibleFretEnd;
@@ -342,43 +304,75 @@ class _FretRangeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Ensure values are within bounds
+    final safeStart = visibleFretStart.clamp(0, maxFrets - 1);
+    final safeEnd = visibleFretEnd.clamp(safeStart + 1, maxFrets);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Visible Fret Range: $visibleFretStart-$visibleFretEnd',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Visible Fret Range',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+            Text(
+              '$safeStart - $safeEnd',
+              style: TextStyle(
+                fontSize: 11, 
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 4),
-        Text('Start Fret: $visibleFretStart',
-            style: const TextStyle(fontSize: 10)),
-        Slider(
-          value: visibleFretStart.toDouble(),
+        const SizedBox(height: 8),
+        
+        // Dual-handle range slider
+        RangeSlider(
+          values: RangeValues(safeStart.toDouble(), safeEnd.toDouble()),
           min: 0,
-          max: (maxFrets - 1).toDouble(),
-          divisions: maxFrets - 1,
-          onChanged: (value) {
-            final newStart = value.toInt();
-            if (newStart < visibleFretEnd) {
-              onChanged(newStart, visibleFretEnd);
+          max: maxFrets.toDouble(),
+          divisions: maxFrets,
+          labels: RangeLabels(
+            safeStart.toString(),
+            safeEnd.toString(),
+          ),
+          onChanged: (RangeValues values) {
+            final newStart = values.start.round();
+            final newEnd = values.end.round();
+            
+            // Ensure minimum range of 1 fret
+            if (newEnd > newStart) {
+              onChanged(newStart, newEnd);
             }
           },
         ),
-        const SizedBox(height: 4),
-        Text('End Fret: $visibleFretEnd', style: const TextStyle(fontSize: 10)),
-        Slider(
-          value: visibleFretEnd
-              .toDouble()
-              .clamp((visibleFretStart + 1).toDouble(), maxFrets.toDouble()),
-          min: (visibleFretStart + 1).toDouble(),
-          max: maxFrets.toDouble(),
-          divisions: maxFrets - visibleFretStart,
-          onChanged: (value) {
-            final newEnd = value.toInt();
-            if (newEnd > visibleFretStart && newEnd <= maxFrets) {
-              onChanged(visibleFretStart, newEnd);
-            }
-          },
+        
+        // Helper text showing fret range info
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Range: ${safeEnd - safeStart} frets',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              Text(
+                'Max: $maxFrets frets',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

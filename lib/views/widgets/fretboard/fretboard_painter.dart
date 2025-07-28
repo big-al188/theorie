@@ -15,11 +15,13 @@ class FretboardPainter extends CustomPainter {
   final FretboardConfig config;
   final Map<int, Color> highlightMap;
   final double screenWidth;
+  final bool isDarkMode; // ADDED: Theme information
 
   FretboardPainter({
     required this.config,
     required this.highlightMap,
     required this.screenWidth,
+    required this.isDarkMode, // ADDED: Theme parameter
   });
 
   @override
@@ -228,10 +230,13 @@ class FretboardPainter extends CustomPainter {
     // Use responsive font size for fret numbers
     final fontSize = ResponsiveConstants.getScaledFontSize(12.0, canvasWidth);
 
+    // FIXED: Use passed theme information instead of platform dispatcher
+    final fretNumberColor = isDarkMode ? Colors.grey.shade200 : Colors.black;
+
     final textPainter = TextPainter(
       text: TextSpan(
         text: '$fretNumber',
-        style: TextStyle(fontSize: fontSize, color: Colors.black),
+        style: TextStyle(fontSize: fontSize, color: fretNumberColor),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -271,16 +276,17 @@ class FretboardPainter extends CustomPainter {
         final tuningLabel = config.tuning[stringIndex];
 
         // Use responsive font size for tuning labels
-        final fontSize =
-            ResponsiveConstants.getScaledFontSize(14.0, canvasWidth);
+        final fontSize = ResponsiveConstants.getScaledFontSize(14.0, canvasWidth);
+
+        // FIXED: Use passed theme information instead of platform dispatcher
+        final tuningLabelColor = isDarkMode ? Colors.white : Colors.black;
 
         final textPainter = TextPainter(
           text: TextSpan(
             text: tuningLabel,
             style: TextStyle(
               fontSize: fontSize,
-              color:
-                  Colors.white, // FIXED: Always white for dark theme legibility
+              color: tuningLabelColor,
             ),
           ),
           textDirection: TextDirection.ltr,
@@ -602,6 +608,7 @@ class FretboardPainter extends CustomPainter {
   bool shouldRepaint(covariant FretboardPainter oldDelegate) {
     return oldDelegate.config != config ||
         oldDelegate.highlightMap != highlightMap ||
-        oldDelegate.screenWidth != screenWidth;
+        oldDelegate.screenWidth != screenWidth ||
+        oldDelegate.isDarkMode != isDarkMode; // ADDED: Theme check
   }
 }

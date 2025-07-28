@@ -267,6 +267,7 @@ class _FretboardCard extends StatelessWidget {
             FretboardControls(
               instance: finalFretboard,
               onUpdate: onUpdate,
+              globalFretCount: globalState.fretCount,
             ),
           Padding(
             padding: EdgeInsets.all(_getCardPadding()),

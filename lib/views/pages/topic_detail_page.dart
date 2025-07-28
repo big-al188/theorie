@@ -71,6 +71,48 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
     }
   }
 
+  /// ADDED: Helper method to get theme-aware body text colors (gray in dark mode)
+  Color _getBodyTextColor(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode ? Colors.grey.shade400 : Colors.grey.shade800;
+  }
+
+  /// ADDED: Helper method to get theme-aware header colors (white in dark mode)
+  Color _getHeaderColor(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode ? Colors.grey.shade200 : Theme.of(context).primaryColor;
+  }
+
+  /// ADDED: Helper method to get theme-aware secondary text colors
+  Color _getSecondaryTextColor(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
+  }
+
+  /// ADDED: Helper method to get theme-aware code background colors
+  Color _getCodeBackgroundColor(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode ? Colors.grey.shade800 : Colors.grey.shade100;
+  }
+
+  /// ADDED: Helper method to get theme-aware examples background colors
+  Color _getExamplesBackgroundColor(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode ? Colors.grey.shade800 : Colors.blue.shade50;
+  }
+
+  /// ADDED: Helper method to get theme-aware examples border colors
+  Color _getExamplesBorderColor(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode ? Colors.grey.shade600 : Colors.blue.shade200;
+  }
+
+  /// ADDED: Helper method to get theme-aware examples text colors
+  Color _getExamplesTextColor(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode ? Colors.grey.shade200 : Colors.blue.shade800;
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -93,20 +135,22 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
   }
 
   Widget _buildContent(BuildContext context, DeviceType deviceType, bool isLandscape) {
+    final padding = _getPadding(deviceType, isLandscape);
+
     return SingleChildScrollView(
       controller: _scrollController,
-      padding: EdgeInsets.all(_getPadding(deviceType, isLandscape)),
+      padding: EdgeInsets.all(padding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(context, deviceType),
           const SizedBox(height: 24),
-          _buildTopicContent(context, deviceType),
-          const SizedBox(height: 32),
+          _buildMainContent(context, deviceType),
+          const SizedBox(height: 24),
           _buildKeyPointsSection(context, deviceType),
           const SizedBox(height: 24),
           _buildExamplesSection(context, deviceType),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           _buildQuizSection(context, deviceType),
           const SizedBox(height: 100), // Extra space for floating button
         ],
@@ -114,98 +158,81 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
     );
   }
 
+  double _getPadding(DeviceType deviceType, bool isLandscape) {
+    if (isLandscape && deviceType == DeviceType.mobile) {
+      return 16.0;
+    }
+    return deviceType == DeviceType.mobile ? 20.0 : 32.0;
+  }
+
   Widget _buildHeader(BuildContext context, DeviceType deviceType) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
-        return FutureBuilder<UserProgress>(
-          future: _getUserProgress(appState),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Card(
-                elevation: 2,
-                child: Container(
-                  height: 80,
-                  padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-              );
-            }
+        // Check if topic is completed
+        final userProgress = appState.currentUserProgress;
+        final isCompleted = userProgress?.completedTopics.contains(widget.topic.id) ?? false;
 
-            final userProgress = snapshot.data ?? UserProgress.empty();
-            final isCompleted = userProgress.completedTopics.contains(widget.topic.id);
-
-            return Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: isCompleted
-                      ? Colors.green.withOpacity(0.3)
-                      : _getLevelColor(widget.section.level).withOpacity(0.3),
-                  width: 1,
-                ),
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.topic.title,
-                                style: TextStyle(
-                                  fontSize: deviceType == DeviceType.mobile ? 20.0 : 24.0,
-                                  fontWeight: FontWeight.bold,
-                                  color: isCompleted ? Colors.green.shade700 : null,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                widget.topic.description,
-                                style: TextStyle(
-                                  fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                                  color: Colors.grey.shade600,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          children: [
-                            Icon(
-                              isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                              color: isCompleted ? Colors.green : Colors.grey.shade400,
-                              size: deviceType == DeviceType.mobile ? 24.0 : 28.0,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${widget.topic.estimatedReadTime.inMinutes} min',
-                              style: TextStyle(
-                                fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.topic.title,
+                    style: TextStyle(
+                      fontSize: deviceType == DeviceType.mobile ? 24.0 : 28.0,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.secondary,
                     ),
-                  ],
+                  ),
                 ),
+                if (isCompleted)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.topic.description,
+              style: TextStyle(
+                fontSize: deviceType == DeviceType.mobile ? 16.0 : 18.0,
+                color: _getSecondaryTextColor(context),
+                height: 1.4,
               ),
-            );
-          },
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.schedule, size: 16, color: _getSecondaryTextColor(context)),
+                const SizedBox(width: 4),
+                Text(
+                  '${widget.topic.estimatedReadTime.inMinutes} min read',
+                  style: TextStyle(
+                    fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                    color: _getSecondaryTextColor(context),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildTopicContent(BuildContext context, DeviceType deviceType) {
+  Widget _buildMainContent(BuildContext context, DeviceType deviceType) {
     return Card(
       elevation: 1,
       shape: RoundedRectangleBorder(
@@ -224,7 +251,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
               ),
             ),
             const SizedBox(height: 16),
-            // FIXED: Display actual topic content using Markdown
+            // UPDATED: Display actual topic content using Markdown with theme-aware styling
             MarkdownBody(
               data: widget.topic.content,
               selectable: true,
@@ -232,49 +259,52 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                 h1: TextStyle(
                   fontSize: deviceType == DeviceType.mobile ? 20.0 : 24.0,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor,
+                  color: _getHeaderColor(context),
                 ),
                 h2: TextStyle(
                   fontSize: deviceType == DeviceType.mobile ? 18.0 : 22.0,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor,
+                  color: _getHeaderColor(context),
                 ),
                 h3: TextStyle(
                   fontSize: deviceType == DeviceType.mobile ? 16.0 : 20.0,
                   fontWeight: FontWeight.bold,
+                  color: _getHeaderColor(context),
                 ),
                 p: TextStyle(
                   fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
                   height: 1.6,
-                  color: Colors.grey.shade800,
+                  color: _getBodyTextColor(context),
                 ),
                 listBullet: TextStyle(
                   fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
                   height: 1.6,
+                  color: _getBodyTextColor(context),
                 ),
                 strong: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor,
+                  color: _getHeaderColor(context),
                 ),
-                em: const TextStyle(
+                em: TextStyle(
                   fontStyle: FontStyle.italic,
+                  color: _getBodyTextColor(context),
                 ),
                 code: TextStyle(
-                  backgroundColor: Colors.grey.shade100,
+                  backgroundColor: _getCodeBackgroundColor(context),
+                  color: _getBodyTextColor(context),
                   fontFamily: 'monospace',
                   fontSize: deviceType == DeviceType.mobile ? 13.0 : 15.0,
                 ),
                 codeblockDecoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: _getCodeBackgroundColor(context),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 blockquote: TextStyle(
-                  color: Colors.grey.shade600,
+                  color: _getSecondaryTextColor(context),
                   fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
                   fontStyle: FontStyle.italic,
                 ),
                 blockquoteDecoration: BoxDecoration(
-                  color: Colors.grey.shade50,
                   border: Border(
                     left: BorderSide(
                       color: Theme.of(context).primaryColor,
@@ -311,15 +341,15 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
               ),
             ),
             const SizedBox(height: 12),
-            ...widget.topic.keyPoints.map((point) => Padding(
+            ...widget.topic.keyPoints.asMap().entries.map((entry) => Padding(
               padding: const EdgeInsets.only(bottom: 8.0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
+                    margin: const EdgeInsets.only(top: 6, right: 12),
                     width: 6,
                     height: 6,
-                    margin: const EdgeInsets.only(top: 8, right: 12),
                     decoration: BoxDecoration(
                       color: Theme.of(context).primaryColor,
                       shape: BoxShape.circle,
@@ -327,11 +357,11 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                   ),
                   Expanded(
                     child: Text(
-                      point,
+                      entry.value,
                       style: TextStyle(
                         fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
                         height: 1.5,
-                        color: Colors.grey.shade700,
+                        color: _getBodyTextColor(context),
                       ),
                     ),
                   ),
@@ -370,16 +400,16 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: _getExamplesBackgroundColor(context),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
+                border: Border.all(color: _getExamplesBorderColor(context)),
               ),
               child: Text(
                 example,
                 style: TextStyle(
                   fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
                   height: 1.5,
-                  color: Colors.blue.shade800,
+                  color: _getExamplesTextColor(context),
                 ),
               ),
             )).toList(),
@@ -411,19 +441,18 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                   Text(
                     'Quiz Coming Soon',
                     style: TextStyle(
-                      fontSize: deviceType == DeviceType.mobile ? 16.0 : 18.0,
+                      fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
                       fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade700,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Text(
-                'A quiz for this topic is currently being developed.',
+                'A quiz for this topic is currently under development. Check back soon!',
                 style: TextStyle(
                   fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                  color: Colors.grey.shade600,
+                  color: _getSecondaryTextColor(context),
                 ),
               ),
             ],
@@ -434,136 +463,117 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
 
     return Consumer<AppState>(
       builder: (context, appState, child) {
-        return FutureBuilder<UserProgress>(
-          future: _getUserProgress(appState),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Card(
-                elevation: 2,
-                child: Container(
-                  height: 120,
-                  padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-              );
-            }
+        final userProgress = appState.currentUserProgress;
+        final isCompleted = userProgress?.completedTopics.contains(widget.topic.id) ?? false;
 
-            final userProgress = snapshot.data ?? UserProgress.empty();
-            final topicAttempts = userProgress.getTopicAttempts(widget.topic.id);
-            final hasAttempted = topicAttempts.isNotEmpty;
-            final latestResult = hasAttempted ? topicAttempts.last : null;
-
-            return Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        return Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(
+              color: isCompleted ? Colors.green.withOpacity(0.3) : Theme.of(context).primaryColor.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Test Your Knowledge',
-                                style: TextStyle(
-                                  fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                hasAttempted
-                                    ? 'Take the quiz again to improve your score'
-                                    : 'Ready to test what you\'ve learned about ${widget.topic.title}?',
-                                style: TextStyle(
-                                  fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                              if (latestResult != null) ...[
-                                const SizedBox(height: 12),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: _getScoreColor(latestResult.score * 100).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: _getScoreColor(latestResult.score * 100).withOpacity(0.3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    'Last Score: ${(latestResult.score * 100).round()}%',
-                                    style: TextStyle(
-                                      fontSize: deviceType == DeviceType.mobile ? 12.0 : 14.0,
-                                      fontWeight: FontWeight.w500,
-                                      color: _getScoreColor(latestResult.score * 100),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () => _startTopicQuiz(context),
-                          icon: const Icon(Icons.quiz, size: 20),
-                          label: Text(hasAttempted ? 'Retake Quiz' : 'Start Quiz'),
-                          style: ElevatedButton.styleFrom(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: deviceType == DeviceType.mobile ? 16.0 : 20.0,
-                              vertical: deviceType == DeviceType.mobile ? 12.0 : 16.0,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Icon(
+                      Icons.quiz,
+                      color: _getLevelColor(widget.section.level),
+                      size: 24,
                     ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Test Your Knowledge',
+                        style: TextStyle(
+                          fontSize: deviceType == DeviceType.mobile ? 18.0 : 20.0,
+                          fontWeight: FontWeight.bold,
+                          color: isCompleted ? Colors.green.shade700 : null,
+                        ),
+                      ),
+                    ),
+                    if (isCompleted)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.check_circle, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'PASSED',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 12),
+                Text(
+                  'Take a quick quiz to test your understanding of this topic.',
+                  style: TextStyle(
+                    fontSize: deviceType == DeviceType.mobile ? 14.0 : 16.0,
+                    color: _getSecondaryTextColor(context),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _navigateToQuiz(context),
+                    icon: const Icon(Icons.play_arrow, size: 20),
+                    label: Text(
+                      isCompleted ? 'Retake Quiz' : 'Take Quiz',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isCompleted ? Colors.green : _getLevelColor(widget.section.level),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
   }
 
-  Widget? _buildFloatingActionButton(BuildContext context, DeviceType deviceType) {
-    if (!_showFloatingButton) return null;
-
+  Widget _buildFloatingActionButton(BuildContext context, DeviceType deviceType) {
     final hasQuiz = QuizIntegrationService.isTopicQuizImplemented(
         widget.section.id, widget.topic.id);
 
-    if (!hasQuiz) return null;
+    if (!hasQuiz || !_showFloatingButton) {
+      return const SizedBox.shrink();
+    }
 
     return FloatingActionButton.extended(
-      onPressed: () => _startTopicQuiz(context),
+      onPressed: () => _navigateToQuiz(context),
       icon: const Icon(Icons.quiz),
-      label: const Text('Quiz'),
-      backgroundColor: Theme.of(context).primaryColor,
+      label: const Text('Take Quiz'),
+      backgroundColor: _getLevelColor(widget.section.level),
+      foregroundColor: Colors.white,
     );
-  }
-
-  Future<void> _startTopicQuiz(BuildContext context) async {
-    final quizController = context.read<QuizController>();
-    await QuizIntegrationService.navigateToTopicQuiz(
-      context: context,
-      topic: widget.topic,
-      section: widget.section,
-      quizController: quizController,
-    );
-  }
-
-  double _getPadding(DeviceType deviceType, bool isLandscape) {
-    if (isLandscape && deviceType == DeviceType.mobile) {
-      return 16.0;
-    }
-    return deviceType == DeviceType.mobile ? 20.0 : 32.0;
   }
 
   Color _getLevelColor(LearningLevel level) {
@@ -577,7 +587,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
       case LearningLevel.intermediate:
         return Colors.orange;
       case LearningLevel.advanced:
-        return Colors.deepOrange;
+        return Colors.red;
       case LearningLevel.professional:
         return Colors.purple;
       case LearningLevel.master:
@@ -587,21 +597,14 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
     }
   }
 
-  Color _getScoreColor(double percentage) {
-    if (percentage >= 90) return Colors.green;
-    if (percentage >= 80) return Colors.lightGreen;
-    if (percentage >= 70) return Colors.orange;
-    if (percentage >= 60) return Colors.deepOrange;
-    return Colors.red;
-  }
+  void _navigateToQuiz(BuildContext context) {
+    final quizController = Provider.of<QuizController>(context, listen: false);
 
-  Future<UserProgress> _getUserProgress(AppState appState) async {
-    try {
-      // Use ProgressTrackingService to get current progress
-      return await ProgressTrackingService.instance.getCurrentProgress();
-    } catch (e) {
-      // Fallback to cached progress in AppState
-      return appState.currentUserProgress ?? UserProgress.empty();
-    }
+    QuizIntegrationService.navigateToTopicQuiz(
+      context: context,
+      topic: widget.topic,
+      section: widget.section,
+      quizController: quizController,
+    );
   }
 }
