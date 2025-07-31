@@ -446,7 +446,6 @@ class FretboardPainter extends CustomPainter {
     }
   }
 
-  /// RENAMED: Original note marker for primary highlights (preserves all existing logic)
   void _drawPrimaryNoteMarker(
     Canvas canvas,
     double cx,
@@ -532,9 +531,21 @@ class FretboardPainter extends CustomPainter {
           isRoot = false;
         }
       } else {
-        // For scale and interval modes
-        final baseRootNote = Note.fromString('${config.effectiveRoot}0');
-        final interval = midi - baseRootNote.midi;
+        // FIXED: For scale and interval modes - use correct reference octave
+        Note referenceRootNote;
+        
+        if (config.isIntervalMode) {
+          // For interval mode, use the actual selected octave as reference
+          final referenceOctave = config.selectedOctaves.isEmpty 
+              ? 3 
+              : config.selectedOctaves.reduce((a, b) => a < b ? a : b);
+          referenceRootNote = Note.fromString('${config.root}$referenceOctave');
+        } else {
+          // For scale mode, use octave 0 with effective root
+          referenceRootNote = Note.fromString('${config.effectiveRoot}0');
+        }
+        
+        final interval = midi - referenceRootNote.midi;
         displayText = FretboardController.getIntervalLabel(interval);
         isRoot = interval % 12 == 0;
       }

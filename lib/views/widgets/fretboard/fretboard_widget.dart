@@ -278,19 +278,35 @@ class _FretboardWidgetState extends State<FretboardWidget> {
   }
 
 
+// Fixed _handleFretboardTap method for fretboard_widget.dart
+
 void _handleFretboardTap(BuildContext context, TapDownDetails details,
       double boardHeight, double screenWidth) {
     if (widget.onFretTap == null) return;
 
     final position = details.localPosition;
 
-    // Account for chord name height if shown
-    final chordNameHeight =
-        (widget.config.showChordName && widget.config.isChordMode) ? 30.0 : 0.0;
+    // FIXED: Calculate exact same offsets as used in painter
+    double topOffset = 0;
+    
+    // Calculate chord name offset exactly as in painter
+    if (widget.config.showChordName && widget.config.isChordMode) {
+      final chordName = widget.config.currentChordName;
+      if (chordName.isNotEmpty) {
+        // Use responsive font size for chord name (same as painter)
+        final fontSize = ResponsiveConstants.getScaledFontSize(16.0, screenWidth);
+        
+        // Estimate text height (approximation of what painter calculates)
+        final estimatedTextHeight = fontSize * 1.2; // Rough text height
+        topOffset = estimatedTextHeight + 10; // Same as painter: height + 10
+      }
+    }
 
-    // Use responsive top padding
+    // Use responsive top padding (same as widget building)
     final topPadding = ResponsiveConstants.getFretLabelPadding(screenWidth);
-    var adjustedY = position.dy - chordNameHeight - topPadding;
+    
+    // FIXED: Apply same coordinate transformation as painter
+    var adjustedY = position.dy - topOffset - topPadding;
 
     // Handle left-handed transformation
     final adjustedX = widget.config.isLeftHanded
@@ -310,13 +326,37 @@ void _handleFretboardTap(BuildContext context, TapDownDetails details,
     // Use responsive string height
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
 
-    // FIXED: Proper Y-coordinate calculation to match painter
-    // Strings are painted at (row + 1) * stringHeight, so we need to reverse this
-    // Add stringHeight/2 for better hit detection tolerance
-    final row = ((adjustedY + stringHeight/2) / stringHeight).floor() - 1;
+    // HARDCODED FIX: Move hit regions up by half their total height
+    // Original hit zones were from (i + 0.5) to (i + 1.5) * stringHeight
+    // Moving up by half the zone height (0.5 * stringHeight) gives us:
+    // Hit zones from (i * stringHeight) to ((i + 1) * stringHeight)
+    
+    int row = -1;
+    
+    // Check each string's hit zone - moved up by half zone height
+    for (int i = 0; i < widget.config.stringCount; i++) {
+      final hitZoneStart = i * stringHeight;           // Moved up
+      final hitZoneEnd = (i + 1) * stringHeight;       // Moved up
+      
+      if (adjustedY >= hitZoneStart && adjustedY < hitZoneEnd) {
+        row = i;
+        break;
+      }
+    }
+    
+    // Handle edge cases for clicks outside the main hit zones
+    if (row == -1) {
+      if (adjustedY < 0) {
+        // Click above first string - assign to first string
+        row = 0;
+      } else if (adjustedY >= widget.config.stringCount * stringHeight) {
+        // Click below last string - assign to last string  
+        row = widget.config.stringCount - 1;
+      }
+    }
 
     if (row < 0 || row >= widget.config.stringCount) {
-      debugPrint('Tap outside string range: row=$row, adjustedY=$adjustedY, stringHeight=$stringHeight');
+      debugPrint('Tap outside valid string range: row=$row, adjustedY=$adjustedY, stringHeight=$stringHeight');
       return;
     }
 
@@ -330,7 +370,7 @@ void _handleFretboardTap(BuildContext context, TapDownDetails details,
       return;
     }
 
-    debugPrint('Tap detected: row=$row, stringIndex=$stringIndex, adjustedY=$adjustedY');
+    debugPrint('Tap detected: row=$row, stringIndex=$stringIndex, adjustedY=$adjustedY, hitZoneCenter=${(row + 0.5) * stringHeight}');
 
     double fretStartX = widget.config.visibleFretStart == 0 ? headWidth : 0;
     final relativeX = adjustedX - fretStartX;
