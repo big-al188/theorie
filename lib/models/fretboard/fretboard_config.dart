@@ -1,4 +1,4 @@
-// lib/models/fretboard/fretboard_config.dart
+// lib/models/fretboard/fretboard_config.dart - Updated with showAdditionalOctaves
 import 'package:flutter/material.dart';
 import '../music/chord.dart';
 import '../music/note.dart';
@@ -22,6 +22,7 @@ class FretboardConfig {
   final bool showFretboard;
   final bool showChordName;
   final bool showNoteNames;
+  final bool showAdditionalOctaves; // NEW: Show chord notes in additional octaves
   final Set<int> selectedOctaves;
   final Set<int> selectedIntervals;
   final double width;
@@ -45,6 +46,7 @@ class FretboardConfig {
     required this.showFretboard,
     required this.showChordName,
     required this.showNoteNames,
+    required this.showAdditionalOctaves, // NEW: Required parameter
     required this.selectedOctaves,
     required this.selectedIntervals,
     required this.width,
@@ -128,6 +130,7 @@ class FretboardConfig {
     bool? showFretboard,
     bool? showChordName,
     bool? showNoteNames,
+    bool? showAdditionalOctaves, // NEW: Add to copyWith method
     Set<int>? selectedOctaves,
     Set<int>? selectedIntervals,
     double? width,
@@ -151,6 +154,7 @@ class FretboardConfig {
       showFretboard: showFretboard ?? this.showFretboard,
       showChordName: showChordName ?? this.showChordName,
       showNoteNames: showNoteNames ?? this.showNoteNames,
+      showAdditionalOctaves: showAdditionalOctaves ?? this.showAdditionalOctaves, // NEW
       selectedOctaves: selectedOctaves ?? this.selectedOctaves,
       selectedIntervals: selectedIntervals ?? this.selectedIntervals,
       width: width ?? this.width,

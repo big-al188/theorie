@@ -1,7 +1,8 @@
-// lib/controllers/fretboard_controller.dart
+// lib/controllers/fretboard_controller.dart - Updated with additional octaves support (FIXED)
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/fretboard/fretboard_config.dart';
+import '../models/fretboard/highlight_info.dart'; // NEW: Import highlight types
 import '../models/music/note.dart';
 import '../models/music/scale.dart';
 import '../models/music/chord.dart';
@@ -103,6 +104,93 @@ class FretboardController {
     return map;
   }
 
+  /// NEW: Generate additional octaves highlight map for chord modes
+  static Map<int, HighlightInfo> getAdditionalOctavesMap(FretboardConfig config) {
+    final map = <int, HighlightInfo>{};
+    
+    // Only apply in chord inversion mode when toggle is enabled
+    if (!config.showAdditionalOctaves || config.viewMode != ViewMode.chordInversions) {
+      return map;
+    }
+
+    final chord = Chord.get(config.chordType);
+    if (chord == null) return map;
+
+    // Get the chord's letter names (note classes, not specific octaves)
+    final octave = config.selectedChordOctave;
+    final rootNote = Note.fromString('${config.root}$octave');
+    
+    // Get chord note classes by building chord from intervals
+    final chordNoteClasses = <String>{};
+    for (final interval in chord.intervals) {
+      final chordNote = rootNote.transpose(interval);
+      chordNoteClasses.add(chordNote.name); // FIXED: Use .name instead of .noteClass
+    }
+
+    debugPrint('Additional octaves: Looking for note classes: $chordNoteClasses');
+
+    // Get primary highlights to avoid overlap
+    final primaryMap = getChordInversionHighlightMap(config);
+
+    // Calculate MIDI range for visible fretboard area
+    final minMidi = _calculateMinMidiBounds(config);
+    final maxMidi = _calculateMaxMidiBounds(config);
+
+    debugPrint('Additional octaves: Searching MIDI range $minMidi to $maxMidi');
+
+    // Find all instances of chord note classes across the fretboard
+    for (int midi = minMidi; midi <= maxMidi; midi++) {
+      final note = Note.fromMidi(midi, preferFlats: rootNote.preferFlats);
+      
+      // If this note class is in the chord and not already highlighted in primary
+      if (chordNoteClasses.contains(note.name) && !primaryMap.containsKey(midi)) { // FIXED: Use .name instead of .noteClass
+        map[midi] = HighlightInfo(
+          midi: midi,
+          type: HighlightType.additionalOctave,
+          noteClass: note.name, // FIXED: Use .name instead of .noteClass
+        );
+      }
+    }
+
+    debugPrint('Additional octaves map: ${map.length} notes found');
+    return map;
+  }
+
+  /// NEW: Helper - Calculate minimum MIDI note that could appear on fretboard
+  static int _calculateMinMidiBounds(FretboardConfig config) {
+    // Find lowest open string
+    int minMidi = 127; // Start high
+    for (final tuningNote in config.tuning) {
+      final note = Note.fromString(tuningNote);
+      if (note.midi < minMidi) {
+        minMidi = note.midi;
+      }
+    }
+    return minMidi; // Open strings are the minimum
+  }
+
+  /// NEW: Helper - Calculate maximum MIDI note that could appear on fretboard
+  static int _calculateMaxMidiBounds(FretboardConfig config) {
+    // Find highest string at highest visible fret
+    int maxMidi = 0;
+    for (final tuningNote in config.tuning) {
+      final openNote = Note.fromString(tuningNote);
+      final highestFrettedNote = openNote.transpose(config.visibleFretEnd);
+      if (highestFrettedNote.midi > maxMidi) {
+        maxMidi = highestFrettedNote.midi;
+      }
+    }
+    return maxMidi;
+  }
+
+  /// NEW: Combined highlight data structure
+  static CombinedHighlightMap getCombinedHighlightMap(FretboardConfig config) {
+    return CombinedHighlightMap(
+      primary: getHighlightMap(config),
+      additional: getAdditionalOctavesMap(config),
+    );
+  }
+
   /// Generate highlight map for unimplemented chord modes (placeholder)
   static Map<int, Color> getUnimplementedChordHighlightMap(FretboardConfig config) {
     // For now, return empty map for unimplemented modes
@@ -141,229 +229,86 @@ class FretboardController {
     final referenceOctave = config.selectedOctaves.isNotEmpty
         ? config.selectedOctaves.reduce((a, b) => a < b ? a : b)
         : 3;
-    final rootNote = Note.fromString('${config.root}$referenceOctave');
+    final referenceRoot = Note.fromString('${config.root}$referenceOctave');
 
     // Calculate extended interval
-    final extendedInterval = tappedMidi - rootNote.midi;
+    final extendedInterval = tappedMidi - referenceRoot.midi;
+    final newIntervals = Set<int>.from(config.selectedIntervals);
 
-    var newIntervals = Set<int>.from(config.selectedIntervals);
-    var newOctaves = Set<int>.from(config.selectedOctaves);
-    var newRoot = config.root;
-
-    // Handle based on current state
-    if (newIntervals.isEmpty) {
-      // No notes selected - this becomes the new root
-      newRoot = tappedNote.name;
-      newIntervals = {0};
-      newOctaves = {tappedNote.octave};
-    } else if (newIntervals.contains(extendedInterval)) {
-      // Removing existing interval
+    if (config.selectedIntervals.contains(extendedInterval)) {
+      // Remove if already selected
       newIntervals.remove(extendedInterval);
-      
-      if (newIntervals.isEmpty) {
-        // Empty state
-      } else if (extendedInterval == 0) {
-        // Root removal - find new root
-        final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
-        final newRootMidi = rootNote.midi + lowestInterval;
-        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
-        newRoot = newRootNote.name;
-        newOctaves = {newRootNote.octave};
-
-        // Adjust all intervals relative to new root
-        final adjustedIntervals = <int>{};
-        for (final interval in newIntervals) {
-          final adjustedInterval = interval - lowestInterval;
-          adjustedIntervals.add(adjustedInterval);
-          
-          final noteMidi = newRootMidi + adjustedInterval;
-          final noteOctave = Note.fromMidi(noteMidi).octave;
-          newOctaves.add(noteOctave);
-        }
-        newIntervals = adjustedIntervals;
-      } else if (newIntervals.length == 1 && !newIntervals.contains(0)) {
-        // Single interval becomes root
-        final singleInterval = newIntervals.first;
-        final newRootMidi = rootNote.midi + singleInterval;
-        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
-        newRoot = newRootNote.name;
-        newOctaves = {newRootNote.octave};
-        newIntervals = {0};
-      }
     } else {
-      // Adding new interval
-      if (extendedInterval < 0) {
-        // Note below current root - extend octaves downward
-        final octavesDown = ((-extendedInterval - 1) ~/ 12) + 1;
-        final newReferenceOctave = referenceOctave - octavesDown;
-
-        // Add lower octaves
-        for (int i = 0; i < octavesDown; i++) {
-          newOctaves.add(referenceOctave - i - 1);
-        }
-
-        // Recalculate intervals from new reference
-        final newRootNote = Note.fromString('${config.root}$newReferenceOctave');
-        
-        final adjustedIntervals = <int>{};
-        for (final interval in newIntervals) {
-          adjustedIntervals.add(interval + (octavesDown * 12));
-        }
-
-        final adjustedNewInterval = tappedMidi - newRootNote.midi;
-        adjustedIntervals.add(adjustedNewInterval);
-        
-        newIntervals = adjustedIntervals;
-      } else {
-        // Normal case - just add interval
-        newIntervals.add(extendedInterval);
-        
-        if (!newOctaves.contains(tappedNote.octave)) {
-          newOctaves.add(tappedNote.octave);
-        }
-      }
+      // Add if not selected
+      newIntervals.add(extendedInterval);
     }
 
-    // Apply changes
-    if (onRootAndOctavesChanged != null && newRoot != config.root) {
+    // Special case: if only one interval and it becomes root, change root
+    if (newIntervals.length == 1 && 
+        newIntervals.first != 0 && 
+        onRootAndOctavesChanged != null) {
+      final newRoot = tappedNote.name; // FIXED: Use .name instead of .noteClass
+      final newOctaves = {tappedNote.octave};
       onRootAndOctavesChanged(newRoot, newOctaves);
+    } else {
+      onIntervalsChanged(newIntervals);
     }
-    onIntervalsChanged(newIntervals);
   }
 
-  /// Handle scale note tap (from scale strip)
-  static void handleScaleNoteTap(FretboardConfig config, int midiNote,
-      Function(Set<int>) onIntervalsChanged,
-      {Function(String, Set<int>)? onRootAndOctavesChanged}) {
-    
-    if (config.viewMode != ViewMode.intervals) return;
-
-    final clickedNote = Note.fromMidi(midiNote);
-    
-    // Calculate extended interval
-    final referenceOctave = config.selectedOctaves.isEmpty
-        ? 3
-        : config.selectedOctaves.reduce((a, b) => a < b ? a : b);
-    final rootNote = Note.fromString('${config.root}$referenceOctave');
-    final extendedInterval = midiNote - rootNote.midi;
-
-    var newIntervals = Set<int>.from(config.selectedIntervals);
-    var newOctaves = Set<int>.from(config.selectedOctaves);
-    var newRoot = config.root;
-
-    // Handle similar to fret tap logic
-    if (newIntervals.isEmpty) {
-      newRoot = clickedNote.name;
-      newIntervals = {0};
-      newOctaves = {clickedNote.octave};
-    } else if (newIntervals.contains(extendedInterval)) {
-      // Remove interval
-      newIntervals.remove(extendedInterval);
-      
-      if (newIntervals.isEmpty) {
-        // Empty state
-      } else if (extendedInterval == 0) {
-        // Root removal
-        final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
-        final newRootMidi = rootNote.midi + lowestInterval;
-        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
-        newRoot = newRootNote.name;
-        newOctaves = {newRootNote.octave};
-
-        final adjustedIntervals = <int>{};
-        for (final interval in newIntervals) {
-          final adjustedInterval = interval - lowestInterval;
-          adjustedIntervals.add(adjustedInterval);
-          
-          final noteMidi = newRootMidi + adjustedInterval;
-          final noteOctave = Note.fromMidi(noteMidi).octave;
-          newOctaves.add(noteOctave);
-        }
-        newIntervals = adjustedIntervals;
-      } else if (newIntervals.length == 1 && !newIntervals.contains(0)) {
-        final singleInterval = newIntervals.first;
-        final newRootMidi = rootNote.midi + singleInterval;
-        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
-        newRoot = newRootNote.name;
-        newOctaves = {newRootNote.octave};
-        newIntervals = {0};
-      }
-    } else {
-      // Add new interval
-      if (extendedInterval < 0) {
-        final octavesDown = ((-extendedInterval - 1) ~/ 12) + 1;
-        final newReferenceOctave = referenceOctave - octavesDown;
-
-        for (int i = 0; i < octavesDown; i++) {
-          newOctaves.add(referenceOctave - i - 1);
-        }
-
-        final newRootNote = Note.fromString('${config.root}$newReferenceOctave');
-        
-        final adjustedIntervals = <int>{};
-        for (final interval in newIntervals) {
-          adjustedIntervals.add(interval + (octavesDown * 12));
-        }
-
-        final adjustedNewInterval = midiNote - newRootNote.midi;
-        adjustedIntervals.add(adjustedNewInterval);
-        
-        newIntervals = adjustedIntervals;
-      } else {
-        newIntervals.add(extendedInterval);
-        
-        if (!newOctaves.contains(clickedNote.octave)) {
-          newOctaves.add(clickedNote.octave);
-        }
-      }
-    }
-
-    // Apply changes
-    if (onRootAndOctavesChanged != null && newRoot != config.root) {
-      onRootAndOctavesChanged(newRoot, newOctaves);
-    }
-    onIntervalsChanged(newIntervals);
-  }
-
-  /// Get interval label for display with defensive programming
+  /// Get interval label for display
   static String getIntervalLabel(int interval) {
-    const baseIntervals = [
-      'R', // 0
-      '♭2', // 1
-      '2', // 2
-      '♭3', // 3
-      '3', // 4
-      '4', // 5
-      '♭5', // 6
-      '5', // 7
-      '♭6', // 8
-      '6', // 9
-      '♭7', // 10
-      '7' // 11
+    // Extended intervals beyond octave
+    if (interval >= 12) {
+      final octave = interval ~/ 12;
+      final baseInterval = interval % 12;
+      final base = _getBaseIntervalLabel(baseInterval);
+      
+      // For simple display, just add octave number
+      final match = RegExp(r'([♭♯]?)(\d+)').firstMatch(base);
+      if (match != null) {
+        final accidental = match.group(1) ?? '';
+        final number = int.parse(match.group(2)!);
+        final extendedNumber = number + (octave * 7);
+        return '$accidental$extendedNumber';
+      }
+    }
+    
+    return _getBaseIntervalLabel(interval);
+  }
+
+  /// Get base interval label (within one octave)
+  static String _getBaseIntervalLabel(int interval) {
+    const labels = [
+      '1',   // Root
+      '♭2',  // Minor 2nd
+      '2',   // Major 2nd
+      '♭3',  // Minor 3rd
+      '3',   // Major 3rd
+      '4',   // Perfect 4th
+      '♭5',  // Tritone
+      '5',   // Perfect 5th
+      '♭6',  // Minor 6th
+      '6',   // Major 6th
+      '♭7',  // Minor 7th
+      '7',   // Major 7th
     ];
-
-    // Defensive check for negative intervals
-    if (interval < 0) {
-      debugPrint(
-          'WARNING: getIntervalLabel called with negative interval: $interval');
-      return 'R'; // Default to root
+    
+    final normalizedInterval = interval % 12;
+    if (normalizedInterval >= 0 && normalizedInterval < labels.length) {
+      return labels[normalizedInterval];
     }
+    
+    return interval.toString(); // Fallback
+  }
 
-    final octave = interval ~/ 12;
-    final step = interval % 12;
+  /// Convert extended interval label to display format
+  static String getExtendedIntervalLabel(int interval, int octave) {
+    final baseLabel = _getBaseIntervalLabel(interval);
+    if (octave <= 0) return baseLabel;
 
-    // Extra safety check (though modulo should always return 0-11)
-    if (step < 0 || step >= baseIntervals.length) {
-      debugPrint(
-          'ERROR: Invalid step $step calculated from interval $interval');
-      return 'R';
-    }
-
-    if (octave == 0) return baseIntervals[step];
-    if (step == 0) return 'O$octave'; // Octave markers
-
-    final raw = baseIntervals[step];
-    final match = RegExp(r'([♭]?)(\d+)').firstMatch(raw);
+    // Parse the base label to add octave extension
+    final raw = baseLabel;
+    final match = RegExp(r'([♭♯]?)(\d+)').firstMatch(raw);
 
     if (match != null) {
       final accidental = match.group(1) ?? '';

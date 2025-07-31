@@ -1,4 +1,4 @@
-// lib/views/pages/fretboard_page.dart
+// lib/views/pages/fretboard_page.dart - Integrated with additional octaves support
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
@@ -66,6 +66,7 @@ class _FretboardPageState extends State<FretboardPage> {
         chordInversion: ChordInversion.root,
         showScaleStrip: true,
         showNoteNames: false,
+        showAdditionalOctaves: false, // NEW: Default to false for new fretboards
         isCompact: false,
       );
 
@@ -545,6 +546,27 @@ class _FretboardCard extends StatelessWidget {
                   showScaleStrip: !instance.showScaleStrip));
             },
           ),
+          // NEW: Additional Octaves Toggle (only in chord inversion mode)
+          if (instance.viewMode == ViewMode.chordInversions)
+            IconButton(
+              icon: Icon(
+                instance.showAdditionalOctaves 
+                    ? Icons.all_inclusive 
+                    : Icons.all_inclusive_outlined,
+                color: instance.showAdditionalOctaves
+                    ? Theme.of(context).primaryColor
+                    : null,
+              ),
+              iconSize: ResponsiveConstants.getDeviceType(screenWidth) ==
+                      DeviceType.mobile
+                  ? 20.0
+                  : 24.0,
+              tooltip: 'Toggle Additional Octaves',
+              onPressed: () {
+                onUpdate(instance.copyWith(
+                    showAdditionalOctaves: !instance.showAdditionalOctaves));
+              },
+            ),
           IconButton(
             icon: Icon(
               instance.showNoteNames ? Icons.abc : Icons.numbers,

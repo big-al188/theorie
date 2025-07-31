@@ -1,4 +1,4 @@
-// lib/models/fretboard/fretboard_instance.dart - Fixed ViewMode references
+// lib/models/fretboard/fretboard_instance.dart - Updated with showAdditionalOctaves
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
@@ -22,6 +22,7 @@ class FretboardInstance {
   bool isCompact;
   bool showScaleStrip;
   bool showNoteNames;
+  bool showAdditionalOctaves; // NEW: Show chord notes in additional octaves
   int visibleFretStart;
   int visibleFretEnd;
 
@@ -40,6 +41,7 @@ class FretboardInstance {
     this.isCompact = false,
     this.showScaleStrip = true,
     this.showNoteNames = false,
+    this.showAdditionalOctaves = false, // NEW: Default to false
     this.visibleFretStart = 0,
     required this.visibleFretEnd,
   });
@@ -60,6 +62,7 @@ class FretboardInstance {
       stringCount: 6,
       showScaleStrip: true,
       showNoteNames: false,
+      showAdditionalOctaves: false, // NEW: Default to false
       visibleFretEnd: 12,
     );
   }
@@ -146,6 +149,7 @@ class FretboardInstance {
       showFretboard: true,
       showChordName: false,
       showNoteNames: showNoteNames,
+      showAdditionalOctaves: showAdditionalOctaves, // NEW: Pass through the toggle state
       width: 400.0, // FIXED: Provide default width
       height: 300.0, // FIXED: Provide default height
       padding: EdgeInsets.zero,
@@ -168,6 +172,7 @@ class FretboardInstance {
     bool? isCompact,
     bool? showScaleStrip,
     bool? showNoteNames,
+    bool? showAdditionalOctaves, // NEW: Add to copyWith method
     int? visibleFretStart,
     int? visibleFretEnd,
   }) {
@@ -186,6 +191,7 @@ class FretboardInstance {
       isCompact: isCompact ?? this.isCompact,
       showScaleStrip: showScaleStrip ?? this.showScaleStrip,
       showNoteNames: showNoteNames ?? this.showNoteNames,
+      showAdditionalOctaves: showAdditionalOctaves ?? this.showAdditionalOctaves, // NEW
       visibleFretStart: visibleFretStart ?? this.visibleFretStart,
       visibleFretEnd: visibleFretEnd ?? this.visibleFretEnd,
     );

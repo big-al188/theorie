@@ -1,6 +1,7 @@
-// lib/views/widgets/fretboard/fretboard_painter.dart - Dark theme fixes
+// lib/views/widgets/fretboard/fretboard_painter.dart - Updated with additional octaves support (FIXED)
 import 'package:flutter/material.dart';
 import '../../../models/fretboard/fretboard_config.dart';
+import '../../../models/fretboard/highlight_info.dart'; // NEW: Import highlight types
 import '../../../models/music/chord.dart';
 import '../../../models/music/note.dart';
 import '../../../constants/ui_constants.dart';
@@ -15,13 +16,13 @@ class FretboardPainter extends CustomPainter {
   final FretboardConfig config;
   final Map<int, Color> highlightMap;
   final double screenWidth;
-  final bool isDarkMode; // ADDED: Theme information
+  final bool isDarkMode;
 
   FretboardPainter({
     required this.config,
     required this.highlightMap,
     required this.screenWidth,
-    required this.isDarkMode, // ADDED: Theme parameter
+    required this.isDarkMode,
   });
 
   @override
@@ -61,15 +62,24 @@ class FretboardPainter extends CustomPainter {
         boardHeight, correctedFretCount, stringHeight);
     _drawStrings(
         canvas, size, canvasWidth, headWidth, boardHeight, stringHeight);
-    _drawFretMarkers(canvas, size, canvasWidth, headWidth, fretWidth,
-        boardHeight, correctedFretCount, stringHeight);
+    
+    // NEW: Use combined highlighting system if additional octaves are enabled
+    if (config.showAdditionalOctaves && config.viewMode == ViewMode.chordInversions) {
+      final combinedHighlights = FretboardController.getCombinedHighlightMap(config);
+      _drawFretMarkersWithCombinedHighlights(canvas, size, canvasWidth, headWidth, 
+          fretWidth, boardHeight, correctedFretCount, stringHeight, combinedHighlights);
+    } else {
+      // Use existing highlighting system
+      _drawFretMarkers(canvas, size, canvasWidth, headWidth, fretWidth,
+          boardHeight, correctedFretCount, stringHeight);
+    }
 
     canvas.restore();
   }
 
   /// Calculate responsive font size for note labels based on available space
   double _calculateNoteLabelFontSize(double fretWidth, double canvasWidth) {
-    // Use responsive base font size
+    // Use responsive base font size - FIXED: Use correct constant
     final baseFontSize = ResponsiveConstants.getScaledFontSize(
         UIConstants.intervalLabelFontSize, canvasWidth);
 
@@ -105,8 +115,9 @@ class FretboardPainter extends CustomPainter {
     return (baseFontSize * finalFactor).clamp(minFontSize, baseFontSize);
   }
 
-  /// Calculate responsive note marker radius based on available space
+  /// Calculate responsive radius for note markers
   double _calculateNoteMarkerRadius(double fretWidth, double canvasWidth) {
+    // FIXED: Use original sizing logic
     final baseRadius = ResponsiveConstants.getNoteMarkerRadius(canvasWidth);
     const desktopThreshold = UIConstants.tabletBreakpoint;
 
@@ -130,16 +141,13 @@ class FretboardPainter extends CustomPainter {
     return (baseRadius * finalFactor).clamp(minRadius, baseRadius);
   }
 
-  double _drawChordName(
-      Canvas canvas, Size size, double headWidth, bool hasHeadstock) {
-    final chordName = MusicController.getChordDisplayName(
-      config.root,
-      config.chordType,
-      config.chordInversion,
-    );
+  /// Draw chord name at the top of the fretboard
+  double _drawChordName(Canvas canvas, Size size, double headWidth, bool hasHeadstock) {
+    final chordName = config.currentChordName;
+    if (chordName.isEmpty) return 0;
 
     // Use responsive font size for chord name
-    final fontSize = ResponsiveConstants.getScaledFontSize(18.0, screenWidth);
+    final fontSize = ResponsiveConstants.getScaledFontSize(16.0, size.width);
 
     final chordPainter = TextPainter(
       text: TextSpan(
@@ -147,13 +155,12 @@ class FretboardPainter extends CustomPainter {
         style: TextStyle(
           fontSize: fontSize,
           fontWeight: FontWeight.bold,
-          color: Colors.black,
+          color: isDarkMode ? Colors.white : Colors.black,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
 
-    // Position chord name over headstock if visible, otherwise center over fretboard
     final chordNameX = hasHeadstock
         ? (headWidth - chordPainter.width) / 2 // Center over headstock
         : (size.width - chordPainter.width) / 2; // Center over entire width
@@ -230,7 +237,6 @@ class FretboardPainter extends CustomPainter {
     // Use responsive font size for fret numbers
     final fontSize = ResponsiveConstants.getScaledFontSize(12.0, canvasWidth);
 
-    // FIXED: Use passed theme information instead of platform dispatcher
     final fretNumberColor = isDarkMode ? Colors.grey.shade200 : Colors.black;
 
     final textPainter = TextPainter(
@@ -278,7 +284,6 @@ class FretboardPainter extends CustomPainter {
         // Use responsive font size for tuning labels
         final fontSize = ResponsiveConstants.getScaledFontSize(14.0, canvasWidth);
 
-        // FIXED: Use passed theme information instead of platform dispatcher
         final tuningLabelColor = isDarkMode ? Colors.white : Colors.black;
 
         final textPainter = TextPainter(
@@ -298,6 +303,7 @@ class FretboardPainter extends CustomPainter {
     }
   }
 
+  /// EXISTING: Draw fret markers with original highlighting system
   void _drawFretMarkers(
     Canvas canvas,
     Size size,
@@ -320,56 +326,34 @@ class FretboardPainter extends CustomPainter {
         ? List.generate(config.stringCount, (i) => i)
         : List.generate(config.stringCount, (i) => config.stringCount - 1 - i);
 
-    double startX = config.visibleFretStart == 0 ? headWidth : 0;
-
     for (final stringIndex in stringOrder) {
       final row = stringOrder.indexOf(stringIndex);
-      final y = (row + 1) * stringHeight; // Use responsive string height
+      final y = (row + 1) * stringHeight;
       final openNote = Note.fromString(config.tuning[stringIndex]);
 
-      if (config.visibleFretStart == 0) {
-        // Handle open string
-        if (highlightMap.containsKey(openNote.midi)) {
-          _drawNoteMarker(
-            canvas,
-            headWidth / 2,
-            y,
-            openNote.midi,
-            highlightMap[openNote.midi]!,
-            rootNote.pitchClass,
-            useFlats,
-            fretWidth,
-            canvasWidth,
-          );
-        }
-
-        // Draw markers for frets 1 through visibleFretEnd
-        for (int f = 1; f <= config.visibleFretEnd; f++) {
-          final frettedNote = openNote.transpose(f);
-          if (highlightMap.containsKey(frettedNote.midi)) {
-            _drawNoteMarker(
-              canvas,
-              startX + (f - 0.5) * fretWidth,
-              y,
-              frettedNote.midi,
-              highlightMap[frettedNote.midi]!,
-              rootNote.pitchClass,
-              useFlats,
-              fretWidth,
-              canvasWidth,
-            );
-          }
-        }
-      } else {
-        // Draw markers for visible range
+      if (stringIndex < config.tuning.length) {
         for (int f = 0; f < correctedFretCount; f++) {
           final actualFret = config.visibleFretStart + f;
           final frettedNote = openNote.transpose(actualFret);
 
           if (highlightMap.containsKey(frettedNote.midi)) {
-            _drawNoteMarker(
+            // FIXED: Calculate correct x position based on fret and headstock presence
+            double noteX;
+            if (config.visibleFretStart == 0) {
+              // With headstock: fret 0 is in headstock area, fret 1+ are after headstock
+              if (actualFret == 0) {
+                noteX = headWidth / 2; // Center in headstock area
+              } else {
+                noteX = headWidth + (actualFret - 0.5) * fretWidth; // Fret positions after headstock
+              }
+            } else {
+              // Without headstock: standard positioning
+              noteX = (f + 0.5) * fretWidth;
+            }
+
+            _drawPrimaryNoteMarker(
               canvas,
-              startX + (f + 0.5) * fretWidth,
+              noteX,
               y,
               frettedNote.midi,
               highlightMap[frettedNote.midi]!,
@@ -384,7 +368,86 @@ class FretboardPainter extends CustomPainter {
     }
   }
 
-  void _drawNoteMarker(
+  /// NEW: Draw fret markers with combined highlighting system (primary + additional octaves)
+  void _drawFretMarkersWithCombinedHighlights(
+    Canvas canvas,
+    Size size,
+    double canvasWidth,
+    double headWidth,
+    double fretWidth,
+    double boardHeight,
+    int correctedFretCount,
+    double stringHeight,
+    CombinedHighlightMap combinedHighlights,
+  ) {
+    final effectiveRoot = config.isChordMode
+        ? config.root
+        : MusicController.getModeRoot(config.root, config.scale, config.modeIndex);
+
+    final rootNote = Note.fromString('${effectiveRoot}0');
+    final useFlats = rootNote.preferFlats;
+
+    final stringOrder = config.isBassTop
+        ? List.generate(config.stringCount, (i) => i)
+        : List.generate(config.stringCount, (i) => config.stringCount - 1 - i);
+
+    for (final stringIndex in stringOrder) {
+      final row = stringOrder.indexOf(stringIndex);
+      final y = (row + 1) * stringHeight;
+      final openNote = Note.fromString(config.tuning[stringIndex]);
+
+      if (stringIndex < config.tuning.length) {
+        for (int f = 0; f < correctedFretCount; f++) {
+          final actualFret = config.visibleFretStart + f;
+          final frettedNote = openNote.transpose(actualFret);
+          final midi = frettedNote.midi;
+
+          // FIXED: Calculate correct x position based on fret and headstock presence
+          double noteX;
+          if (config.visibleFretStart == 0) {
+            // With headstock: fret 0 is in headstock area, fret 1+ are after headstock
+            if (actualFret == 0) {
+              noteX = headWidth / 2; // Center in headstock area
+            } else {
+              noteX = headWidth + (actualFret - 0.5) * fretWidth; // Fret positions after headstock
+            }
+          } else {
+            // Without headstock: standard positioning
+            noteX = (f + 0.5) * fretWidth;
+          }
+
+          // Check primary highlights first (higher priority)
+          if (combinedHighlights.primary.containsKey(midi)) {
+            _drawPrimaryNoteMarker(
+              canvas,
+              noteX,
+              y,
+              midi,
+              combinedHighlights.primary[midi]!,
+              rootNote.pitchClass,
+              useFlats,
+              fretWidth,
+              canvasWidth,
+            );
+          } 
+          // Then check additional octave highlights
+          else if (combinedHighlights.additional.containsKey(midi)) {
+            _drawAdditionalOctaveMarker(
+              canvas,
+              noteX,
+              y,
+              combinedHighlights.additional[midi]!,
+              fretWidth,
+              canvasWidth,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /// RENAMED: Original note marker for primary highlights (preserves all existing logic)
+  void _drawPrimaryNoteMarker(
     Canvas canvas,
     double cx,
     double cy,
@@ -448,101 +511,36 @@ class FretboardPainter extends CustomPainter {
           );
 
           // Find which interval this note represents in the chord
-          int? matchedInterval;
-          for (int i = 0; i < voicingMidiNotes.length; i++) {
-            if (voicingMidiNotes[i] == midi) {
-              // Found the note in the voicing
-              // Calculate its interval from the root
-              matchedInterval = midi - chordRootNote.midi;
-              isRoot = matchedInterval == 0;
+          int? matchingInterval;
+          for (final voicingMidi in voicingMidiNotes) {
+            if (voicingMidi == midi) {
+              matchingInterval = midi - chordRootNote.midi;
               break;
             }
           }
 
-          if (matchedInterval != null && matchedInterval >= 0) {
-            displayText = FretboardController.getIntervalLabel(matchedInterval);
+          if (matchingInterval != null) {
+            displayText = FretboardController.getIntervalLabel(matchingInterval);
+            isRoot = matchingInterval % 12 == 0;
           } else {
-            // Fallback for notes not in the chord
-            final notePc = midi % 12;
-            final intervalFromRoot = (notePc - rootPc + 12) % 12;
-            displayText =
-                FretboardController.getIntervalLabel(intervalFromRoot);
+            // Fallback if not found in voicing
+            displayText = FretboardController.getIntervalLabel(midi - chordRootNote.midi);
+            isRoot = false;
           }
         } else {
-          // Fallback if chord not found
-          final notePc = midi % 12;
-          final intervalFromRoot = (notePc - rootPc + 12) % 12;
-          isRoot = intervalFromRoot == 0;
-          displayText = FretboardController.getIntervalLabel(intervalFromRoot);
-        }
-      } else if (config.isIntervalMode) {
-        // For interval mode, calculate extended interval
-        final sortedOctaves = config.selectedOctaves.toList()..sort();
-        final referenceOctave =
-            sortedOctaves.isNotEmpty ? sortedOctaves.first : 3;
-        final rootNote = Note.fromString('${config.root}$referenceOctave');
-        final extendedInterval = midi - rootNote.midi;
-
-        // Only show intervals that are actually selected
-        if (config.selectedIntervals.contains(extendedInterval)) {
-          isRoot = extendedInterval == 0;
-          displayText = FretboardController.getIntervalLabel(extendedInterval);
-        } else {
-          // This shouldn't happen if highlight map is correct, but fallback to simple interval
-          final notePc = midi % 12;
-          final intervalFromRoot = (notePc - rootPc + 12) % 12;
-          isRoot = intervalFromRoot == 0;
-          displayText = FretboardController.getIntervalLabel(intervalFromRoot);
-        }
-      } else if (config.isScaleMode) {
-        // For scale mode, calculate interval within the musical octave
-        final scale = Scale.get(config.scale);
-        if (scale != null) {
-          // Get the effective root considering the mode
-          final effectiveRoot = MusicController.getModeRoot(
-              config.root, config.scale, config.modeIndex);
-          final effectiveRootNote = Note.fromString('${effectiveRoot}0');
-
-          // Find the root note in the same or lower octave as the current note
-          final note = Note.fromMidi(midi);
-          final noteOctave = note.octave;
-
-          // Start with the root in the note's octave
-          var octaveRoot = Note.fromString('${effectiveRoot}$noteOctave');
-
-          // If the note's pitch class is lower than the root's pitch class,
-          // it belongs to the previous octave's scale
-          if (note.pitchClass < effectiveRootNote.pitchClass) {
-            octaveRoot = Note.fromString('${effectiveRoot}${noteOctave - 1}');
-          }
-
-          // Calculate the interval from the musical octave root
-          final interval = midi - octaveRoot.midi;
-
-          // Only show notes within the musical octave (0-12 semitones from root)
-          if (interval >= 0 && interval <= 12) {
-            isRoot = interval == 0 || interval == 12;
-            displayText = FretboardController.getIntervalLabel(interval);
-          } else {
-            // This note is outside the musical octave, don't draw it
-            return; // Skip drawing this marker
-          }
-        } else {
-          // Fallback if scale not found
-          final notePc = midi % 12;
-          final intervalFromRoot = (notePc - rootPc + 12) % 12;
-          isRoot = intervalFromRoot == 0;
-          displayText = FretboardController.getIntervalLabel(intervalFromRoot);
+          displayText = '?';
+          isRoot = false;
         }
       } else {
-        // For other modes, use simple interval
-        final notePc = midi % 12;
-        final intervalFromRoot = (notePc - rootPc + 12) % 12;
-        isRoot = intervalFromRoot == 0;
-        displayText = FretboardController.getIntervalLabel(intervalFromRoot);
+        // For scale and interval modes
+        final baseRootNote = Note.fromString('${config.effectiveRoot}0');
+        final interval = midi - baseRootNote.midi;
+        displayText = FretboardController.getIntervalLabel(interval);
+        isRoot = interval % 12 == 0;
       }
     }
 
+    // Draw text with appropriate styling
     final textStyle = TextStyle(
       fontSize: fontSize,
       fontWeight: isRoot ? FontWeight.w800 : FontWeight.w600,
@@ -564,7 +562,7 @@ class FretboardPainter extends CustomPainter {
       final textX = cx - textWidth / 2;
       final textY = cy - textHeight / 2;
 
-      // FIXED: Adjust vertical positioning for flat symbols
+      // Adjust vertical positioning for flat symbols
       final adjustedTextY = displayText.contains('♭') ? textY - 0.5 : textY;
 
       // Ensure text doesn't go outside canvas bounds
@@ -592,7 +590,7 @@ class FretboardPainter extends CustomPainter {
       final textX = cx - smallerTextWidth / 2;
       final textY = cy - smallerTextHeight / 2;
 
-      // FIXED: Adjust vertical positioning for flat symbols in abbreviated text too
+      // Adjust vertical positioning for flat symbols in abbreviated text too
       final adjustedTextY = shortenedText.contains('♭') ? textY - 0.5 : textY;
 
       // Ensure text doesn't go outside canvas bounds
@@ -604,11 +602,133 @@ class FretboardPainter extends CustomPainter {
     }
   }
 
+  /// NEW: Draw white circle with black outline for additional octaves
+  void _drawAdditionalOctaveMarker(
+    Canvas canvas,
+    double cx,
+    double cy,
+    HighlightInfo highlightInfo,
+    double fretWidth,
+    double canvasWidth,
+  ) {
+    // Calculate responsive sizes (same as primary markers)
+    final markerRadius = _calculateNoteMarkerRadius(fretWidth, canvasWidth);
+    final fontSize = _calculateNoteLabelFontSize(fretWidth, canvasWidth);
+
+    // Ensure marker doesn't extend beyond canvas bounds
+    final safeRadius = math.min(markerRadius, math.min(cx, canvasWidth - cx));
+    final finalRadius = math.max(safeRadius, 8.0); // Minimum readable size
+
+    // Draw white filled circle
+    canvas.drawCircle(
+      Offset(cx, cy),
+      finalRadius,
+      Paint()..color = Colors.white,
+    );
+
+    // Draw black outline
+    final strokeWidth = (UIConstants.noteMarkerStrokeWidth *
+            (finalRadius / UIConstants.baseNoteMarkerRadius))
+        .clamp(1.0, 3.0);
+
+    canvas.drawCircle(
+      Offset(cx, cy),
+      finalRadius,
+      Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth,
+    );
+
+    // Draw text - respects showNoteNames toggle
+    _drawAdditionalOctaveText(
+      canvas,
+      cx,
+      cy,
+      highlightInfo,
+      fontSize,
+      finalRadius,
+      canvasWidth,
+    );
+  }
+
+  /// NEW: Draw text for additional octave markers (respects showNoteNames toggle)
+  void _drawAdditionalOctaveText(
+    Canvas canvas,
+    double cx,
+    double cy,
+    HighlightInfo highlightInfo,
+    double fontSize,
+    double finalRadius,
+    double canvasWidth,
+  ) {
+    final textStyle = TextStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w600,
+      color: Colors.black, // Always black text on white background
+    );
+
+    // Determine what text to display based on showNoteNames toggle
+    String displayText;
+    if (config.showNoteNames) {
+      // Show note name (existing behavior)
+      displayText = highlightInfo.noteClass;
+    } else {
+      // Show interval relative to root
+      final rootNote = Note.fromString('${config.root}${config.selectedChordOctave}');
+      final interval = highlightInfo.midi - rootNote.midi;
+      displayText = FretboardController.getIntervalLabel(interval);
+    }
+
+    final textPainter = TextPainter(
+      text: TextSpan(text: displayText, style: textStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    // Ensure text fits within the marker
+    final textWidth = textPainter.width;
+    final textHeight = textPainter.height;
+
+    if (textWidth <= finalRadius * 1.6 && textHeight <= finalRadius * 1.6) {
+      // Text fits, center it
+      final textX = cx - textWidth / 2;
+      final textY = cy - textHeight / 2;
+
+      // Adjust vertical positioning for flat symbols
+      final adjustedTextY = displayText.contains('♭') ? textY - 0.5 : textY;
+
+      // Ensure text doesn't go outside canvas bounds
+      final safeTextX = textX.clamp(0, canvasWidth - textWidth).toDouble();
+      final safeTextY = math.max(adjustedTextY, 0).toDouble();
+
+      textPainter.paint(canvas, Offset(safeTextX, safeTextY));
+    } else {
+      // Text too large - use abbreviated version
+      final shortenedText = displayText.length > 2 ? displayText.substring(0, 2) : displayText;
+      final smallerTextPainter = TextPainter(
+        text: TextSpan(
+          text: shortenedText,
+          style: textStyle.copyWith(fontSize: fontSize * 0.8),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final textX = cx - smallerTextPainter.width / 2;
+      final textY = cy - smallerTextPainter.height / 2;
+
+      final adjustedTextY = shortenedText.contains('♭') ? textY - 0.5 : textY;
+      final safeTextX = textX.clamp(0, canvasWidth - smallerTextPainter.width).toDouble();
+      final safeTextY = math.max(adjustedTextY, 0).toDouble();
+
+      smallerTextPainter.paint(canvas, Offset(safeTextX, safeTextY));
+    }
+  }
+
   @override
   bool shouldRepaint(covariant FretboardPainter oldDelegate) {
     return oldDelegate.config != config ||
         oldDelegate.highlightMap != highlightMap ||
         oldDelegate.screenWidth != screenWidth ||
-        oldDelegate.isDarkMode != isDarkMode; // ADDED: Theme check
+        oldDelegate.isDarkMode != isDarkMode;
   }
 }
