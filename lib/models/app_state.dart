@@ -1,8 +1,9 @@
-// lib/models/app_state.dart - Updated for new ViewMode structure
+// lib/models/app_state.dart - Updated with audio preferences integration
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../../controllers/music_controller.dart';
+import '../../controllers/audio_controller.dart'; // NEW: Import audio controller
 import '../constants/music_constants.dart';
 import 'fretboard/fretboard_config.dart';
 import 'fretboard/fretboard_instance.dart';
@@ -16,7 +17,7 @@ import '../services/progress_tracking_service.dart';
 import '../services/firebase_user_service.dart';
 
 /// Central application state management
-/// UPDATED: Enhanced for separated user models architecture
+/// UPDATED: Enhanced for separated user models architecture and audio system
 class AppState extends ChangeNotifier {
   // ===== USER MANAGEMENT =====
   User? _currentUser;
@@ -42,6 +43,15 @@ class AppState extends ChangeNotifier {
 
   // ===== APP PREFERENCES =====
   ThemeMode _themeMode = ThemeMode.light;
+
+  // ===== AUDIO PREFERENCES - NEW =====
+  AudioBackend _audioBackend = AudioBackend.midi;
+  double _audioVolume = 0.7;
+  Duration _melodyNoteDuration = const Duration(milliseconds: 500);
+  Duration _melodyGapDuration = const Duration(milliseconds: 50);
+  Duration _harmonyDuration = const Duration(milliseconds: 2000);
+  int _defaultVelocity = 100;
+  bool _audioEnabled = true;
 
   // ===== CURRENT SESSION STATE =====
   // These represent the current working state (used by single fretboard views)
@@ -77,6 +87,15 @@ class AppState extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   bool get isDarkMode => _themeMode == ThemeMode.dark;
   bool get isLightMode => _themeMode == ThemeMode.light;
+
+  // ===== AUDIO PREFERENCES GETTERS - NEW =====
+  AudioBackend get audioBackend => _audioBackend;
+  double get audioVolume => _audioVolume;
+  Duration get melodyNoteDuration => _melodyNoteDuration;
+  Duration get melodyGapDuration => _melodyGapDuration;
+  Duration get harmonyDuration => _harmonyDuration;
+  int get defaultVelocity => _defaultVelocity;
+  bool get audioEnabled => _audioEnabled;
 
   // ===== CURRENT SESSION GETTERS (for backward compatibility) =====
   int get stringCount => _defaultStringCount; // Use defaults for global state
@@ -121,7 +140,7 @@ class AppState extends ChangeNotifier {
 
   // ===== INITIALIZATION =====
 
-  /// UPDATED: Enhanced initialization with separated models
+  /// UPDATED: Enhanced initialization with separated models and audio system
   Future<void> initialize() async {
     if (_isInitialized) return;
 
@@ -160,6 +179,9 @@ class AppState extends ChangeNotifier {
         debugPrint('👤 [AppState] No user found, running in guest mode');
       }
 
+      // NEW: Initialize audio system with loaded preferences
+      await _initializeAudioSystem();
+
       _isInitialized = true;
       notifyListeners();
 
@@ -168,6 +190,22 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ [AppState] Error initializing app state: $e');
       _isInitialized = true;
       notifyListeners();
+    }
+  }
+
+  /// NEW: Initialize audio system with user preferences
+  Future<void> _initializeAudioSystem() async {
+    try {
+      debugPrint('🎵 [AppState] Initializing audio system...');
+      
+      // Initialize audio controller with current backend
+      await AudioController.instance.initialize(_audioBackend);
+      await AudioController.instance.setVolume(_audioVolume);
+      
+      debugPrint('✅ [AppState] Audio system initialized successfully');
+    } catch (e) {
+      debugPrint('❌ [AppState] Error initializing audio system: $e');
+      // Continue without audio - the system will gracefully handle this
     }
   }
 
@@ -257,10 +295,13 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ [AppState] Error setting up progress tracking: $e');
     }
 
+    // NEW: Reinitialize audio system with new user preferences
+    await _initializeAudioSystem();
+
     notifyListeners();
   }
 
-  /// UPDATED: Load user preferences into app state
+  /// UPDATED: Load user preferences into app state with integrated audio preferences
   Future<void> loadUserPreferences(UserPreferences preferences) async {
     debugPrint('⚙️ [AppState] Loading user preferences');
 
@@ -273,6 +314,15 @@ class AppState extends ChangeNotifier {
     _defaultViewMode = preferences.defaultViewMode;
     _defaultScale = preferences.defaultScale;
     _defaultSelectedOctaves = Set.from(preferences.defaultSelectedOctaves);
+    
+    // INTEGRATED: Load audio preferences (use new fields, fallback to existing ones)
+    _audioBackend = preferences.audioBackend;
+    _audioVolume = preferences.soundVolume; // Use existing soundVolume field
+    _melodyNoteDuration = preferences.melodyNoteDuration;
+    _melodyGapDuration = preferences.melodyGapDuration;
+    _harmonyDuration = preferences.harmonyDuration;
+    _defaultVelocity = preferences.defaultVelocity;
+    _audioEnabled = preferences.audioEnabled && preferences.playSounds; // Combine both flags
 
     // Also update current session state to match defaults
     _root = _defaultRoot;
@@ -283,7 +333,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// UPDATED: Save current preferences to user
+  /// UPDATED: Save current preferences to user with integrated audio preferences
   Future<void> saveUserPreferences() async {
     if (_currentUser != null) {
       final updatedPreferences = (_currentUserPreferences ?? UserPreferences.defaults()).copyWith(
@@ -296,6 +346,15 @@ class AppState extends ChangeNotifier {
         defaultViewMode: _defaultViewMode,
         defaultScale: _defaultScale,
         defaultSelectedOctaves: _defaultSelectedOctaves,
+        // INTEGRATED: Save audio preferences (update both old and new fields for compatibility)
+        audioBackend: _audioBackend,
+        soundVolume: _audioVolume, // Update existing soundVolume field
+        melodyNoteDuration: _melodyNoteDuration,
+        melodyGapDuration: _melodyGapDuration,
+        harmonyDuration: _harmonyDuration,
+        defaultVelocity: _defaultVelocity,
+        audioEnabled: _audioEnabled,
+        playSounds: _audioEnabled, // Keep existing playSounds in sync
       );
 
       await FirebaseUserService.instance.saveUserPreferences(updatedPreferences);
@@ -312,6 +371,9 @@ class AppState extends ChangeNotifier {
       if (_currentUser != null) {
         ProgressTrackingService.instance.removeListener(_onProgressChanged);
       }
+
+      // NEW: Stop any playing audio
+      await AudioController.instance.stopAll();
 
       // Always logout from UserService first
       await UserService.instance.logout();
@@ -546,6 +608,70 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ===== AUDIO PREFERENCES SETTERS - NEW =====
+  Future<void> setAudioBackend(AudioBackend backend) async {
+    if (_audioBackend != backend) {
+      _audioBackend = backend;
+      await AudioController.instance.switchBackend(backend);
+      await saveUserPreferences();
+      notifyListeners();
+    }
+  }
+
+  Future<void> setAudioVolume(double volume) async {
+    final clampedVolume = volume.clamp(0.0, 1.0);
+    if (_audioVolume != clampedVolume) {
+      _audioVolume = clampedVolume;
+      await AudioController.instance.setVolume(_audioVolume);
+      await saveUserPreferences();
+      notifyListeners();
+    }
+  }
+
+  Future<void> setMelodyNoteDuration(Duration duration) async {
+    if (_melodyNoteDuration != duration) {
+      _melodyNoteDuration = duration;
+      await saveUserPreferences();
+      notifyListeners();
+    }
+  }
+
+  Future<void> setMelodyGapDuration(Duration duration) async {
+    if (_melodyGapDuration != duration) {
+      _melodyGapDuration = duration;
+      await saveUserPreferences();
+      notifyListeners();
+    }
+  }
+
+  Future<void> setHarmonyDuration(Duration duration) async {
+    if (_harmonyDuration != duration) {
+      _harmonyDuration = duration;
+      await saveUserPreferences();
+      notifyListeners();
+    }
+  }
+
+  Future<void> setDefaultVelocity(int velocity) async {
+    final clampedVelocity = velocity.clamp(1, 127);
+    if (_defaultVelocity != clampedVelocity) {
+      _defaultVelocity = clampedVelocity;
+      await saveUserPreferences();
+      notifyListeners();
+    }
+  }
+
+  Future<void> setAudioEnabled(bool enabled) async {
+    if (_audioEnabled != enabled) {
+      _audioEnabled = enabled;
+      if (!enabled) {
+        await AudioController.instance.stopAll();
+      }
+      await saveUserPreferences();
+      notifyListeners();
+    }
+  }
+
   // ===== CURRENT SESSION SETTERS (for backward compatibility) =====
   void setStringCount(int count) => setDefaultStringCount(count);
   void setFretCount(int count) => setDefaultFretCount(count);
@@ -750,6 +876,14 @@ class AppState extends ChangeNotifier {
     resetDefaultsToFactorySettings();
     resetToDefaults();
     _themeMode = ThemeMode.light;
+    // INTEGRATED: Reset audio preferences to match UserPreferences.defaults()
+    _audioBackend = AudioBackend.midi;
+    _audioVolume = 0.5; // Match UserPreferences default soundVolume
+    _melodyNoteDuration = const Duration(milliseconds: 500);
+    _melodyGapDuration = const Duration(milliseconds: 50);
+    _harmonyDuration = const Duration(milliseconds: 2000);
+    _defaultVelocity = 100;
+    _audioEnabled = true;
     saveUserPreferences();
     notifyListeners();
   }
@@ -786,6 +920,8 @@ class AppState extends ChangeNotifier {
     if (_currentUser != null) {
       ProgressTrackingService.instance.removeListener(_onProgressChanged);
     }
+    // NEW: Clean up audio system
+    AudioController.instance.dispose();
     super.dispose();
   }
 }

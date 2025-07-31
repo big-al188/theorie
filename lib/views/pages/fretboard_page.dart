@@ -1,4 +1,4 @@
-// lib/views/pages/fretboard_page.dart - Integrated with additional octaves support
+// lib/views/pages/fretboard_page.dart - Enhanced for audio integration
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
@@ -10,6 +10,7 @@ import '../../models/music/note.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/common/app_bar.dart';
 import '../widgets/fretboard/fretboard_widget.dart';
+import '../widgets/fretboard/audio_controls.dart'; // NEW: Import for potential use
 import '../widgets/controls/fretboard_controls.dart';
 import '../dialogs/settings_dialog.dart';
 
@@ -272,14 +273,14 @@ class _FretboardCard extends StatelessWidget {
               onUpdate: onUpdate,
               globalFretCount: globalState.fretCount,
             ),
-          // FIXED: Proper FretboardWidget layout with constraints
+          // ENHANCED: Proper FretboardWidget layout with audio integration
           _buildFretboardSection(context, adjustedFretboard),
         ],
       ),
     );
   }
 
-  // RESTORED: Proper fretboard section with responsive layout
+  // ENHANCED: Proper fretboard section with audio controls integration
   Widget _buildFretboardSection(BuildContext context, FretboardInstance instance) {
     final config = instance.toConfig(
       layout: globalState.layout,
@@ -293,6 +294,11 @@ class _FretboardCard extends StatelessWidget {
     // Calculate heights using responsive constants
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
     final fretboardHeight = (instance.stringCount + 1) * stringHeight;
+    
+    // ENHANCED: Account for audio controls height
+    final audioControlsHeight = (config.isIntervalMode && globalState.audioEnabled && !cleanViewMode) 
+        ? _getAudioControlsHeight(deviceType) 
+        : 0.0;
     
     // FIXED: For chord modes, be more conservative about octave expansion
     int actualOctaveCount = instance.selectedOctaves.isEmpty ? 1 : instance.selectedOctaves.length;
@@ -338,9 +344,9 @@ class _FretboardCard extends StatelessWidget {
     // Chord name height if needed
     final chordNameHeight = (config.showChordName && config.isAnyChordMode) ? 30.0 : 0.0;
     
-    // FIXED: More generous height calculation for chord modes
-    final baseHeight = fretboardHeight + scaleStripHeight + spacingHeight + chordNameHeight;
-    final minContainerHeight = fretboardHeight + chordNameHeight + 
+    // ENHANCED: More generous height calculation with audio controls consideration
+    final baseHeight = fretboardHeight + scaleStripHeight + spacingHeight + chordNameHeight + audioControlsHeight;
+    final minContainerHeight = fretboardHeight + chordNameHeight + audioControlsHeight +
         (config.isAnyChordMode ? 60.0 : 40.0); // Extra space for chord modes
     final totalHeight = instance.showScaleStrip ? baseHeight : math.max(baseHeight, minContainerHeight);
 
@@ -351,32 +357,55 @@ class _FretboardCard extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(8.0),
       ),
-      child: SizedBox(
-        width: availableWidth,
-        height: totalHeight,
-        child: FretboardWidget(
-          config: config.copyWith(
+      child: Column(
+        children: [
+          // NEW: Audio controls integration for interval mode
+          if (config.isIntervalMode && globalState.audioEnabled && !cleanViewMode) ...[
+            AudioControls(config: config),
+            SizedBox(height: ResponsiveConstants.getAudioControlsSpacing(screenWidth)),
+          ],
+          
+          // Main fretboard widget
+          SizedBox(
             width: availableWidth,
-            height: totalHeight,
-            showChordName: cleanViewMode && config.isAnyChordMode,
+            height: totalHeight - audioControlsHeight,
+            child: FretboardWidget(
+              config: config.copyWith(
+                width: availableWidth,
+                height: totalHeight - audioControlsHeight,
+                showChordName: cleanViewMode && config.isAnyChordMode,
+              ),
+              onFretTap: (stringIndex, fretIndex) {
+                _handleFretTap(stringIndex, fretIndex);
+              },
+              onScaleNoteTap: (midiNote) {
+                _handleScaleNoteTap(midiNote);
+              },
+              onRangeChanged: cleanViewMode
+                  ? null
+                  : (newStart, newEnd) {
+                      onUpdate(instance.copyWith(
+                        visibleFretStart: newStart,
+                        visibleFretEnd: newEnd,
+                      ));
+                    },
+            ),
           ),
-          onFretTap: (stringIndex, fretIndex) {
-            _handleFretTap(stringIndex, fretIndex);
-          },
-          onScaleNoteTap: (midiNote) {
-            _handleScaleNoteTap(midiNote);
-          },
-          onRangeChanged: cleanViewMode
-              ? null
-              : (newStart, newEnd) {
-                  onUpdate(instance.copyWith(
-                    visibleFretStart: newStart,
-                    visibleFretEnd: newEnd,
-                  ));
-                },
-        ),
+        ],
       ),
     );
+  }
+
+  // NEW: Calculate audio controls height
+  double _getAudioControlsHeight(DeviceType deviceType) {
+    switch (deviceType) {
+      case DeviceType.mobile:
+        return 60.0; // Compact audio controls
+      case DeviceType.tablet:
+        return 70.0; // Medium audio controls
+      case DeviceType.desktop:
+        return 80.0; // Full-size audio controls
+    }
   }
 
   // RESTORED: Proper responsive calculations

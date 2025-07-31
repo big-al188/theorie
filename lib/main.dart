@@ -1,4 +1,4 @@
-// lib/main.dart - Updated authentication wrapper with Firebase progress loading
+// lib/main.dart - Updated with audio system integration
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'models/app_state.dart';
 import 'controllers/quiz_controller.dart';
+import 'controllers/audio_controller.dart'; // NEW: Audio controller import
 import 'services/firebase_user_service.dart';
 import 'services/user_service.dart';
 import 'views/pages/login_page.dart';
@@ -274,7 +275,7 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
   }
 }
 
-/// Main application with all providers and authentication
+/// Main application with all providers and authentication - UPDATED with audio lifecycle
 class MainApp extends StatelessWidget {
   const MainApp({super.key});
 
@@ -295,27 +296,109 @@ class MainApp extends StatelessWidget {
           initialData: null,
         ),
       ],
-      child: Consumer<AppState>(
-        builder: (context, appState, child) {
-          return MaterialApp(
-            title: 'Theorie',
-            debugShowCheckedModeBanner: false,
-            themeMode: appState.themeMode,
-            theme: ThemeData(
-              useMaterial3: true,
-              colorSchemeSeed: Colors.indigo,
-              brightness: Brightness.light,
-            ),
-            darkTheme: ThemeData(
-              useMaterial3: true,
-              colorSchemeSeed: Colors.indigo,
-              brightness: Brightness.dark,
-            ),
-            home: const AuthWrapper(),
-          );
-        },
+      child: AppLifecycleManager( // NEW: Wrap with lifecycle manager
+        child: Consumer<AppState>(
+          builder: (context, appState, child) {
+            return MaterialApp(
+              title: 'Theorie',
+              debugShowCheckedModeBanner: false,
+              themeMode: appState.themeMode,
+              theme: ThemeData(
+                useMaterial3: true,
+                colorSchemeSeed: Colors.indigo,
+                brightness: Brightness.light,
+              ),
+              darkTheme: ThemeData(
+                useMaterial3: true,
+                colorSchemeSeed: Colors.indigo,
+                brightness: Brightness.dark,
+              ),
+              home: const AuthWrapper(),
+            );
+          },
+        ),
       ),
     );
+  }
+}
+
+/// NEW: App lifecycle manager for audio system
+class AppLifecycleManager extends StatefulWidget {
+  final Widget child;
+  
+  const AppLifecycleManager({super.key, required this.child});
+
+  @override
+  State<AppLifecycleManager> createState() => _AppLifecycleManagerState();
+}
+
+class _AppLifecycleManagerState extends State<AppLifecycleManager> 
+    with WidgetsBindingObserver {
+  
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeAudioSystem();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Clean up audio resources when app is closing
+    AudioController.instance.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initializeAudioSystem() async {
+    try {
+      // Wait for app state to be available
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final context = this.context;
+        if (context.mounted) {
+          final appState = context.read<AppState>();
+          
+          // Initialize audio system with user preferences
+          await AudioController.instance.initialize(appState.audioBackend);
+          await AudioController.instance.setVolume(appState.audioVolume);
+          
+          if (kDebugMode) {
+            print('Audio system initialized successfully');
+          }
+        }
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        print('Failed to initialize audio system: $e');
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    switch (state) {
+      case AppLifecycleState.paused:
+        // Stop all audio when app goes to background
+        AudioController.instance.onAppPause();
+        break;
+      case AppLifecycleState.resumed:
+        // Audio system should still be ready when app returns
+        AudioController.instance.onAppResume();
+        break;
+      case AppLifecycleState.detached:
+        // Clean up when app is being terminated
+        AudioController.instance.dispose();
+        break;
+      default:
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
   }
 }
 

@@ -1,19 +1,28 @@
-// lib/models/user/user_preferences.dart
+// lib/models/user/user_preferences.dart - Integrated with audio system
 import 'package:flutter/material.dart';
 import '../fretboard/fretboard_config.dart';
+import '../../controllers/audio_controller.dart'; // NEW: Import for AudioBackend
 
 /// Comprehensive user preferences for app settings, theme, and fretboard defaults
-/// This is the single source of truth for all user preference data
+/// Enhanced with new audio system integration while preserving all existing functionality
 class UserPreferences {
   // Theme and UI preferences
   final ThemeMode themeMode;
   final bool showAnimations;
   final bool showHints;
   final bool showTooltips;
-  final bool playSounds;
-  final double soundVolume;
+  final bool playSounds; // EXISTING: General sound preference
+  final double soundVolume; // EXISTING: General sound volume
   final bool showNotifications;
   final bool autoSaveProgress;
+
+  // NEW: Enhanced audio system preferences (in addition to existing playSounds/soundVolume)
+  final AudioBackend audioBackend;
+  final Duration melodyNoteDuration;
+  final Duration melodyGapDuration; 
+  final Duration harmonyDuration;
+  final int defaultVelocity;
+  final bool audioEnabled; // NEW: Specific to the new audio system
 
   // Fretboard display preferences
   final FretboardLayout defaultLayout;
@@ -88,6 +97,14 @@ class UserPreferences {
     this.showNotifications = true,
     this.autoSaveProgress = true,
 
+    // NEW: Enhanced audio system preferences with sensible defaults
+    this.audioBackend = AudioBackend.midi,
+    this.melodyNoteDuration = const Duration(milliseconds: 500),
+    this.melodyGapDuration = const Duration(milliseconds: 50),
+    this.harmonyDuration = const Duration(milliseconds: 2000),
+    this.defaultVelocity = 100,
+    this.audioEnabled = true,
+
     // Fretboard display
     this.defaultLayout = FretboardLayout.rightHandedBassBottom,
     this.defaultStringCount = 6,
@@ -156,7 +173,7 @@ class UserPreferences {
     return const UserPreferences();
   }
 
-  /// Convert to JSON for persistence
+  /// Convert to JSON for persistence - ENHANCED with new audio fields
   Map<String, dynamic> toJson() {
     return {
       // Theme and UI
@@ -168,6 +185,14 @@ class UserPreferences {
       'soundVolume': soundVolume,
       'showNotifications': showNotifications,
       'autoSaveProgress': autoSaveProgress,
+
+      // NEW: Enhanced audio system preferences
+      'audioBackend': audioBackend.index,
+      'melodyNoteDurationMs': melodyNoteDuration.inMilliseconds,
+      'melodyGapDurationMs': melodyGapDuration.inMilliseconds,
+      'harmonyDurationMs': harmonyDuration.inMilliseconds,
+      'defaultVelocity': defaultVelocity,
+      'audioEnabled': audioEnabled,
 
       // Fretboard display
       'defaultLayout': defaultLayout.index,
@@ -233,7 +258,7 @@ class UserPreferences {
     };
   }
 
-  /// Create from JSON
+  /// Create from JSON - ENHANCED with new audio fields and backwards compatibility
   factory UserPreferences.fromJson(Map<String, dynamic> json) {
     return UserPreferences(
       // Theme and UI
@@ -245,6 +270,22 @@ class UserPreferences {
       soundVolume: (json['soundVolume'] as num?)?.toDouble() ?? 0.5,
       showNotifications: json['showNotifications'] as bool? ?? true,
       autoSaveProgress: json['autoSaveProgress'] as bool? ?? true,
+
+      // NEW: Enhanced audio system preferences with backwards compatibility
+      audioBackend: json['audioBackend'] != null 
+          ? AudioBackend.values[json['audioBackend'] as int] 
+          : AudioBackend.midi,
+      melodyNoteDuration: json['melodyNoteDurationMs'] != null 
+          ? Duration(milliseconds: json['melodyNoteDurationMs'] as int) 
+          : const Duration(milliseconds: 500),
+      melodyGapDuration: json['melodyGapDurationMs'] != null 
+          ? Duration(milliseconds: json['melodyGapDurationMs'] as int) 
+          : const Duration(milliseconds: 50),
+      harmonyDuration: json['harmonyDurationMs'] != null 
+          ? Duration(milliseconds: json['harmonyDurationMs'] as int) 
+          : const Duration(milliseconds: 2000),
+      defaultVelocity: json['defaultVelocity'] as int? ?? 100,
+      audioEnabled: json['audioEnabled'] as bool? ?? true,
 
       // Fretboard display
       defaultLayout: FretboardLayout.values[json['defaultLayout'] as int? ?? 0],
@@ -310,7 +351,7 @@ class UserPreferences {
     );
   }
 
-  /// Create copy with updated fields
+  /// Create copy with updated fields - ENHANCED with new audio fields
   UserPreferences copyWith({
     // Theme and UI
     ThemeMode? themeMode,
@@ -321,6 +362,14 @@ class UserPreferences {
     double? soundVolume,
     bool? showNotifications,
     bool? autoSaveProgress,
+
+    // NEW: Enhanced audio system parameters
+    AudioBackend? audioBackend,
+    Duration? melodyNoteDuration,
+    Duration? melodyGapDuration,
+    Duration? harmonyDuration,
+    int? defaultVelocity,
+    bool? audioEnabled,
 
     // Fretboard display
     FretboardLayout? defaultLayout,
@@ -394,6 +443,14 @@ class UserPreferences {
       soundVolume: soundVolume ?? this.soundVolume,
       showNotifications: showNotifications ?? this.showNotifications,
       autoSaveProgress: autoSaveProgress ?? this.autoSaveProgress,
+
+      // NEW: Enhanced audio system
+      audioBackend: audioBackend ?? this.audioBackend,
+      melodyNoteDuration: melodyNoteDuration ?? this.melodyNoteDuration,
+      melodyGapDuration: melodyGapDuration ?? this.melodyGapDuration,
+      harmonyDuration: harmonyDuration ?? this.harmonyDuration,
+      defaultVelocity: defaultVelocity ?? this.defaultVelocity,
+      audioEnabled: audioEnabled ?? this.audioEnabled,
 
       // Fretboard display
       defaultLayout: defaultLayout ?? this.defaultLayout,
@@ -485,6 +542,17 @@ class UserPreferences {
     showResults: showQuizResults,
   );
 
+  /// NEW: Get audio-specific preferences as a separate object for the audio system
+  AudioPreferences get audioPreferences => AudioPreferences(
+    backend: audioBackend,
+    volume: soundVolume, // Use existing soundVolume for master volume
+    melodyNoteDuration: melodyNoteDuration,
+    melodyGapDuration: melodyGapDuration,
+    harmonyDuration: harmonyDuration,
+    defaultVelocity: defaultVelocity,
+    enabled: audioEnabled && playSounds, // Combine both audio flags
+  );
+
   @override
   String toString() {
     return 'UserPreferences(theme: $themeMode, layout: $defaultLayout, root: $defaultRoot, scale: $defaultScale)';
@@ -500,7 +568,10 @@ class UserPreferences {
         other.defaultFretCount == defaultFretCount &&
         other.defaultRoot == defaultRoot &&
         other.defaultViewMode == defaultViewMode &&
-        other.defaultScale == defaultScale;
+        other.defaultScale == defaultScale &&
+        // NEW: Include audio preferences in equality check
+        other.audioBackend == audioBackend &&
+        other.audioEnabled == audioEnabled;
   }
 
   @override
@@ -512,6 +583,9 @@ class UserPreferences {
         defaultRoot,
         defaultViewMode,
         defaultScale,
+        // NEW: Include audio preferences in hash
+        audioBackend,
+        audioEnabled,
       );
 }
 
@@ -562,5 +636,26 @@ class QuizPreferences {
     required this.showFeedback,
     required this.randomizeOrder,
     required this.showResults,
+  });
+}
+
+/// NEW: Subset of preferences specific to audio system behavior
+class AudioPreferences {
+  final AudioBackend backend;
+  final double volume;
+  final Duration melodyNoteDuration;
+  final Duration melodyGapDuration;
+  final Duration harmonyDuration;
+  final int defaultVelocity;
+  final bool enabled;
+
+  const AudioPreferences({
+    required this.backend,
+    required this.volume,
+    required this.melodyNoteDuration,
+    required this.melodyGapDuration,
+    required this.harmonyDuration,
+    required this.defaultVelocity,
+    required this.enabled,
   });
 }

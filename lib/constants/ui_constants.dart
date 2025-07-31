@@ -1,8 +1,9 @@
-// lib/constants/ui_constants.dart
+// lib/constants/ui_constants.dart - Integrated with audio system
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
 /// UI-related constants with responsive design support
+/// Enhanced with audio system integration while preserving all existing functionality
 class UIConstants {
   // Base fretboard dimensions (used for desktop/default)
   static const double baseStringHeight = 32.0;
@@ -45,6 +46,13 @@ class UIConstants {
 
   // Touch target minimum (accessibility)
   static const double minTouchTargetSize = 44.0;
+
+  // NEW: Audio-related constants
+  static const double audioControlsSpacing = 8.0;
+  static const double audioControlsMinHeight = 60.0;
+  static const double audioControlsMaxHeight = 80.0;
+  static const double audioButtonMinWidth = 80.0;
+  static const double audioButtonHeight = 36.0;
 
   // Legacy properties that delegate to responsive methods
   static double get stringHeight =>
@@ -126,6 +134,7 @@ class UIConstants {
 }
 
 /// Responsive constants that adapt to screen size
+/// Enhanced with audio system integration while preserving all existing functionality
 class ResponsiveConstants {
   // Get device type for responsive behavior
   static DeviceType getDeviceType(double screenWidth) {
@@ -271,6 +280,86 @@ class ResponsiveConstants {
           return 16.0; // Full padding for desktop
       }
     }
+  }
+
+  // NEW: Audio-related responsive methods
+
+  /// Get spacing between audio controls and fretboard
+  static double getAudioControlsSpacing(double screenWidth) {
+    switch (getDeviceType(screenWidth)) {
+      case DeviceType.mobile:
+        return 6.0; // Tight spacing for mobile
+      case DeviceType.tablet:
+        return 8.0; // Medium spacing for tablet
+      case DeviceType.desktop:
+        return UIConstants.audioControlsSpacing; // Full spacing for desktop
+    }
+  }
+
+  /// Get audio controls container height
+  static double getAudioControlsHeight(double screenWidth) {
+    switch (getDeviceType(screenWidth)) {
+      case DeviceType.mobile:
+        return UIConstants.audioControlsMinHeight; // Compact controls
+      case DeviceType.tablet:
+        return 70.0; // Medium controls
+      case DeviceType.desktop:
+        return UIConstants.audioControlsMaxHeight; // Full-size controls
+    }
+  }
+
+  /// Get audio button minimum width
+  static double getAudioButtonWidth(double screenWidth) {
+    switch (getDeviceType(screenWidth)) {
+      case DeviceType.mobile:
+        return 72.0; // Slightly reduced for mobile
+      case DeviceType.tablet:
+        return UIConstants.audioButtonMinWidth; // Standard width
+      case DeviceType.desktop:
+        return UIConstants.audioButtonMinWidth; // Standard width
+    }
+  }
+
+  /// Get audio button height
+  static double getAudioButtonHeight(double screenWidth) {
+    switch (getDeviceType(screenWidth)) {
+      case DeviceType.mobile:
+        return 32.0; // Reduced height for mobile
+      case DeviceType.tablet:
+        return UIConstants.audioButtonHeight; // Standard height
+      case DeviceType.desktop:
+        return UIConstants.audioButtonHeight; // Standard height
+    }
+  }
+
+  /// Get audio control icon size
+  static double getAudioControlIconSize(double screenWidth) {
+    switch (getDeviceType(screenWidth)) {
+      case DeviceType.mobile:
+        return 18.0; // Smaller icons for mobile
+      case DeviceType.tablet:
+        return 20.0; // Medium icons for tablet
+      case DeviceType.desktop:
+        return 24.0; // Full-size icons for desktop
+    }
+  }
+
+  /// Get audio settings card padding
+  static double getAudioSettingsCardPadding(double screenWidth) {
+    switch (getDeviceType(screenWidth)) {
+      case DeviceType.mobile:
+        return 12.0; // Reduced padding for mobile
+      case DeviceType.tablet:
+        return 16.0; // Standard padding for tablet
+      case DeviceType.desktop:
+        return 20.0; // Full padding for desktop
+    }
+  }
+
+  /// Get effective audio control touch target (accessibility)
+  static double getEffectiveAudioTouchTarget(double screenWidth) {
+    final baseSize = getAudioButtonHeight(screenWidth);
+    return getEffectiveTouchArea(baseSize);
   }
 }
 

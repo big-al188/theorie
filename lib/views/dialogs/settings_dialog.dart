@@ -1,9 +1,10 @@
-// lib/views/dialogs/settings_dialog.dart
+// lib/views/dialogs/settings_dialog.dart - Integrated with audio settings
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/fretboard/fretboard_config.dart';
 import '../../constants/ui_constants.dart';
+import '../widgets/settings/audio_settings_section.dart'; // NEW: Import audio settings
 import 'settings_sections.dart';
 
 void showSettingsDialog(BuildContext context) {
@@ -71,6 +72,10 @@ class SettingsContent extends StatelessWidget {
                 FretboardDefaultsSection(),
                 SizedBox(height: 16),
                 AppPreferencesSection(),
+                SizedBox(height: 16),
+                
+                // NEW: Audio settings section
+                AudioSettingsSection(),
                 SizedBox(height: 24),
 
                 // Quick actions section
@@ -189,7 +194,7 @@ class _QuickActionsSection extends StatelessWidget {
         child: AlertDialog(
           title: const Text('Factory Reset'),
           content: const Text(
-            'This will reset ALL settings to factory defaults, including theme, preferences, and current session. Continue?',
+            'This will reset ALL settings to factory defaults, including theme, preferences, audio settings, and current session. Continue?',
           ),
           actions: [
             TextButton(

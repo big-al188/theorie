@@ -277,7 +277,8 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     }
   }
 
-  void _handleFretboardTap(BuildContext context, TapDownDetails details,
+
+void _handleFretboardTap(BuildContext context, TapDownDetails details,
       double boardHeight, double screenWidth) {
     if (widget.onFretTap == null) return;
 
@@ -309,10 +310,27 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     // Use responsive string height
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
 
-    // Calculate string and fret indices
-    final stringIndex = (adjustedY / stringHeight).floor() - 1;
+    // FIXED: Proper Y-coordinate calculation to match painter
+    // Strings are painted at (row + 1) * stringHeight, so we need to reverse this
+    // Add stringHeight/2 for better hit detection tolerance
+    final row = ((adjustedY + stringHeight/2) / stringHeight).floor() - 1;
 
-    if (stringIndex < 0 || stringIndex >= widget.config.stringCount) return;
+    if (row < 0 || row >= widget.config.stringCount) {
+      debugPrint('Tap outside string range: row=$row, adjustedY=$adjustedY, stringHeight=$stringHeight');
+      return;
+    }
+
+    // Map visual row to actual string index using same logic as painter
+    final stringIndex = widget.config.isBassTop 
+        ? row 
+        : (widget.config.stringCount - 1 - row);
+
+    if (stringIndex < 0 || stringIndex >= widget.config.stringCount) {
+      debugPrint('Invalid string index: $stringIndex');
+      return;
+    }
+
+    debugPrint('Tap detected: row=$row, stringIndex=$stringIndex, adjustedY=$adjustedY');
 
     double fretStartX = widget.config.visibleFretStart == 0 ? headWidth : 0;
     final relativeX = adjustedX - fretStartX;

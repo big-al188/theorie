@@ -35,6 +35,9 @@ dependencies:
   
   # Core utilities
   meta: ^1.15.0
+  
+  # Audio System - NEW
+  flutter_midi_command: ^0.4.15
 
 dev_dependencies:
   flutter_test:

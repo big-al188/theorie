@@ -1,4 +1,4 @@
-// lib/views/widgets/fretboard/fretboard_container.dart
+// lib/views/widgets/fretboard/fretboard_container.dart - Integrated with audio controls
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/app_state.dart';
@@ -6,9 +6,11 @@ import '../../../models/fretboard/fretboard_config.dart';
 import '../../../models/fretboard/fretboard_instance.dart';
 import '../../../models/music/note.dart';
 import '../../../controllers/fretboard_controller.dart';
+import '../../../constants/ui_constants.dart'; // NEW: For responsive constants
 import 'fretboard_widget.dart';
+import 'audio_controls.dart'; // NEW: Import audio controls
 
-/// Stateful container that manages fretboard instance state
+/// Stateful container that manages fretboard instance state with audio integration
 class FretboardContainer extends StatefulWidget {
   final FretboardInstance instance;
   final Function(FretboardInstance) onUpdate;
@@ -440,18 +442,36 @@ class _FretboardContainerState extends State<FretboardContainer> {
           globalFretCount: appState.fretCount,
         );
 
-        return FretboardWidget(
-          config: config,
-          onFretTap: _handleFretTap,
-          onScaleNoteTap: _handleScaleNoteTap,
-          onRangeChanged: widget.showControls
-              ? (start, end) {
-                  widget.onUpdate(widget.instance.copyWith(
-                    visibleFretStart: start,
-                    visibleFretEnd: end,
-                  ));
-                }
-              : null,
+        // NEW: Check if we should show audio controls
+        final shouldShowAudioControls = config.isIntervalMode && 
+                                       appState.audioEnabled && 
+                                       widget.showControls;
+
+        return Column(
+          children: [
+            // NEW: Audio controls for interval mode
+            if (shouldShowAudioControls) ...[
+              AudioControls(config: config),
+              SizedBox(height: ResponsiveConstants.getAudioControlsSpacing(
+                MediaQuery.of(context).size.width,
+              )),
+            ],
+            
+            // Main fretboard widget
+            FretboardWidget(
+              config: config,
+              onFretTap: _handleFretTap,
+              onScaleNoteTap: _handleScaleNoteTap,
+              onRangeChanged: widget.showControls
+                  ? (start, end) {
+                      widget.onUpdate(widget.instance.copyWith(
+                        visibleFretStart: start,
+                        visibleFretEnd: end,
+                      ));
+                    }
+                  : null,
+            ),
+          ],
         );
       },
     );
