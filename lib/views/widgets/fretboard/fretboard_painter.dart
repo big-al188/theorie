@@ -27,14 +27,15 @@ class FretboardPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final correctedFretCount =
-        FretboardController.getCorrectedFretCount(config);
-
+    final correctedFretCount = FretboardController.getCorrectedFretCount(config);
     final canvasWidth = size.width;
     final headWidth = canvasWidth * UIConstants.headWidthRatio;
-    final availableWidth =
-        canvasWidth - (config.visibleFretStart == 0 ? headWidth : 0);
-    final fretWidth = availableWidth / correctedFretCount;
+    final availableWidth = canvasWidth - (config.visibleFretStart == 0 ? headWidth : 0);
+    
+    // FIXED: Calculate fretWidth to match how fret structure is drawn
+    final fretWidth = config.visibleFretStart == 0 
+      ? availableWidth / config.visibleFretEnd  // Headstock: fret structure draws 1-12 (12 spaces)
+      : availableWidth / correctedFretCount;    // No headstock: use corrected count
 
     // Use responsive string height
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
@@ -216,7 +217,7 @@ class FretboardPainter extends CustomPainter {
       }
     } else {
       // No headstock - draw all fret lines
-      for (int f = 0; f <= correctedFretCount; f++) {
+      for (int f = 0; f < correctedFretCount; f++) {
         final x = startX + f * fretWidth;
         canvas.drawLine(Offset(x, 0), Offset(x, boardHeight), fretPaint);
       }
@@ -461,8 +462,23 @@ class FretboardPainter extends CustomPainter {
     final markerRadius = _calculateNoteMarkerRadius(fretWidth, canvasWidth);
     final fontSize = _calculateNoteLabelFontSize(fretWidth, canvasWidth);
 
-    // Ensure marker doesn't extend beyond canvas bounds
-    final safeRadius = math.min(markerRadius, math.min(cx, canvasWidth - cx));
+    // OLD (BROKEN) - This causes 12th fret to disappear:
+    // final safeRadius = math.min(markerRadius, math.min(cx, canvasWidth - cx));
+
+    // NEW (FIXED) - Allow markers to extend slightly beyond canvas edges:
+    // Only reduce radius if marker center is extremely close to edges
+    double safeRadius = markerRadius;
+    const edgeBuffer = 5.0; // Allow small extension beyond canvas
+
+    // Only clamp radius if marker center is very close to left edge
+    if (cx < edgeBuffer) {
+      safeRadius = math.min(safeRadius, cx + edgeBuffer);
+    }
+    // Only clamp radius if marker center is very close to right edge  
+    else if (cx > canvasWidth - edgeBuffer) {
+      safeRadius = math.min(safeRadius, (canvasWidth - cx) + edgeBuffer);
+    }
+
     final finalRadius = math.max(safeRadius, 8.0); // Minimum readable size
 
     // Draw colored circle
@@ -541,8 +557,12 @@ class FretboardPainter extends CustomPainter {
               : config.selectedOctaves.reduce((a, b) => a < b ? a : b);
           referenceRootNote = Note.fromString('${config.root}$referenceOctave');
         } else {
-          // For scale mode, use octave 0 with effective root
-          referenceRootNote = Note.fromString('${config.effectiveRoot}0');
+          // FIXED: For scale mode, use the same approach as interval mode
+          // Use the user's selected octave as reference, not octave 0
+          final referenceOctave = config.selectedOctaves.isEmpty 
+              ? 3 
+              : config.selectedOctaves.reduce((a, b) => a < b ? a : b);
+          referenceRootNote = Note.fromString('${config.effectiveRoot}$referenceOctave');
         }
         
         final interval = midi - referenceRootNote.midi;
@@ -582,34 +602,35 @@ class FretboardPainter extends CustomPainter {
 
       textPainter.paint(canvas, Offset(safeTextX, safeTextY));
     } else {
-      // Text is too large, use a smaller font or abbreviate
-      final shortenedText =
-          displayText.length > 2 ? displayText.substring(0, 2) : displayText;
-      final smallerFontSize = fontSize * 0.8;
+      // FIXED: Text is too large - scale font instead of truncating
+      // Try progressively smaller font sizes until text fits
+      double scaledFontSize = fontSize;
+      TextPainter scaledTextPainter;
+      
+      do {
+        scaledFontSize *= 0.85; // Reduce by 15% each iteration
+        scaledTextPainter = TextPainter(
+          text: TextSpan(
+            text: displayText, // Keep full text, don't truncate
+            style: textStyle.copyWith(fontSize: scaledFontSize),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+      } while ((scaledTextPainter.width > finalRadius * 1.6 || 
+                scaledTextPainter.height > finalRadius * 1.6) && 
+              scaledFontSize > fontSize * 0.5); // Don't go below 50% of original
 
-      final smallerTextPainter = TextPainter(
-        text: TextSpan(
-          text: shortenedText,
-          style: textStyle.copyWith(fontSize: smallerFontSize),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      final textX = cx - scaledTextPainter.width / 2;
+      final textY = cy - scaledTextPainter.height / 2;
 
-      final smallerTextWidth = smallerTextPainter.width;
-      final smallerTextHeight = smallerTextPainter.height;
-
-      final textX = cx - smallerTextWidth / 2;
-      final textY = cy - smallerTextHeight / 2;
-
-      // Adjust vertical positioning for flat symbols in abbreviated text too
-      final adjustedTextY = shortenedText.contains('♭') ? textY - 0.5 : textY;
-
+      // Adjust vertical positioning for flat symbols
+      final adjustedTextY = displayText.contains('♭') ? textY - 0.5 : textY;
+      
       // Ensure text doesn't go outside canvas bounds
-      final safeTextX =
-          textX.clamp(0, canvasWidth - smallerTextWidth).toDouble();
+      final safeTextX = textX.clamp(0, canvasWidth - scaledTextPainter.width).toDouble();
       final safeTextY = math.max(adjustedTextY, 0).toDouble();
 
-      smallerTextPainter.paint(canvas, Offset(safeTextX, safeTextY));
+      scaledTextPainter.paint(canvas, Offset(safeTextX, safeTextY));
     }
   }
 
@@ -625,9 +646,23 @@ class FretboardPainter extends CustomPainter {
     // Calculate responsive sizes (same as primary markers)
     final markerRadius = _calculateNoteMarkerRadius(fretWidth, canvasWidth);
     final fontSize = _calculateNoteLabelFontSize(fretWidth, canvasWidth);
+    // OLD (BROKEN) - This causes 12th fret to disappear:
+    // final safeRadius = math.min(markerRadius, math.min(cx, canvasWidth - cx));
 
-    // Ensure marker doesn't extend beyond canvas bounds
-    final safeRadius = math.min(markerRadius, math.min(cx, canvasWidth - cx));
+    // NEW (FIXED) - Allow markers to extend slightly beyond canvas edges:
+    // Only reduce radius if marker center is extremely close to edges
+    double safeRadius = markerRadius;
+    const edgeBuffer = 5.0; // Allow small extension beyond canvas
+
+    // Only clamp radius if marker center is very close to left edge
+    if (cx < edgeBuffer) {
+      safeRadius = math.min(safeRadius, cx + edgeBuffer);
+    }
+    // Only clamp radius if marker center is very close to right edge  
+    else if (cx > canvasWidth - edgeBuffer) {
+      safeRadius = math.min(safeRadius, (canvasWidth - cx) + edgeBuffer);
+    }
+
     final finalRadius = math.max(safeRadius, 8.0); // Minimum readable size
 
     // Draw white filled circle
@@ -700,6 +735,7 @@ class FretboardPainter extends CustomPainter {
     final textWidth = textPainter.width;
     final textHeight = textPainter.height;
 
+    // Check if text fits within marker
     if (textWidth <= finalRadius * 1.6 && textHeight <= finalRadius * 1.6) {
       // Text fits, center it
       final textX = cx - textWidth / 2;
@@ -714,24 +750,35 @@ class FretboardPainter extends CustomPainter {
 
       textPainter.paint(canvas, Offset(safeTextX, safeTextY));
     } else {
-      // Text too large - use abbreviated version
-      final shortenedText = displayText.length > 2 ? displayText.substring(0, 2) : displayText;
-      final smallerTextPainter = TextPainter(
-        text: TextSpan(
-          text: shortenedText,
-          style: textStyle.copyWith(fontSize: fontSize * 0.8),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      // FIXED: Text is too large - scale font instead of truncating
+      // Try progressively smaller font sizes until text fits
+      double scaledFontSize = fontSize;
+      TextPainter scaledTextPainter;
+      
+      do {
+        scaledFontSize *= 0.85; // Reduce by 15% each iteration
+        scaledTextPainter = TextPainter(
+          text: TextSpan(
+            text: displayText, // Keep full text, don't truncate
+            style: textStyle.copyWith(fontSize: scaledFontSize),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+      } while ((scaledTextPainter.width > finalRadius * 1.6 || 
+                scaledTextPainter.height > finalRadius * 1.6) && 
+              scaledFontSize > fontSize * 0.5); // Don't go below 50% of original
 
-      final textX = cx - smallerTextPainter.width / 2;
-      final textY = cy - smallerTextPainter.height / 2;
+      final textX = cx - scaledTextPainter.width / 2;
+      final textY = cy - scaledTextPainter.height / 2;
 
-      final adjustedTextY = shortenedText.contains('♭') ? textY - 0.5 : textY;
-      final safeTextX = textX.clamp(0, canvasWidth - smallerTextPainter.width).toDouble();
+      // Adjust vertical positioning for flat symbols
+      final adjustedTextY = displayText.contains('♭') ? textY - 0.5 : textY;
+      
+      // Ensure text doesn't go outside canvas bounds
+      final safeTextX = textX.clamp(0, canvasWidth - scaledTextPainter.width).toDouble();
       final safeTextY = math.max(adjustedTextY, 0).toDouble();
 
-      smallerTextPainter.paint(canvas, Offset(safeTextX, safeTextY));
+      scaledTextPainter.paint(canvas, Offset(safeTextX, safeTextY));
     }
   }
 

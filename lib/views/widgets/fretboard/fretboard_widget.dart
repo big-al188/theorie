@@ -321,7 +321,9 @@ void _handleFretboardTap(BuildContext context, TapDownDetails details,
 
     final correctedFretCount =
         FretboardController.getCorrectedFretCount(widget.config);
-    final fretWidth = availableWidth / correctedFretCount;
+    final fretWidth = widget.config.visibleFretStart == 0 
+        ? availableWidth / widget.config.visibleFretEnd  // 12 spaces for frets 1-12 (headstock)
+        : availableWidth / correctedFretCount;           // Use corrected count for zoom
 
     // Use responsive string height
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);

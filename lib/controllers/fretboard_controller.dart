@@ -328,15 +328,17 @@ class FretboardController {
     return getIntervalLabel(interval);
   }
 
-  /// Calculate visible fret range with corrections
-  static int getCorrectedFretCount(FretboardConfig config) {
-    if (config.visibleFretStart == 0) {
-      return config.visibleFretCount;
-    } else {
-      // For non-zero start, add 1 to include both endpoints
-      return config.visibleFretCount + 1;
-    }
+// In fretboard_controller.dart, change getCorrectedFretCount to:
+static int getCorrectedFretCount(FretboardConfig config) {
+  if (config.visibleFretStart == 0) {
+    // FIXED: Need to process frets 0 through visibleFretEnd (includes fret 12)
+    // Return visibleFretEnd + 1 so loop processes all frets
+    return config.visibleFretEnd + 1;  // 13 for range 0-12
+  } else {
+    // Zoomed case: showing frets from visibleFretStart to visibleFretEnd (inclusive)
+    return config.visibleFretEnd - config.visibleFretStart + 1;
   }
+}
 
   /// Get fret position for a note on a string
   static int? getFretForNote(
