@@ -1,23 +1,53 @@
-// lib/main.dart - Updated with audio system integration
+// lib/main.dart - Updated with audio system integration and Stripe subscription service
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart'
-    as firebase_auth; // CHANGED: Added alias
+    as firebase_auth; // Added alias
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_stripe/flutter_stripe.dart'; // NEW: Stripe import
 import 'firebase_options.dart';
 import 'models/app_state.dart';
 import 'controllers/quiz_controller.dart';
-import 'controllers/audio_controller.dart'; // NEW: Audio controller import
+import 'controllers/audio_controller.dart'; // Audio controller import
 import 'services/firebase_user_service.dart';
 import 'services/user_service.dart';
+import 'services/subscription_service.dart'; // NEW: Subscription service import
 import 'views/pages/login_page.dart';
 import 'views/pages/welcome_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // NEW: Initialize Stripe
+  await _initializeStripe();
+
   runApp(const TheorieApp());
+}
+
+/// NEW: Initialize Stripe with publishable key
+Future<void> _initializeStripe() async {
+  try {
+    // TODO: Replace with your actual Stripe publishable key
+    // Get this from your Stripe Dashboard
+    const stripePublishableKey = kDebugMode 
+        ? 'pk_test_your_test_key_here'  // Test key for development
+        : 'pk_live_your_live_key_here'; // Live key for production
+    
+    Stripe.publishableKey = stripePublishableKey;
+    
+    // Optional: Set merchant identifier for Apple Pay
+    Stripe.merchantIdentifier = 'merchant.com.yourcompany.theorie';
+    
+    // Optional: Set URL scheme for 3D Secure authentication
+    Stripe.urlScheme = 'flutterstripe';
+    
+    debugPrint('✅ [Stripe] Stripe initialized successfully');
+  } catch (e) {
+    debugPrint('❌ [Stripe] Error initializing Stripe: $e');
+    // Continue without Stripe - the app should still work for non-payment features
+  }
 }
 
 class TheorieApp extends StatelessWidget {
@@ -114,7 +144,7 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
     try {
       // Set authentication persistence for web
       await firebase_auth.FirebaseAuth.instance.setPersistence(
-          firebase_auth.Persistence.LOCAL); // CHANGED: Added alias
+          firebase_auth.Persistence.LOCAL); // Added alias
 
       // Enable Firestore offline persistence for web
       await FirebaseFirestore.instance
@@ -275,7 +305,7 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
   }
 }
 
-/// Main application with all providers and authentication - UPDATED with audio lifecycle
+/// Main application with all providers and authentication - UPDATED with audio lifecycle and subscription service
 class MainApp extends StatelessWidget {
   const MainApp({super.key});
 
@@ -289,14 +319,17 @@ class MainApp extends StatelessWidget {
         // Quiz controller provider
         ChangeNotifierProvider(create: (_) => QuizController()),
 
+        // NEW: Subscription service provider
+        ChangeNotifierProvider(create: (_) => SubscriptionService.instance),
+
         // Firebase auth state stream provider
         StreamProvider<firebase_auth.User?>(
-          // CHANGED: Added alias
+          // Added alias
           create: (_) => FirebaseUserService.instance.authStateChanges,
           initialData: null,
         ),
       ],
-      child: AppLifecycleManager( // NEW: Wrap with lifecycle manager
+      child: AppLifecycleManager( // Wrap with lifecycle manager
         child: Consumer<AppState>(
           builder: (context, appState, child) {
             return MaterialApp(
@@ -322,7 +355,7 @@ class MainApp extends StatelessWidget {
   }
 }
 
-/// NEW: App lifecycle manager for audio system
+/// UPDATED: App lifecycle manager for audio system and subscription refresh
 class AppLifecycleManager extends StatefulWidget {
   final Widget child;
   
@@ -379,19 +412,28 @@ class _AppLifecycleManagerState extends State<AppLifecycleManager>
     super.didChangeAppLifecycleState(state);
     
     switch (state) {
-      case AppLifecycleState.paused:
-        // Stop all audio when app goes to background
-        AudioController.instance.onAppPause();
-        break;
       case AppLifecycleState.resumed:
+        debugPrint('🔄 [AppLifecycle] App resumed - refreshing subscription status');
+        // NEW: Refresh subscription status when app becomes active
+        SubscriptionService.instance.refreshSubscriptionStatus();
         // Audio system should still be ready when app returns
         AudioController.instance.onAppResume();
         break;
+      case AppLifecycleState.paused:
+        debugPrint('⏸️ [AppLifecycle] App paused');
+        // Stop all audio when app goes to background
+        AudioController.instance.onAppPause();
+        break;
       case AppLifecycleState.detached:
+        debugPrint('🔌 [AppLifecycle] App detached');
         // Clean up when app is being terminated
         AudioController.instance.dispose();
         break;
-      default:
+      case AppLifecycleState.inactive:
+        debugPrint('😴 [AppLifecycle] App inactive');
+        break;
+      case AppLifecycleState.hidden:
+        debugPrint('🙈 [AppLifecycle] App hidden');
         break;
     }
   }
@@ -548,7 +590,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
     // Listen to Firebase auth state changes
     return Consumer<firebase_auth.User?>(
-      // CHANGED: Added alias
+      // Added alias
       builder: (context, firebaseUser, child) {
         return Consumer<AppState>(
           builder: (context, appState, child) {
@@ -625,7 +667,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   /// ENHANCED: Load Firebase user with better progress integration
   Future<void> _loadFirebaseUser(firebase_auth.User firebaseUser) async {
-    // CHANGED: Added alias
+    // Added alias
     try {
       print('Loading Firebase user data for: ${firebaseUser.uid}');
 

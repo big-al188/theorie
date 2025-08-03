@@ -1,29 +1,35 @@
-// lib/models/app_state.dart - Updated with audio preferences integration
+// lib/models/app_state.dart - Updated with audio preferences integration and subscription service
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../../controllers/music_controller.dart';
-import '../../controllers/audio_controller.dart'; // NEW: Import audio controller
+import '../../controllers/audio_controller.dart'; // Audio controller import
 import '../constants/music_constants.dart';
 import 'fretboard/fretboard_config.dart';
 import 'fretboard/fretboard_instance.dart';
 import 'music/chord.dart';
 import 'music/note.dart';
 import 'user/user.dart';
-import 'user/user_preferences.dart';  // ADDED: Import separated models
-import 'user/user_progress.dart';     // ADDED: Import separated models
+import 'user/user_preferences.dart';  // Separated models
+import 'user/user_progress.dart';     // Separated models
+import 'subscription/subscription_models.dart'; // NEW: Subscription models
 import '../services/user_service.dart';
 import '../services/progress_tracking_service.dart';
 import '../services/firebase_user_service.dart';
+import '../services/subscription_service.dart'; // NEW: Subscription service
 
 /// Central application state management
-/// UPDATED: Enhanced for separated user models architecture and audio system
+/// UPDATED: Enhanced for separated user models architecture, audio system, and subscription integration
 class AppState extends ChangeNotifier {
   // ===== USER MANAGEMENT =====
   User? _currentUser;
-  UserPreferences? _currentUserPreferences;  // ADDED: Separate preferences
-  UserProgress? _currentUserProgress;        // ADDED: Separate progress
+  UserPreferences? _currentUserPreferences;  // Separate preferences
+  UserProgress? _currentUserProgress;        // Separate progress
   bool _isInitialized = false;
+
+  // ===== SUBSCRIPTION MANAGEMENT - NEW =====
+  SubscriptionService? _subscriptionService;
+  bool _subscriptionInitialized = false;
 
   // ===== FRETBOARD DEFAULTS =====
   // Default fretboard configuration that will be used for new fretboards
@@ -44,7 +50,7 @@ class AppState extends ChangeNotifier {
   // ===== APP PREFERENCES =====
   ThemeMode _themeMode = ThemeMode.light;
 
-  // ===== AUDIO PREFERENCES - NEW =====
+  // ===== AUDIO PREFERENCES =====
   AudioBackend _audioBackend = AudioBackend.midi;
   double _audioVolume = 0.7;
   Duration _melodyNoteDuration = const Duration(milliseconds: 500);
@@ -64,10 +70,30 @@ class AppState extends ChangeNotifier {
 
   // ===== USER GETTERS =====
   User? get currentUser => _currentUser;
-  UserPreferences? get currentUserPreferences => _currentUserPreferences;  // ADDED
-  UserProgress? get currentUserProgress => _currentUserProgress;          // ADDED
+  UserPreferences? get currentUserPreferences => _currentUserPreferences;
+  UserProgress? get currentUserProgress => _currentUserProgress;
   bool get isLoggedIn => _currentUser != null;
   bool get isInitialized => _isInitialized;
+
+  // ===== SUBSCRIPTION GETTERS - NEW =====
+  SubscriptionService get subscriptionService => 
+      _subscriptionService ??= SubscriptionService.instance;
+  
+  SubscriptionData get currentSubscription => 
+      subscriptionService.currentSubscription;
+  
+  bool get hasActiveSubscription => 
+      subscriptionService.hasActiveSubscription;
+  
+  bool get isSubscriptionInitialized => _subscriptionInitialized;
+
+  String get subscriptionTierDisplayName {
+    return currentSubscription.tier.displayName;
+  }
+
+  bool get subscriptionNeedsAttention {
+    return currentSubscription.needsPaymentUpdate;
+  }
 
   // ===== FRETBOARD DEFAULTS GETTERS =====
   int get defaultStringCount => _defaultStringCount;
@@ -88,7 +114,7 @@ class AppState extends ChangeNotifier {
   bool get isDarkMode => _themeMode == ThemeMode.dark;
   bool get isLightMode => _themeMode == ThemeMode.light;
 
-  // ===== AUDIO PREFERENCES GETTERS - NEW =====
+  // ===== AUDIO PREFERENCES GETTERS =====
   AudioBackend get audioBackend => _audioBackend;
   double get audioVolume => _audioVolume;
   Duration get melodyNoteDuration => _melodyNoteDuration;
@@ -122,7 +148,7 @@ class AppState extends ChangeNotifier {
   bool get isBassTop => _defaultLayout.isBassTop;
   bool get isScaleMode => _viewMode == ViewMode.scales;
   bool get isIntervalMode => _viewMode == ViewMode.intervals;
-  bool get isChordMode => _viewMode.isChordMode; // UPDATED: Use ViewMode helper
+  bool get isChordMode => _viewMode.isChordMode; // Use ViewMode helper
   bool get isChordInversionMode => _viewMode == ViewMode.chordInversions;
   bool get isOpenChordMode => _viewMode == ViewMode.openChords;
   bool get isBarreChordMode => _viewMode == ViewMode.barreChords;
@@ -140,7 +166,7 @@ class AppState extends ChangeNotifier {
 
   // ===== INITIALIZATION =====
 
-  /// UPDATED: Enhanced initialization with separated models and audio system
+  /// UPDATED: Enhanced initialization with separated models, audio system, and subscription service
   Future<void> initialize() async {
     if (_isInitialized) return;
 
@@ -156,7 +182,7 @@ class AppState extends ChangeNotifier {
       if (_currentUser != null) {
         debugPrint('👤 [AppState] User found: ${_currentUser!.username}');
 
-        // UPDATED: Load preferences and progress separately
+        // Load preferences and progress separately
         await _loadUserData();
 
         // Initialize section progress if needed
@@ -179,8 +205,11 @@ class AppState extends ChangeNotifier {
         debugPrint('👤 [AppState] No user found, running in guest mode');
       }
 
-      // NEW: Initialize audio system with loaded preferences
+      // Initialize audio system with loaded preferences
       await _initializeAudioSystem();
+
+      // NEW: Initialize subscription service
+      await _initializeSubscriptionService();
 
       _isInitialized = true;
       notifyListeners();
@@ -193,7 +222,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// NEW: Initialize audio system with user preferences
+  /// Initialize audio system with user preferences
   Future<void> _initializeAudioSystem() async {
     try {
       debugPrint('🎵 [AppState] Initializing audio system...');
@@ -209,7 +238,56 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// UPDATED: Load user data separately (preferences and progress)
+  /// NEW: Initialize subscription service
+  Future<void> _initializeSubscriptionService() async {
+    try {
+      debugPrint('💳 [AppState] Initializing subscription service...');
+      
+      _subscriptionService = SubscriptionService.instance;
+      await _subscriptionService!.initialize();
+      
+      // Listen to subscription changes
+      _subscriptionService!.addListener(_onSubscriptionChanged);
+      
+      _subscriptionInitialized = true;
+      debugPrint('✅ [AppState] Subscription service initialized successfully');
+    } catch (e) {
+      debugPrint('❌ [AppState] Error initializing subscription service: $e');
+      _subscriptionInitialized = true;
+      // Continue without subscription service - graceful degradation
+    }
+  }
+
+  /// NEW: Handle subscription changes
+  void _onSubscriptionChanged() {
+    debugPrint('🔄 [AppState] Subscription status changed');
+    notifyListeners();
+  }
+
+  /// NEW: Check if user has access to premium features
+  bool hasAccessToFeature(String featureId) {
+    // For now, just check if user has active subscription
+    // You can expand this to check specific features
+    switch (featureId) {
+      case 'advanced_analytics':
+      case 'cloud_sync':
+      case 'premium_themes':
+      case 'audio_playback':
+      case 'offline_mode':
+      case 'priority_support':
+      case 'advanced_quiz_features':
+      case 'learning_path_recommendations':
+        return hasActiveSubscription;
+      case 'basic_features':
+      case 'basic_quizzes':
+      case 'basic_fretboard':
+        return true; // Always available
+      default:
+        return hasActiveSubscription;
+    }
+  }
+
+  /// Load user data separately (preferences and progress)
   Future<void> _loadUserData() async {
     try {
       // Load preferences
@@ -263,13 +341,18 @@ class AppState extends ChangeNotifier {
 
   // ===== USER MANAGEMENT METHODS =====
 
-  /// UPDATED: Enhanced user setting with separated models
+  /// UPDATED: Enhanced user setting with separated models and subscription service
   Future<void> setCurrentUser(User user) async {
     debugPrint('👤 [AppState] Setting current user: ${user.username}');
 
     // Remove old progress listener
     if (_currentUser != null) {
       ProgressTrackingService.instance.removeListener(_onProgressChanged);
+    }
+
+    // Remove old subscription listener
+    if (_subscriptionService != null) {
+      _subscriptionService!.removeListener(_onSubscriptionChanged);
     }
 
     _currentUser = user;
@@ -295,13 +378,19 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ [AppState] Error setting up progress tracking: $e');
     }
 
-    // NEW: Reinitialize audio system with new user preferences
+    // Reinitialize audio system with new user preferences
     await _initializeAudioSystem();
+
+    // NEW: Reinitialize subscription service for new user
+    if (_subscriptionService != null) {
+      await _subscriptionService!.initialize();
+      _subscriptionService!.addListener(_onSubscriptionChanged);
+    }
 
     notifyListeners();
   }
 
-  /// UPDATED: Load user preferences into app state with integrated audio preferences
+  /// Load user preferences into app state with integrated audio preferences
   Future<void> loadUserPreferences(UserPreferences preferences) async {
     debugPrint('⚙️ [AppState] Loading user preferences');
 
@@ -315,7 +404,7 @@ class AppState extends ChangeNotifier {
     _defaultScale = preferences.defaultScale;
     _defaultSelectedOctaves = Set.from(preferences.defaultSelectedOctaves);
     
-    // INTEGRATED: Load audio preferences (use new fields, fallback to existing ones)
+    // Load audio preferences (use new fields, fallback to existing ones)
     _audioBackend = preferences.audioBackend;
     _audioVolume = preferences.soundVolume; // Use existing soundVolume field
     _melodyNoteDuration = preferences.melodyNoteDuration;
@@ -333,7 +422,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// UPDATED: Save current preferences to user with integrated audio preferences
+  /// Save current preferences to user with integrated audio preferences
   Future<void> saveUserPreferences() async {
     if (_currentUser != null) {
       final updatedPreferences = (_currentUserPreferences ?? UserPreferences.defaults()).copyWith(
@@ -346,7 +435,7 @@ class AppState extends ChangeNotifier {
         defaultViewMode: _defaultViewMode,
         defaultScale: _defaultScale,
         defaultSelectedOctaves: _defaultSelectedOctaves,
-        // INTEGRATED: Save audio preferences (update both old and new fields for compatibility)
+        // Save audio preferences (update both old and new fields for compatibility)
         audioBackend: _audioBackend,
         soundVolume: _audioVolume, // Update existing soundVolume field
         melodyNoteDuration: _melodyNoteDuration,
@@ -362,17 +451,23 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// UPDATED: Logout with separated models
+  /// UPDATED: Enhanced logout with subscription cleanup
   Future<void> logout({bool switchToGuest = true}) async {
     try {
-      debugPrint('👤 [AppState] Logging out user...');
+      debugPrint('👋 [AppState] Logging out user...');
 
       // Clean up progress listener
       if (_currentUser != null) {
         ProgressTrackingService.instance.removeListener(_onProgressChanged);
       }
 
-      // NEW: Stop any playing audio
+      // NEW: Stop listening to subscription changes and clear data
+      if (_subscriptionService != null) {
+        _subscriptionService!.removeListener(_onSubscriptionChanged);
+        await _subscriptionService!.clearSubscription();
+      }
+
+      // Stop any playing audio
       await AudioController.instance.stopAll();
 
       // Always logout from UserService first
@@ -388,6 +483,8 @@ class AppState extends ChangeNotifier {
         _currentUser = null;
         _currentUserPreferences = null;
         _currentUserProgress = null;
+        _subscriptionService = null;
+        _subscriptionInitialized = false;
         notifyListeners();
         debugPrint('👤 [AppState] Complete logout - cleared user');
       }
@@ -397,6 +494,8 @@ class AppState extends ChangeNotifier {
       _currentUser = null;
       _currentUserPreferences = null;
       _currentUserProgress = null;
+      _subscriptionService = null;
+      _subscriptionInitialized = false;
       notifyListeners();
       rethrow;
     }
@@ -411,7 +510,7 @@ class AppState extends ChangeNotifier {
     refreshUserProgress();
   }
 
-  /// UPDATED: Force refresh user progress with separated models
+  /// Force refresh user progress with separated models
   Future<void> refreshUserProgress() async {
     if (_currentUser != null) {
       try {
@@ -544,7 +643,7 @@ class AppState extends ChangeNotifier {
     _defaultViewMode = mode;
     if (mode == ViewMode.intervals) {
       _defaultSelectedIntervals = {0};
-    } else if (mode.isChordMode) { // UPDATED: Use ViewMode helper
+    } else if (mode.isChordMode) {
       _ensureSingleOctaveForDefaults();
     }
     saveUserPreferences();
@@ -567,7 +666,7 @@ class AppState extends ChangeNotifier {
   void setDefaultSelectedOctaves(Set<int> octaves) {
     final validOctaves = octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
     if (validOctaves.isNotEmpty) {
-      if (_defaultViewMode.isChordMode && validOctaves.length > 1) { // UPDATED: Use ViewMode helper
+      if (_defaultViewMode.isChordMode && validOctaves.length > 1) {
         _defaultSelectedOctaves = {validOctaves.first};
       } else {
         _defaultSelectedOctaves = validOctaves;
@@ -608,7 +707,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ===== AUDIO PREFERENCES SETTERS - NEW =====
+  // ===== AUDIO PREFERENCES SETTERS =====
   Future<void> setAudioBackend(AudioBackend backend) async {
     if (_audioBackend != backend) {
       _audioBackend = backend;
@@ -693,7 +792,7 @@ class AppState extends ChangeNotifier {
     _viewMode = mode;
     if (mode == ViewMode.intervals) {
       _selectedIntervals = {0};
-    } else if (mode.isChordMode) { // UPDATED: Use ViewMode helper
+    } else if (mode.isChordMode) {
       _ensureSingleOctaveForCurrent();
     }
     notifyListeners();
@@ -770,7 +869,7 @@ class AppState extends ChangeNotifier {
   void setSelectedOctaves(Set<int> octaves) {
     final validOctaves = octaves.where((o) => o >= 0 && o <= AppConstants.maxOctaves).toSet();
     if (validOctaves.isNotEmpty) {
-      if (isChordMode && validOctaves.length > 1) { // UPDATED: Use isChordMode getter
+      if (isChordMode && validOctaves.length > 1) {
         _selectedOctaves = {validOctaves.first};
       } else {
         _selectedOctaves = validOctaves;
@@ -782,7 +881,7 @@ class AppState extends ChangeNotifier {
   void toggleOctave(int octave) {
     if (octave < 0 || octave > AppConstants.maxOctaves) return;
 
-    if (isChordMode) { // UPDATED: Use isChordMode getter
+    if (isChordMode) {
       _selectedOctaves = {octave};
       notifyListeners();
       return;
@@ -802,7 +901,7 @@ class AppState extends ChangeNotifier {
   void setOctaveRange(int start, int end) {
     if (start < 0 || end > AppConstants.maxOctaves || start > end) return;
 
-    if (isChordMode) { // UPDATED: Use isChordMode getter
+    if (isChordMode) {
       _selectedOctaves = {start};
     } else {
       final newOctaves = <int>{};
@@ -815,7 +914,7 @@ class AppState extends ChangeNotifier {
   }
 
   void selectAllOctaves() {
-    if (isChordMode) return; // UPDATED: Use isChordMode getter
+    if (isChordMode) return;
     _selectedOctaves = List.generate(AppConstants.maxOctaves + 1, (i) => i).toSet();
     notifyListeners();
   }
@@ -876,7 +975,7 @@ class AppState extends ChangeNotifier {
     resetDefaultsToFactorySettings();
     resetToDefaults();
     _themeMode = ThemeMode.light;
-    // INTEGRATED: Reset audio preferences to match UserPreferences.defaults()
+    // Reset audio preferences to match UserPreferences.defaults()
     _audioBackend = AudioBackend.midi;
     _audioVolume = 0.5; // Match UserPreferences default soundVolume
     _melodyNoteDuration = const Duration(milliseconds: 500);
@@ -920,7 +1019,11 @@ class AppState extends ChangeNotifier {
     if (_currentUser != null) {
       ProgressTrackingService.instance.removeListener(_onProgressChanged);
     }
-    // NEW: Clean up audio system
+    // Clean up subscription listener
+    if (_subscriptionService != null) {
+      _subscriptionService!.removeListener(_onSubscriptionChanged);
+    }
+    // Clean up audio system
     AudioController.instance.dispose();
     super.dispose();
   }

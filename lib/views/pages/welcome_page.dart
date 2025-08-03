@@ -1,13 +1,15 @@
-// lib/views/pages/welcome_page.dart
+// lib/views/pages/welcome_page.dart - Updated with subscription integration
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../services/user_service.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/common/app_bar.dart';
+import '../widgets/subscription_star_widget.dart'; // NEW: Subscription star widget
 import '../dialogs/settings_dialog.dart';
 import 'instrument_selection_page.dart';
 import 'learning_sections_page.dart';
+import 'subscription_management_page.dart'; // NEW: Subscription management page
 import 'login_page.dart';
 
 class WelcomePage extends StatelessWidget {
@@ -24,13 +26,16 @@ class WelcomePage extends StatelessWidget {
     return Consumer<AppState>(
       builder: (context, appState, child) {
         return Scaffold(
-          // ONLY CHANGE: Replace AppBar with TheoryAppBar
+          // UPDATED: Modified AppBar to include subscription star widget
           appBar: TheorieAppBar(
             title: 'Theorie',
             showThemeToggle: true,
             showSettings: true,
             showLogout: true,
-            actions: null,
+            actions: [
+              // NEW: Add subscription star widget
+              const SubscriptionStarWidget(),
+            ],
           ),
           body: SafeArea(
             child: SingleChildScrollView(
@@ -39,7 +44,7 @@ class WelcomePage extends StatelessWidget {
                 horizontal: _getHorizontalPadding(deviceType, isLandscape),
                 vertical: _getVerticalPadding(deviceType, isLandscape),
               ),
-              child: _buildContent(context, deviceType, isLandscape, screenWidth, screenHeight),
+              child: _buildContent(context, appState, deviceType, isLandscape, screenWidth, screenHeight),
             ),
           ),
         );
@@ -61,24 +66,29 @@ class WelcomePage extends StatelessWidget {
     return deviceType == DeviceType.mobile ? 24.0 : 32.0;
   }
 
-  Widget _buildContent(BuildContext context, DeviceType deviceType, bool isLandscape, double screenWidth, double screenHeight) {
+  Widget _buildContent(BuildContext context, AppState appState, DeviceType deviceType, bool isLandscape, double screenWidth, double screenHeight) {
     // In landscape mode on mobile, use a more compact layout
     if (isLandscape && deviceType == DeviceType.mobile) {
-      return _buildLandscapeLayout(context, deviceType, screenWidth);
+      return _buildLandscapeLayout(context, appState, deviceType, screenWidth);
     }
     
     // For portrait or larger screens, use the centered layout
-    return _buildPortraitLayout(context, deviceType, screenWidth, screenHeight);
+    return _buildPortraitLayout(context, appState, deviceType, screenWidth, screenHeight);
   }
 
-  Widget _buildLandscapeLayout(BuildContext context, DeviceType deviceType, double screenWidth) {
+  Widget _buildLandscapeLayout(BuildContext context, AppState appState, DeviceType deviceType, double screenWidth) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _buildCompactHeader(context, deviceType),
+        _buildCompactHeader(context, appState, deviceType),
         const SizedBox(height: 24.0),
+        // NEW: Add premium status card if user has premium
+        if (appState.hasActiveSubscription) ...[
+          _buildPremiumStatusCard(context, appState, deviceType, isCompact: true),
+          const SizedBox(height: 16.0),
+        ],
         _buildDescription(context, deviceType, isCompact: true),
         const SizedBox(height: 24.0),
         _buildActionButtons(context, deviceType, isLandscape: true),
@@ -87,14 +97,19 @@ class WelcomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildPortraitLayout(BuildContext context, DeviceType deviceType, double screenWidth, double screenHeight) {
+  Widget _buildPortraitLayout(BuildContext context, AppState appState, DeviceType deviceType, double screenWidth, double screenHeight) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _buildHeader(context, deviceType),
+        _buildHeader(context, appState, deviceType),
         SizedBox(height: deviceType == DeviceType.mobile ? 32.0 : 48.0),
+        // NEW: Add premium status card if user has premium
+        if (appState.hasActiveSubscription) ...[
+          _buildPremiumStatusCard(context, appState, deviceType),
+          SizedBox(height: deviceType == DeviceType.mobile ? 24.0 : 32.0),
+        ],
         _buildDescription(context, deviceType),
         SizedBox(height: deviceType == DeviceType.mobile ? 32.0 : 48.0),
         _buildActionButtons(context, deviceType),
@@ -103,39 +118,157 @@ class WelcomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildCompactHeader(BuildContext context, DeviceType deviceType) {
-    return Column(
-      children: [
-        Text(
-          'Welcome to Theorie!',
-          style: TextStyle(
-            fontSize: 28.0, // Smaller in landscape
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).primaryColor,
-          ),
-          textAlign: TextAlign.center,
+Widget _buildCompactHeader(BuildContext context, AppState appState, DeviceType deviceType) {
+  final user = appState.currentUser;
+  return Column(
+    children: [
+      Text(
+        'Welcome back, ${user?.username ?? 'User'}!',
+        style: TextStyle(
+          fontSize: 24.0, // Smaller in landscape
+          fontWeight: FontWeight.bold,
+          // FIXED: Use theme-adaptive color that works in both light and dark modes
+          color: Theme.of(context).colorScheme.onSurface,
         ),
-      ],
+        textAlign: TextAlign.center,
+      ),
+      // NEW: Add subscription status indicator
+      const SizedBox(height: 8),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.star,
+            color: appState.hasActiveSubscription ? Colors.amber : Colors.grey,
+            size: 16,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            appState.hasActiveSubscription ? 'Premium Member' : 'Free Account',
+            style: TextStyle(
+              fontSize: 14,
+              color: appState.hasActiveSubscription 
+                  ? Colors.amber.shade700 
+                  : Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Widget _buildHeader(BuildContext context, AppState appState, DeviceType deviceType) {
+  final titleFontSize = deviceType == DeviceType.mobile ? 32.0 : 38.0;
+  final user = appState.currentUser;
+  
+  return Column(
+    children: [
+      Text(
+        'Welcome back, ${user?.username ?? 'User'}!',
+        style: TextStyle(
+          fontSize: titleFontSize,
+          fontWeight: FontWeight.bold,
+          // FIXED: Use theme-adaptive color that works in both light and dark modes
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+        textAlign: TextAlign.center,
+      ),
+      // NEW: Add subscription status indicator
+      const SizedBox(height: 12),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.star,
+            color: appState.hasActiveSubscription ? Colors.amber : Colors.grey,
+            size: deviceType == DeviceType.mobile ? 20 : 24,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            appState.hasActiveSubscription ? 'Premium Member' : 'Free Account',
+            style: TextStyle(
+              fontSize: deviceType == DeviceType.mobile ? 16 : 18,
+              color: appState.hasActiveSubscription 
+                  ? Colors.amber.shade700 
+                  // FIXED: Use theme-adaptive color for free account text
+                  : Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+  /// NEW: Build premium status card for active subscribers
+  Widget _buildPremiumStatusCard(BuildContext context, AppState appState, DeviceType deviceType, {bool isCompact = false}) {
+    final subscription = appState.currentSubscription;
+    final padding = isCompact ? 12.0 : (deviceType == DeviceType.mobile ? 16.0 : 20.0);
+    
+    return Center(
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: deviceType == DeviceType.mobile ? double.infinity : 500.0,
+        ),
+        child: Card(
+          elevation: 3,
+          color: Colors.amber.shade50,
+          child: Padding(
+            padding: EdgeInsets.all(padding),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.star,
+                  color: Colors.amber,
+                  size: isCompact ? 28 : (deviceType == DeviceType.mobile ? 32 : 36),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Premium Active',
+                        style: TextStyle(
+                          fontSize: isCompact ? 16 : (deviceType == DeviceType.mobile ? 18 : 20),
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber.shade700,
+                        ),
+                      ),
+                      Text(
+                        subscription.tier.displayName,
+                        style: TextStyle(
+                          fontSize: isCompact ? 12 : (deviceType == DeviceType.mobile ? 14 : 16),
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      if (subscription.currentPeriodEnd != null && !isCompact)
+                        Text(
+                          'Renews ${subscription.formattedPeriodEnd}',
+                          style: TextStyle(
+                            fontSize: deviceType == DeviceType.mobile ? 12 : 14,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.green,
+                  size: isCompact ? 20 : (deviceType == DeviceType.mobile ? 24 : 28),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, DeviceType deviceType) {
-    final titleFontSize = deviceType == DeviceType.mobile ? 36.0 : 42.0;
-    
-    return Column(
-      children: [
-        Text(
-          'Welcome to Theorie!',
-          style: TextStyle(
-            fontSize: titleFontSize,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).primaryColor,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
 
   Widget _buildDescription(BuildContext context, DeviceType deviceType, {bool isCompact = false}) {
     final textFontSize = isCompact 

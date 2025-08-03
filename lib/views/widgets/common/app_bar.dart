@@ -1,19 +1,21 @@
-// lib/views/widgets/common/app_bar.dart
+// lib/views/widgets/common/app_bar.dart - Updated with subscription integration
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/app_state.dart';
 import '../../../models/fretboard/fretboard_config.dart';
 import '../../../constants/ui_constants.dart';
+import '../subscription_star_widget.dart'; // NEW: Import subscription star widget
 import '../../dialogs/settings_dialog.dart';
 import '../../pages/login_page.dart';
 
-/// Common app bar for the application with responsive design and quick actions
+/// Common app bar for the application with responsive design, quick actions, and subscription integration
 class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
   final bool showSettings;
   final bool showLogout; // Keep original name for compatibility
   final bool showThemeToggle;
+  final bool showSubscriptionStar; // NEW: Show subscription star widget
   final bool centerTitle;
 
   const TheorieAppBar({
@@ -23,6 +25,7 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.showSettings = true,
     this.showLogout = true, // Keep original name
     this.showThemeToggle = false,
+    this.showSubscriptionStar = true, // NEW: Default to true
     this.centerTitle = true,
   });
 
@@ -83,6 +86,16 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
     }
 
     // 2. Add common quick access actions (middle positions)
+    
+    // NEW: Subscription star widget (premium status indicator)
+    if (showSubscriptionStar && appState.isSubscriptionInitialized) {
+      actionsList.add(
+        SubscriptionStarWidget(
+          size: iconSize,
+          padding: const EdgeInsets.only(right: 4.0),
+        ),
+      );
+    }
     
     // Theme toggle button (quick access)
     if (showThemeToggle) {
@@ -149,15 +162,31 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
         Padding(
           padding: const EdgeInsets.only(right: 8.0),
           child: Center(
-            child: Text(
-              displayName,
-              style: TextStyle(
-                fontSize: titleFontSize - 4,
-                fontWeight: FontWeight.w500,
-                color: appState.currentUser!.isDefaultUser 
-                    ? Colors.grey.shade600 
-                    : null,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // NEW: Add subscription status indicator for mobile users
+                if (showSubscriptionStar && appState.isSubscriptionInitialized)
+                  Icon(
+                    Icons.star,
+                    size: titleFontSize - 6,
+                    color: appState.hasActiveSubscription 
+                        ? Colors.amber 
+                        : Colors.grey.shade600,
+                  ),
+                if (showSubscriptionStar && appState.isSubscriptionInitialized)
+                  const SizedBox(width: 4),
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: titleFontSize - 4,
+                    fontWeight: FontWeight.w500,
+                    color: appState.currentUser!.isDefaultUser 
+                        ? Colors.grey.shade600 
+                        : null,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -209,14 +238,27 @@ class TheorieAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
 
     if (confirmed == true && context.mounted) {
-      // Logout completely and go back to login page
-      await appState.logout(switchToGuest: false);
-      
-      if (context.mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginPage()),
-          (route) => false,
-        );
+      // NEW: Enhanced logout with subscription cleanup
+      try {
+        // Logout completely and go back to login page
+        await appState.logout(switchToGuest: false);
+        
+        if (context.mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginPage()),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        // Handle logout error gracefully
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error during logout: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
