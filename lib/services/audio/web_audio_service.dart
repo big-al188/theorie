@@ -6,8 +6,8 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'audio_service_interface.dart';
 
-/// HTML5 Audio implementation for Flutter web with clean chord synthesis
-/// Creates combined waveforms for harmonies to prevent crackling
+/// Enhanced HTML5 Audio implementation for Flutter web with realistic piano synthesis
+/// Creates combined waveforms for harmonies with multiple harmonics and proper envelopes
 class WebAudioService implements AudioServiceInterface {
   static WebAudioService? _instance;
   static WebAudioService get instance {
@@ -30,14 +30,14 @@ class WebAudioService implements AudioServiceInterface {
     }
 
     try {
-      debugPrint('🎵 [WebAudioService] Initializing HTML5 Audio service...');
+      debugPrint('🎹 [WebAudioService] Initializing enhanced HTML5 Audio service...');
       
       // Test if we can create audio elements
       final testAudio = html.AudioElement();
       testAudio.volume = 0.0; // Silent test
       
       _isInitialized = true;
-      debugPrint('✅ [WebAudioService] HTML5 Audio service initialized successfully');
+      debugPrint('✅ [WebAudioService] Enhanced HTML5 Audio service initialized successfully');
       return true;
     } catch (e) {
       debugPrint('❌ [WebAudioService] Failed to initialize: $e');
@@ -53,7 +53,7 @@ class WebAudioService implements AudioServiceInterface {
       _activeAudio.clear();
       _harmonyAudio = null;
       _isInitialized = false;
-      debugPrint('🎵 [WebAudioService] HTML5 Audio service disposed');
+      debugPrint('🎹 [WebAudioService] Enhanced HTML5 Audio service disposed');
     } catch (e) {
       debugPrint('❌ [WebAudioService] Error disposing: $e');
     }
@@ -76,9 +76,9 @@ class WebAudioService implements AudioServiceInterface {
         await stopNote(clampedMidiNote);
       }
       
-      // Generate tone as WAV data URL
+      // Generate enhanced piano tone as WAV data URL
       final noteDuration = duration ?? const Duration(seconds: 10); // Long default
-      final audioDataUrl = _generateSingleToneDataUrl(frequency, noteDuration, normalizedVelocity);
+      final audioDataUrl = _generateEnhancedToneDataUrl(frequency, noteDuration, normalizedVelocity);
       
       // Create and play audio element
       final audio = html.AudioElement(audioDataUrl);
@@ -89,7 +89,7 @@ class WebAudioService implements AudioServiceInterface {
       // Play the audio
       await audio.play();
       
-      debugPrint('🎵 [WebAudioService] Playing note: $clampedMidiNote (${frequency.toStringAsFixed(1)}Hz), velocity: ${(normalizedVelocity * 100).toStringAsFixed(0)}%');
+      debugPrint('🎹 [WebAudioService] Playing enhanced note: $clampedMidiNote (${frequency.toStringAsFixed(1)}Hz), velocity: ${(normalizedVelocity * 100).toStringAsFixed(0)}%');
       
       // Schedule note off if duration specified
       if (duration != null) {
@@ -112,7 +112,7 @@ class WebAudioService implements AudioServiceInterface {
         audio.pause();
         audio.currentTime = 0;
         _activeAudio.remove(clampedMidiNote);
-        debugPrint('🎵 [WebAudioService] Stopping note: $clampedMidiNote');
+        debugPrint('🎹 [WebAudioService] Stopping note: $clampedMidiNote');
       }
     } catch (e) {
       debugPrint('❌ [WebAudioService] Error stopping note $midiNote: $e');
@@ -130,7 +130,7 @@ class WebAudioService implements AudioServiceInterface {
       return;
     }
 
-    debugPrint('🎼 [WebAudioService] Playing melody: $midiNotes');
+    debugPrint('🎼 [WebAudioService] Playing enhanced melody: $midiNotes');
 
     for (int i = 0; i < midiNotes.length; i++) {
       await playNote(midiNotes[i], velocity: velocity, duration: noteDuration);
@@ -152,7 +152,7 @@ class WebAudioService implements AudioServiceInterface {
       return;
     }
 
-    debugPrint('🎵 [WebAudioService] Playing harmony: $midiNotes');
+    debugPrint('🎹 [WebAudioService] Playing enhanced harmony: $midiNotes');
 
     // Stop any existing harmony
     if (_harmonyAudio != null) {
@@ -164,8 +164,8 @@ class WebAudioService implements AudioServiceInterface {
     final frequencies = midiNotes.map(_midiNoteToFrequency).toList();
     final normalizedVelocity = (velocity / 127.0).clamp(0.0, 1.0);
 
-    // Generate combined chord waveform
-    final audioDataUrl = _generateChordDataUrl(frequencies, duration, normalizedVelocity);
+    // Generate enhanced combined chord waveform
+    final audioDataUrl = _generateEnhancedChordDataUrl(frequencies, duration, normalizedVelocity);
     
     // Create and play single audio element for the entire chord
     _harmonyAudio = html.AudioElement(audioDataUrl);
@@ -173,7 +173,7 @@ class WebAudioService implements AudioServiceInterface {
     
     await _harmonyAudio!.play();
     
-    debugPrint('🎵 [WebAudioService] Playing ${frequencies.length}-note chord: ${frequencies.map((f) => f.toStringAsFixed(1)).join(', ')}Hz');
+    debugPrint('🎹 [WebAudioService] Playing ${frequencies.length}-note enhanced chord: ${frequencies.map((f) => f.toStringAsFixed(1)).join(', ')}Hz');
   }
 
   @override
@@ -193,7 +193,7 @@ class WebAudioService implements AudioServiceInterface {
         _harmonyAudio = null;
       }
       
-      debugPrint('🎵 [WebAudioService] All notes stopped');
+      debugPrint('🎹 [WebAudioService] All enhanced notes stopped');
     } catch (e) {
       debugPrint('❌ [WebAudioService] Error stopping all notes: $e');
     }
@@ -227,72 +227,122 @@ class WebAudioService implements AudioServiceInterface {
     return 440.0 * math.pow(2.0, (midiNote - 69) / 12.0);
   }
 
-  /// Generate a WAV data URL for a single frequency
-  String _generateSingleToneDataUrl(double frequency, Duration duration, double amplitude) {
+  /// Generate enhanced piano-like tone with multiple harmonics and proper envelope
+  String _generateEnhancedToneDataUrl(double frequency, Duration duration, double amplitude) {
     const sampleRate = 44100;
     final samples = (sampleRate * duration.inMilliseconds / 1000).round();
     
-    // Generate sine wave samples with gentle envelope
     final audioData = <int>[];
     for (int i = 0; i < samples; i++) {
       final t = i / sampleRate;
       
-      // Apply gentle attack and release envelope
-      double envelope = 1.0;
-      final attackTime = 0.02; // 20ms attack
-      final releaseTime = 0.1;  // 100ms release
-      final totalDuration = duration.inMilliseconds / 1000.0;
+      // Enhanced piano envelope with realistic attack, decay, sustain, release
+      double envelope = _getPianoEnvelope(t, duration.inMilliseconds / 1000.0);
       
-      if (t < attackTime) {
-        envelope = t / attackTime;
-      } else if (t > totalDuration - releaseTime) {
-        envelope = (totalDuration - t) / releaseTime;
-      }
+      // Generate piano-like harmonics
+      double sample = 0.0;
       
-      final sample = (amplitude * envelope * 16383 * math.sin(2 * math.pi * frequency * t)).round();
-      audioData.addAll(_int16ToBytes(sample.clamp(-32767, 32767)));
+      // Fundamental frequency (strongest component)
+      sample += 1.0 * math.sin(2 * math.pi * frequency * t);
+      
+      // 2nd harmonic (octave) - adds fullness
+      sample += 0.7 * math.sin(2 * math.pi * frequency * 2 * t);
+      
+      // 3rd harmonic (perfect fifth above octave) - adds brightness
+      sample += 0.5 * math.sin(2 * math.pi * frequency * 3 * t);
+      
+      // 4th harmonic (double octave) - adds power
+      sample += 0.4 * math.sin(2 * math.pi * frequency * 4 * t);
+      
+      // 5th harmonic (major third above double octave) - adds warmth
+      sample += 0.3 * math.sin(2 * math.pi * frequency * 5 * t);
+      
+      // 6th harmonic - adds complexity
+      sample += 0.2 * math.sin(2 * math.pi * frequency * 6 * t);
+      
+      // 8th harmonic - subtle overtone
+      sample += 0.15 * math.sin(2 * math.pi * frequency * 8 * t);
+      
+      // Add slight inharmonicity (piano strings aren't perfectly harmonic)
+      final inharmonicFreq = frequency * (1 + 0.0002 * frequency / 1000);
+      sample += 0.1 * math.sin(2 * math.pi * inharmonicFreq * t);
+      
+      // Apply envelope and amplitude scaling
+      final finalSample = (envelope * amplitude * sample * 6000).round(); // Reduced amplitude to prevent clipping
+      audioData.addAll(_int16ToBytes(finalSample.clamp(-32767, 32767)));
     }
     
     return _createWavDataUrl(audioData, sampleRate);
   }
 
-  /// Generate a WAV data URL for multiple frequencies combined into one waveform
-  String _generateChordDataUrl(List<double> frequencies, Duration duration, double amplitude) {
+  /// Generate enhanced chord with complex harmonics for each note
+  String _generateEnhancedChordDataUrl(List<double> frequencies, Duration duration, double amplitude) {
     const sampleRate = 44100;
     final samples = (sampleRate * duration.inMilliseconds / 1000).round();
     
-    // Calculate per-note amplitude to prevent clipping
-    final perNoteAmplitude = amplitude / math.sqrt(frequencies.length);
+    // Reduce amplitude per note to prevent clipping, accounting for harmonics
+    final perNoteAmplitude = amplitude / (math.sqrt(frequencies.length) * 2.5); // Extra reduction for multiple harmonics
     
-    // Generate combined waveform
     final audioData = <int>[];
     for (int i = 0; i < samples; i++) {
       final t = i / sampleRate;
       
-      // Apply gentle attack and release envelope
-      double envelope = 1.0;
-      final attackTime = 0.02; // 20ms attack
-      final releaseTime = 0.1;  // 100ms release
-      final totalDuration = duration.inMilliseconds / 1000.0;
+      // Enhanced piano envelope
+      double envelope = _getPianoEnvelope(t, duration.inMilliseconds / 1000.0);
       
-      if (t < attackTime) {
-        envelope = t / attackTime;
-      } else if (t > totalDuration - releaseTime) {
-        envelope = (totalDuration - t) / releaseTime;
-      }
-      
-      // Sum all frequencies for this sample
       double combinedSample = 0.0;
+      
+      // For each note in the chord, add its harmonics
       for (final frequency in frequencies) {
+        // Fundamental
         combinedSample += perNoteAmplitude * math.sin(2 * math.pi * frequency * t);
+        
+        // Key harmonics that define piano character
+        combinedSample += perNoteAmplitude * 0.7 * math.sin(2 * math.pi * frequency * 2 * t); // 2nd
+        combinedSample += perNoteAmplitude * 0.5 * math.sin(2 * math.pi * frequency * 3 * t); // 3rd
+        combinedSample += perNoteAmplitude * 0.4 * math.sin(2 * math.pi * frequency * 4 * t); // 4th
+        combinedSample += perNoteAmplitude * 0.3 * math.sin(2 * math.pi * frequency * 5 * t); // 5th
+        combinedSample += perNoteAmplitude * 0.2 * math.sin(2 * math.pi * frequency * 6 * t); // 6th
+        
+        // Inharmonicity for realism
+        final inharmonicFreq = frequency * (1 + 0.0002 * frequency / 1000);
+        combinedSample += perNoteAmplitude * 0.08 * math.sin(2 * math.pi * inharmonicFreq * t);
       }
       
       // Apply envelope and convert to 16-bit integer
-      final sample = (envelope * combinedSample * 16383).round();
-      audioData.addAll(_int16ToBytes(sample.clamp(-32767, 32767)));
+      final finalSample = (envelope * combinedSample * 6000).round(); // Scaled for good volume without clipping
+      audioData.addAll(_int16ToBytes(finalSample.clamp(-32767, 32767)));
     }
     
     return _createWavDataUrl(audioData, sampleRate);
+  }
+
+  /// Realistic piano envelope: quick attack, exponential decay, sustain with natural fade, gentle release
+  double _getPianoEnvelope(double time, double totalDuration) {
+    const attackTime = 0.003;  // Very quick attack (3ms) - piano hammers hit strings fast
+    const decayTime = 0.4;     // Moderate decay (400ms) - initial brightness fades
+    const sustainLevel = 0.5;  // 50% sustain level - piano notes naturally decay
+    const releaseTime = 2.0;   // Long release (2s) - piano notes ring out
+    
+    if (time < attackTime) {
+      // Quick attack phase - linear ramp up
+      return time / attackTime;
+    } else if (time < attackTime + decayTime) {
+      // Decay phase - exponential decay from peak to sustain level
+      final decayProgress = (time - attackTime) / decayTime;
+      return 1.0 - (1.0 - sustainLevel) * (1.0 - math.exp(-decayProgress * 3));
+    } else if (time < totalDuration - releaseTime) {
+      // Sustain phase with natural decay (piano strings naturally lose energy)
+      final sustainTime = time - (attackTime + decayTime);
+      final naturalDecay = math.exp(-sustainTime * 0.3); // Gradual natural decay
+      return sustainLevel * naturalDecay;
+    } else {
+      // Release phase - gentle exponential fade
+      final releaseProgress = (totalDuration - time) / releaseTime;
+      final sustainTime = totalDuration - releaseTime - (attackTime + decayTime);
+      final currentSustainLevel = sustainLevel * math.exp(-sustainTime * 0.3);
+      return currentSustainLevel * math.exp(-((releaseTime - releaseProgress * releaseTime) / releaseTime) * 2);
+    }
   }
 
   /// Create a complete WAV data URL from audio sample data
