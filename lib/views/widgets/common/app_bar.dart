@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/app_state.dart';
 import '../../../models/fretboard/fretboard_config.dart';
 import '../../../constants/ui_constants.dart';
-import '../subscription_star_widget.dart'; // NEW: Import subscription star widget
+import '../subscription/subscription_star_widget.dart'; // NEW: Import subscription star widget
 import '../../dialogs/settings_dialog.dart';
 import '../../pages/login_page.dart';
 

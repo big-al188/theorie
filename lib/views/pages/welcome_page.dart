@@ -5,7 +5,7 @@ import '../../models/app_state.dart';
 import '../../services/user_service.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/common/app_bar.dart';
-import '../widgets/subscription_star_widget.dart'; // NEW: Subscription star widget
+import '../widgets/subscription/subscription_star_widget.dart'; // NEW: Subscription star widget
 import '../dialogs/settings_dialog.dart';
 import 'instrument_selection_page.dart';
 import 'learning_sections_page.dart';

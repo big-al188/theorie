@@ -1,9 +1,9 @@
 // lib/views/widgets/subscription_star_widget.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../services/subscription_service.dart';
-import '../../models/subscription/subscription_models.dart';
-import '../pages/subscription_management_page.dart';
+import '../../../services/subscription_service.dart';
+import '../../../models/subscription/subscription_models.dart';
+import '../../pages/subscription_management_page.dart';
 
 /// Subscription status star widget for app bar
 /// Shows grey star for free users, gold star for premium subscribers

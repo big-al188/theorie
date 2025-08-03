@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../services/subscription_service.dart';
 import '../../models/subscription/subscription_models.dart';
 import '../../constants/ui_constants.dart'; // Use existing ResponsiveConstants
-import '../widgets/subscription_star_widget.dart';
+import '../widgets/subscription/subscription_star_widget.dart';
 import '../widgets/common/app_bar.dart';
 
 class SubscriptionManagementPage extends StatefulWidget {
