@@ -1,52 +1,46 @@
-// lib/main.dart - Updated with audio system integration and Stripe subscription service
+// lib/main.dart - Fixed with proper subscription service integration and loop prevention
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart'
-    as firebase_auth; // Added alias
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_stripe/flutter_stripe.dart'; // NEW: Stripe import
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'firebase_options.dart';
 import 'models/app_state.dart';
 import 'controllers/quiz_controller.dart';
-import 'controllers/audio_controller.dart'; // Audio controller import
+import 'controllers/audio_controller.dart';
 import 'services/firebase_user_service.dart';
 import 'services/user_service.dart';
-import 'services/subscription_service.dart'; // NEW: Subscription service import
+import 'services/subscription_service.dart';
 import 'views/pages/login_page.dart';
 import 'views/pages/welcome_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // NEW: Initialize Stripe
+  // Initialize Stripe first
   await _initializeStripe();
 
   runApp(const TheorieApp());
 }
 
-/// NEW: Initialize Stripe with publishable key
+/// Initialize Stripe with proper error handling
 Future<void> _initializeStripe() async {
   try {
     // TODO: Replace with your actual Stripe publishable key
-    // Get this from your Stripe Dashboard
     const stripePublishableKey = kDebugMode 
-        ? 'pk_test_51Rs7HVILJ0OoLUiBc8PBRibh5acqX5EI2cI7D7Au1us6UcSZzF01hDXn9jo7F0Tv0x8B0V4ydH9pzcSGDqpQGYwg00tQapSRq4'  // Test key for development
-        : 'pk_live_your_live_key_here'; // Live key for production
+        ? 'pk_test_51Rs7HVILJ0OoLUiBc8PBRibh5acqX5EI2cI7D7Au1us6UcSZzF01hDXn9jo7F0Tv0x8B0V4ydH9pzcSGDqpQGYwg00tQapSRq4'
+        : 'pk_live_your_live_key_here';
     
     Stripe.publishableKey = stripePublishableKey;
-    
-    // Optional: Set merchant identifier for Apple Pay
     Stripe.merchantIdentifier = 'merchant.com.yourcompany.theorie';
-    
-    // Optional: Set URL scheme for 3D Secure authentication
     Stripe.urlScheme = 'flutterstripe';
     
     debugPrint('✅ [Stripe] Stripe initialized successfully');
   } catch (e) {
     debugPrint('❌ [Stripe] Error initializing Stripe: $e');
-    // Continue without Stripe - the app should still work for non-payment features
+    // Continue without Stripe - app should still work for non-payment features
   }
 }
 
@@ -81,7 +75,7 @@ class TheorieApp extends StatelessWidget {
   }
 }
 
-/// Production-ready Firebase initialization wrapper with loading states
+/// Firebase initialization wrapper with enhanced error handling
 class FirebaseInitializer extends StatefulWidget {
   const FirebaseInitializer({super.key});
 
@@ -103,7 +97,7 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
 
   Future<void> _initializeFirebase() async {
     try {
-      print('Initializing Firebase...');
+      debugPrint('🔄 [Firebase] Initializing Firebase...');
 
       // Initialize Firebase
       await Firebase.initializeApp(
@@ -115,8 +109,8 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
         await _configureFirebaseForWeb();
       }
 
-      // Initialize services
-      await _initializeServices();
+      // Initialize core services in proper order
+      await _initializeCoreServices();
 
       if (mounted) {
         setState(() {
@@ -126,9 +120,9 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
         });
       }
 
-      print('Firebase initialized successfully');
+      debugPrint('✅ [Firebase] Firebase initialized successfully');
     } catch (e) {
-      print('Firebase initialization error: $e');
+      debugPrint('❌ [Firebase] Firebase initialization error: $e');
 
       if (mounted) {
         setState(() {
@@ -144,31 +138,44 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
     try {
       // Set authentication persistence for web
       await firebase_auth.FirebaseAuth.instance.setPersistence(
-          firebase_auth.Persistence.LOCAL); // Added alias
+          firebase_auth.Persistence.LOCAL);
 
       // Enable Firestore offline persistence for web
       await FirebaseFirestore.instance
           .enablePersistence(const PersistenceSettings(synchronizeTabs: true));
 
-      print('Firebase web configuration completed');
+      debugPrint('✅ [Firebase] Web configuration completed');
     } catch (e) {
       // Persistence might already be enabled, or not supported
-      print('Firebase web configuration note: $e');
+      debugPrint('ℹ️ [Firebase] Web configuration note: $e');
       // Don't throw error for persistence issues - they're not critical
     }
   }
 
-  Future<void> _initializeServices() async {
+  /// Initialize core services in proper order to prevent loops
+  Future<void> _initializeCoreServices() async {
     try {
-      // Initialize Firebase user service
+      debugPrint('🔄 [Services] Initializing core services...');
+
+      // 1. Initialize Firebase user service first
       await FirebaseUserService.instance.initialize();
+      debugPrint('✅ [Services] Firebase user service initialized');
 
-      // Initialize fallback user service
+      // 2. Initialize fallback user service
       await UserService.instance.initialize();
+      debugPrint('✅ [Services] User service initialized');
 
-      print('Services initialized successfully');
+      // 3. Initialize subscription service - FIXED: Only initialize once
+      if (!SubscriptionService.instance.isInitialized) {
+        await SubscriptionService.instance.initialize();
+        debugPrint('✅ [Services] Subscription service initialized');
+      } else {
+        debugPrint('ℹ️ [Services] Subscription service already initialized');
+      }
+
+      debugPrint('✅ [Services] All core services initialized successfully');
     } catch (e) {
-      print('Service initialization warning: $e');
+      debugPrint('⚠️ [Services] Service initialization warning: $e');
       // Continue with app initialization even if services have issues
       // The services have their own fallback mechanisms
     }
@@ -184,7 +191,6 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
       return _buildLoadingScreen();
     }
 
-    // Firebase initialized successfully - show main app
     return const MainApp();
   }
 
@@ -219,6 +225,17 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
                   style: TextStyle(color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
                   onPressed: _isRetrying ? null : _retryInitialization,
@@ -305,7 +322,7 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
   }
 }
 
-/// Main application with all providers and authentication - UPDATED with audio lifecycle and subscription service
+/// Main application with providers - FIXED: Proper subscription service integration
 class MainApp extends StatelessWidget {
   const MainApp({super.key});
 
@@ -319,17 +336,18 @@ class MainApp extends StatelessWidget {
         // Quiz controller provider
         ChangeNotifierProvider(create: (_) => QuizController()),
 
-        // NEW: Subscription service provider
-        ChangeNotifierProvider(create: (_) => SubscriptionService.instance),
+        // FIXED: Use singleton instance to prevent recreation
+        ChangeNotifierProvider.value(
+          value: SubscriptionService.instance,
+        ),
 
         // Firebase auth state stream provider
         StreamProvider<firebase_auth.User?>(
-          // Added alias
           create: (_) => FirebaseUserService.instance.authStateChanges,
           initialData: null,
         ),
       ],
-      child: AppLifecycleManager( // Wrap with lifecycle manager
+      child: AppLifecycleManager(
         child: Consumer<AppState>(
           builder: (context, appState, child) {
             return MaterialApp(
@@ -355,7 +373,7 @@ class MainApp extends StatelessWidget {
   }
 }
 
-/// UPDATED: App lifecycle manager for audio system and subscription refresh
+/// App lifecycle manager with enhanced audio and subscription management
 class AppLifecycleManager extends StatefulWidget {
   final Widget child;
   
@@ -378,7 +396,6 @@ class _AppLifecycleManagerState extends State<AppLifecycleManager>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Clean up audio resources when app is closing
     AudioController.instance.dispose();
     super.dispose();
   }
@@ -395,15 +412,11 @@ class _AppLifecycleManagerState extends State<AppLifecycleManager>
           await AudioController.instance.initialize(appState.audioBackend);
           await AudioController.instance.setVolume(appState.audioVolume);
           
-          if (kDebugMode) {
-            print('Audio system initialized successfully');
-          }
+          debugPrint('✅ [Audio] Audio system initialized successfully');
         }
       });
     } catch (e) {
-      if (kDebugMode) {
-        print('Failed to initialize audio system: $e');
-      }
+      debugPrint('❌ [Audio] Failed to initialize audio system: $e');
     }
   }
 
@@ -413,27 +426,26 @@ class _AppLifecycleManagerState extends State<AppLifecycleManager>
     
     switch (state) {
       case AppLifecycleState.resumed:
-        debugPrint('🔄 [AppLifecycle] App resumed - refreshing subscription status');
-        // NEW: Refresh subscription status when app becomes active
-        SubscriptionService.instance.refreshSubscriptionStatus();
-        // Audio system should still be ready when app returns
+        debugPrint('🔄 [Lifecycle] App resumed');
+        // FIXED: Only refresh if service is properly initialized
+        if (SubscriptionService.instance.isInitialized) {
+          SubscriptionService.instance.refreshSubscriptionStatus();
+        }
         AudioController.instance.onAppResume();
         break;
       case AppLifecycleState.paused:
-        debugPrint('⏸️ [AppLifecycle] App paused');
-        // Stop all audio when app goes to background
+        debugPrint('⏸️ [Lifecycle] App paused');
         AudioController.instance.onAppPause();
         break;
       case AppLifecycleState.detached:
-        debugPrint('🔌 [AppLifecycle] App detached');
-        // Clean up when app is being terminated
+        debugPrint('🔌 [Lifecycle] App detached');
         AudioController.instance.dispose();
         break;
       case AppLifecycleState.inactive:
-        debugPrint('😴 [AppLifecycle] App inactive');
+        debugPrint('😴 [Lifecycle] App inactive');
         break;
       case AppLifecycleState.hidden:
-        debugPrint('🙈 [AppLifecycle] App hidden');
+        debugPrint('🙈 [Lifecycle] App hidden');
         break;
     }
   }
@@ -444,7 +456,7 @@ class _AppLifecycleManagerState extends State<AppLifecycleManager>
   }
 }
 
-/// Authentication wrapper with improved error handling and Firebase progress loading
+/// Authentication wrapper with enhanced error handling and fixed Firebase loading
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -467,18 +479,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   Future<void> _initializeAuth() async {
     try {
-      print('Initializing auth wrapper...');
+      debugPrint('🔄 [Auth] Initializing auth wrapper...');
       _loadingAttempts++;
 
       // Check for existing user session
       final currentUser = await FirebaseUserService.instance.getCurrentUser();
-      print('Current user: ${currentUser?.username ?? 'None'}');
+      debugPrint('ℹ️ [Auth] Current user: ${currentUser?.username ?? 'None'}');
 
       // Update app state with current user
       if (mounted && currentUser != null) {
         final appState = context.read<AppState>();
         await appState.setCurrentUser(currentUser);
-        print('App state updated with user: ${currentUser.username}');
+        debugPrint('✅ [Auth] App state updated with user: ${currentUser.username}');
       }
 
       if (mounted) {
@@ -488,7 +500,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         });
       }
     } catch (e) {
-      print('Error initializing auth: $e');
+      debugPrint('❌ [Auth] Error initializing auth: $e');
 
       if (mounted) {
         // If we've tried multiple times and still failing, show error
@@ -520,8 +532,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             children: [
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
-              Text(
-                  'Setting up your session... (${_loadingAttempts}/$_maxLoadingAttempts)'),
+              Text('Setting up your session... (${_loadingAttempts}/$_maxLoadingAttempts)'),
               if (_loadingAttempts > 1) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -590,14 +601,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
     // Listen to Firebase auth state changes
     return Consumer<firebase_auth.User?>(
-      // Added alias
       builder: (context, firebaseUser, child) {
         return Consumer<AppState>(
           builder: (context, appState, child) {
             final currentUser = appState.currentUser;
 
-            print(
-                'Auth state - Firebase: ${firebaseUser?.uid}, App: ${currentUser?.username}');
+            debugPrint('ℹ️ [Auth] Auth state - Firebase: ${firebaseUser?.uid}, App: ${currentUser?.username}');
 
             // If we have a current user (either Firebase or guest), show welcome page
             if (currentUser != null) {
@@ -606,7 +615,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
             // If Firebase user exists but no app user, load the user data
             if (firebaseUser != null && currentUser == null) {
-              // Use a FutureBuilder for better error handling
               return FutureBuilder<void>(
                 future: _loadFirebaseUser(firebaseUser),
                 builder: (context, snapshot) {
@@ -629,16 +637,14 @@ class _AuthWrapperState extends State<AuthWrapper> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.error_outline,
-                                color: Colors.red, size: 48),
+                            const Icon(Icons.error_outline, color: Colors.red, size: 48),
                             const SizedBox(height: 16),
                             const Text('Failed to load user data'),
                             const SizedBox(height: 8),
                             Text(
                               snapshot.error.toString(),
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  fontSize: 12, color: Colors.grey),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton(
@@ -665,45 +671,50 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
-  /// ENHANCED: Load Firebase user with better progress integration
+  /// FIXED: Load Firebase user with proper error handling and subscription initialization
   Future<void> _loadFirebaseUser(firebase_auth.User firebaseUser) async {
-    // Added alias
     try {
-      print('Loading Firebase user data for: ${firebaseUser.uid}');
+      debugPrint('🔄 [Auth] Loading Firebase user data for: ${firebaseUser.uid}');
 
       // Use FirebaseUserService directly for better integration
       final userService = FirebaseUserService.instance;
       final appUser = await userService.getCurrentUser();
 
       if (appUser != null && mounted) {
-        print('User data loaded successfully: ${appUser.username}');
+        debugPrint('✅ [Auth] User data loaded successfully: ${appUser.username}');
 
-        // CRITICAL: Set user in AppState which will trigger proper progress loading
+        // Set user in AppState which will trigger proper progress loading
         final appState = context.read<AppState>();
         await appState.setCurrentUser(appUser);
 
-        print('✅ User successfully loaded and progress restored');
+        // FIXED: Initialize subscription service for this user if not already done
+        // This handles the case where users don't have subscription data yet
+        if (SubscriptionService.instance.isInitialized) {
+          // Just refresh the status, don't re-initialize
+          SubscriptionService.instance.refreshSubscriptionStatus();
+        }
+
+        debugPrint('✅ [Auth] User successfully loaded and services initialized');
       } else {
-        print('No app user data found for Firebase user: ${firebaseUser.uid}');
+        debugPrint('⚠️ [Auth] No app user data found for Firebase user: ${firebaseUser.uid}');
 
         // If user exists in Firebase but not in Firestore, sign them out
         if (mounted) {
           setState(() {
             _hasError = true;
-            _errorMessage =
-                'User data not found in database. Please try registering again.';
+            _errorMessage = 'User data not found in database. Please try registering again.';
           });
         }
 
         try {
           await FirebaseUserService.instance.logout();
-          print('Signed out user due to missing data');
+          debugPrint('ℹ️ [Auth] Signed out user due to missing data');
         } catch (signOutError) {
-          print('Error signing out after load failure: $signOutError');
+          debugPrint('❌ [Auth] Error signing out after load failure: $signOutError');
         }
       }
     } catch (e) {
-      print('Error loading Firebase user: $e');
+      debugPrint('❌ [Auth] Error loading Firebase user: $e');
 
       // Update UI state to show error instead of infinite loading
       if (mounted) {
@@ -716,9 +727,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
       // If there's an issue loading the user, sign them out
       try {
         await FirebaseUserService.instance.logout();
-        print('Signed out user due to loading error');
+        debugPrint('ℹ️ [Auth] Signed out user due to loading error');
       } catch (signOutError) {
-        print('Error signing out after load failure: $signOutError');
+        debugPrint('❌ [Auth] Error signing out after load failure: $signOutError');
       }
     }
   }

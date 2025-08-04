@@ -1,22 +1,26 @@
-// lib/services/subscription_service.dart
+// lib/services/subscription_service.dart - Updated to use Firebase Callable Functions
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_functions/cloud_functions.dart'; // NEW: Firebase Functions
 import '../models/subscription/subscription_models.dart';
 import '../models/user/user.dart';
 import './firebase_user_service.dart';
 import './user_service.dart';
 
-/// Subscription service with local storage and Firebase sync
-/// Follows the existing service architecture pattern from UserService
+/// Subscription service using Firebase Callable Functions
 class SubscriptionService extends ChangeNotifier {
   static SubscriptionService? _instance;
   static SubscriptionService get instance => _instance ??= SubscriptionService._();
   SubscriptionService._();
 
+  // Firebase Functions instance
+  static final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  
   // Local storage keys
   static const String _subscriptionDataKey = 'subscription_data';
   static const String _lastSyncKey = 'subscription_last_sync';
@@ -26,6 +30,8 @@ class SubscriptionService extends ChangeNotifier {
   bool _isInitialized = false;
   bool _isLoading = false;
   Timer? _syncTimer;
+  bool _isInitializing = false;
+  bool _hasNetworkError = false;
 
   // Getters
   SubscriptionData get currentSubscription => 
@@ -33,18 +39,24 @@ class SubscriptionService extends ChangeNotifier {
   bool get hasActiveSubscription => currentSubscription.hasAccess;
   bool get isLoading => _isLoading;
   bool get isInitialized => _isInitialized;
+  bool get hasNetworkError => _hasNetworkError;
 
   /// Initialize the service
   Future<void> initialize() async {
-    if (_isInitialized) return;
+    if (_isInitialized || _isInitializing) {
+      debugPrint('ℹ️ [SubscriptionService] Already initialized or initializing, skipping...');
+      return;
+    }
+
+    _isInitializing = true;
 
     try {
       debugPrint('🔄 [SubscriptionService] Initializing...');
       
       _prefs = await SharedPreferences.getInstance();
       
-      // Load subscription data with Firebase priority
-      await _loadSubscriptionWithFirebasePriority();
+      // Load subscription data
+      await _loadSubscriptionData();
       
       // Start periodic sync for authenticated users
       _startPeriodicSync();
@@ -55,34 +67,64 @@ class SubscriptionService extends ChangeNotifier {
       debugPrint('❌ [SubscriptionService] Error initializing: $e');
       _isInitialized = true;
       _currentSubscription = SubscriptionData.empty();
+    } finally {
+      _isInitializing = false;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
-  /// Load subscription data with Firebase priority
-  Future<void> _loadSubscriptionWithFirebasePriority() async {
+  /// Load subscription data
+  Future<void> _loadSubscriptionData() async {
     try {
-      // Try Firebase first for authenticated users
-      if (FirebaseUserService.instance.isLoggedIn) {
-        debugPrint('☁️ [SubscriptionService] Loading from Firebase...');
-        final firebaseData = await _loadFromFirebase();
-        if (firebaseData != null) {
-          _currentSubscription = firebaseData;
-          await _saveToLocal(firebaseData);
-          debugPrint('✅ [SubscriptionService] Loaded from Firebase');
-          return;
-        }
+      debugPrint('📱 [SubscriptionService] Loading subscription data...');
+
+      // First, load from local storage
+      final localData = await _loadFromLocal();
+      if (localData != null) {
+        _currentSubscription = localData;
+        debugPrint('✅ [SubscriptionService] Loaded from local storage');
+      } else {
+        _currentSubscription = SubscriptionData.empty();
+        debugPrint('ℹ️ [SubscriptionService] No local data, using empty subscription');
       }
 
-      // Fallback to local storage
-      debugPrint('📱 [SubscriptionService] Loading from local storage...');
-      final localData = await _loadFromLocal();
-      _currentSubscription = localData ?? SubscriptionData.empty();
-      debugPrint('📱 [SubscriptionService] Loaded from local storage');
+      // If user is logged in, try to sync with Firebase (but don't block initialization)
+      if (FirebaseUserService.instance.isLoggedIn) {
+        _syncWithFirebaseInBackground();
+      }
       
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Error loading subscription: $e');
       _currentSubscription = SubscriptionData.empty();
+    }
+  }
+
+  /// Background sync with Firebase
+  Future<void> _syncWithFirebaseInBackground() async {
+    try {
+      debugPrint('☁️ [SubscriptionService] Background sync with Firebase...');
+      
+      // Get latest subscription data from Firebase Function
+      final latestData = await _getSubscriptionStatusFromFirebase();
+      
+      if (latestData != null) {
+        _currentSubscription = latestData;
+        await _saveToLocal(latestData);
+        _hasNetworkError = false;
+        debugPrint('✅ [SubscriptionService] Background sync completed');
+        notifyListeners();
+      } else {
+        debugPrint('ℹ️ [SubscriptionService] No subscription data found in Firebase');
+      }
+    } catch (e) {
+      debugPrint('⚠️ [SubscriptionService] Background sync failed: $e');
+      
+      if (e.toString().contains('network') || 
+          e.toString().contains('internet') ||
+          e.toString().contains('connection')) {
+        _hasNetworkError = true;
+        debugPrint('🌐 [SubscriptionService] Network error detected - using local data');
+      }
     }
   }
 
@@ -111,33 +153,11 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  /// Load subscription data from Firebase
-  Future<SubscriptionData?> _loadFromFirebase() async {
-    try {
-      // TODO: Implement Firebase subscription data loading
-      // This would integrate with your Firebase Firestore
-      debugPrint('🚧 [SubscriptionService] Firebase loading not yet implemented');
-      return null;
-    } catch (e) {
-      debugPrint('❌ [SubscriptionService] Error loading from Firebase: $e');
-      return null;
-    }
-  }
-
-  /// Save subscription data to Firebase
-  Future<void> _saveToFirebase(SubscriptionData data) async {
-    try {
-      // TODO: Implement Firebase subscription data saving
-      // This would integrate with your Firebase Firestore
-      debugPrint('🚧 [SubscriptionService] Firebase saving not yet implemented');
-    } catch (e) {
-      debugPrint('❌ [SubscriptionService] Error saving to Firebase: $e');
-    }
-  }
-
   /// Update subscription data
   Future<void> updateSubscription(SubscriptionData data) async {
-    await initialize();
+    if (!_isInitialized) {
+      await initialize();
+    }
     
     try {
       _setLoading(true);
@@ -146,11 +166,6 @@ class SubscriptionService extends ChangeNotifier {
       
       // Save to local storage
       await _saveToLocal(data);
-      
-      // Save to Firebase for authenticated users
-      if (FirebaseUserService.instance.isLoggedIn) {
-        await _saveToFirebase(data);
-      }
       
       debugPrint('✅ [SubscriptionService] Subscription updated: ${data.status.displayName}');
       notifyListeners();
@@ -162,33 +177,89 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  /// Start subscription flow
+  /// Start subscription flow using Firebase Callable Function
   Future<Map<String, dynamic>> startSubscription({
     required SubscriptionTier tier,
     String? customerId,
   }) async {
-    await initialize();
+    if (!_isInitialized) {
+      await initialize();
+    }
     
     try {
       _setLoading(true);
       debugPrint('🔄 [SubscriptionService] Starting subscription for tier: ${tier.displayName}');
       
-      // Create subscription intent on your backend
-      final response = await _createSubscriptionIntent(tier: tier, customerId: customerId);
+      // Get current user info
+      final currentUser = await UserService.instance.getCurrentUser();
+      final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
       
-      debugPrint('✅ [SubscriptionService] Subscription intent created');
-      return response;
+      // FIXED: Better data validation and fallbacks
+      final email = currentUser?.email ?? firebaseUser?.email;
+      final name = currentUser?.username ?? firebaseUser?.displayName ?? email?.split('@')[0];
+      
+      debugPrint('🔄 [SubscriptionService] User data - Email: $email, Name: $name');
+      
+      if (email == null) {
+        throw Exception('User email is required for subscription');
+      }
+      
+      // Call Firebase Function to create subscription setup
+      final callable = _functions.httpsCallable('createSubscriptionSetup');
+      
+      debugPrint('🔄 [SubscriptionService] Calling Firebase Function with data: {tier: ${tier.id}, email: $email, name: $name}');
+      
+      final result = await callable.call({
+        'tier': tier.id,
+        'email': email,
+        'name': name,
+      });
+      
+      final data = result.data as Map<String, dynamic>;
+      
+      if (data.containsKey('clientSecret')) {
+        // Initialize payment with Stripe
+        await Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: SetupPaymentSheetParameters(
+            paymentIntentClientSecret: data['clientSecret'],
+            merchantDisplayName: 'Theorie App',
+            style: ThemeMode.light,
+          ),
+        );
+
+        // Present payment sheet
+        await Stripe.instance.presentPaymentSheet();
+        
+        // Refresh subscription status after successful payment
+        await refreshSubscriptionStatus();
+        
+        debugPrint('✅ [SubscriptionService] Subscription started successfully');
+        return data;
+      } else {
+        throw Exception('Invalid response from subscription setup');
+      }
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('❌ [SubscriptionService] Firebase Functions error: ${e.message}');
+      throw Exception('Subscription setup failed: ${e.message}');
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Error starting subscription: $e');
+      
+      // Provide user-friendly error messages
+      if (e.toString().contains('network') || e.toString().contains('internet')) {
+        throw Exception('Unable to connect to subscription service. Please check your internet connection and try again.');
+      }
+      
       rethrow;
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Cancel subscription
+  /// Cancel subscription using Firebase Callable Function
   Future<void> cancelSubscription({bool immediate = false}) async {
-    await initialize();
+    if (!_isInitialized) {
+      await initialize();
+    }
     
     try {
       _setLoading(true);
@@ -199,64 +270,43 @@ class SubscriptionService extends ChangeNotifier {
       
       debugPrint('🔄 [SubscriptionService] Canceling subscription');
       
-      // Cancel subscription on your backend
-      await _cancelSubscriptionOnBackend(
-        subscriptionId: _currentSubscription!.subscriptionId!,
-        immediate: immediate,
-      );
+      // Call Firebase Function to cancel subscription
+      final callable = _functions.httpsCallable('cancelSubscription');
+      await callable.call({
+        'subscriptionId': _currentSubscription!.subscriptionId!,
+        'cancelAtPeriodEnd': !immediate, // If immediate is true, set cancelAtPeriodEnd to false
+      });
       
-      // Update local status
-      final updatedSubscription = _currentSubscription!.copyWith(
-        status: immediate ? SubscriptionStatus.canceled : SubscriptionStatus.canceled,
-        canceledAt: DateTime.now(),
-      );
-      
-      await updateSubscription(updatedSubscription);
+      // Refresh subscription status
+      await refreshSubscriptionStatus();
       
       debugPrint('✅ [SubscriptionService] Subscription canceled');
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('❌ [SubscriptionService] Firebase Functions error: ${e.message}');
+      throw Exception('Failed to cancel subscription: ${e.message}');
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Error canceling subscription: $e');
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  /// Pause subscription
-  Future<void> pauseSubscription() async {
-    await initialize();
-    
-    try {
-      _setLoading(true);
       
-      if (_currentSubscription?.subscriptionId == null) {
-        throw Exception('No active subscription to pause');
+      if (e.toString().contains('network') || e.toString().contains('internet')) {
+        throw Exception('Unable to connect to subscription service. Please try again later.');
       }
       
-      debugPrint('🔄 [SubscriptionService] Pausing subscription');
-      
-      // Pause subscription on your backend
-      await _pauseSubscriptionOnBackend(_currentSubscription!.subscriptionId!);
-      
-      // Update local status
-      final updatedSubscription = _currentSubscription!.copyWith(
-        status: SubscriptionStatus.paused,
-      );
-      
-      await updateSubscription(updatedSubscription);
-      
-      debugPrint('✅ [SubscriptionService] Subscription paused');
-    } catch (e) {
-      debugPrint('❌ [SubscriptionService] Error pausing subscription: $e');
       rethrow;
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Resume subscription
+  /// Pause subscription (cancel at period end)
+  Future<void> pauseSubscription() async {
+    return cancelSubscription(immediate: false);
+  }
+
+  /// Resume subscription using Firebase Callable Function
   Future<void> resumeSubscription() async {
-    await initialize();
+    if (!_isInitialized) {
+      await initialize();
+    }
     
     try {
       _setLoading(true);
@@ -267,155 +317,114 @@ class SubscriptionService extends ChangeNotifier {
       
       debugPrint('🔄 [SubscriptionService] Resuming subscription');
       
-      // Resume subscription on your backend
-      await _resumeSubscriptionOnBackend(_currentSubscription!.subscriptionId!);
+      // Call Firebase Function to resume subscription
+      final callable = _functions.httpsCallable('resumeSubscription');
+      await callable.call({
+        'subscriptionId': _currentSubscription!.subscriptionId!,
+      });
       
-      // Update local status
-      final updatedSubscription = _currentSubscription!.copyWith(
-        status: SubscriptionStatus.active,
-        currentPeriodEnd: DateTime.now().add(const Duration(days: 30)), // Adjust based on plan
-      );
-      
-      await updateSubscription(updatedSubscription);
+      // Refresh subscription status
+      await refreshSubscriptionStatus();
       
       debugPrint('✅ [SubscriptionService] Subscription resumed');
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('❌ [SubscriptionService] Firebase Functions error: ${e.message}');
+      throw Exception('Failed to resume subscription: ${e.message}');
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Error resuming subscription: $e');
+      
+      if (e.toString().contains('network') || e.toString().contains('internet')) {
+        throw Exception('Unable to connect to subscription service. Please try again later.');
+      }
+      
       rethrow;
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Refresh subscription status from backend
+  /// Refresh subscription status using Firebase Callable Function
   Future<void> refreshSubscriptionStatus() async {
-    await initialize();
+    if (!_isInitialized) {
+      debugPrint('ℹ️ [SubscriptionService] Service not initialized, skipping refresh');
+      return;
+    }
     
     try {
-      _setLoading(true);
-      
-      if (_currentSubscription?.customerId == null) {
-        debugPrint('ℹ️ [SubscriptionService] No customer ID to refresh');
+      if (!FirebaseUserService.instance.isLoggedIn) {
+        debugPrint('ℹ️ [SubscriptionService] User not logged in, skipping refresh');
         return;
       }
-      
+
       debugPrint('🔄 [SubscriptionService] Refreshing subscription status');
       
-      // Get latest subscription data from backend
-      final latestData = await _getSubscriptionStatus(_currentSubscription!.customerId!);
+      // Get latest subscription data from Firebase Function
+      final latestData = await _getSubscriptionStatusFromFirebase();
       
       if (latestData != null) {
-        await updateSubscription(latestData);
+        _currentSubscription = latestData;
+        await _saveToLocal(latestData);
+        _hasNetworkError = false;
+        notifyListeners();
         debugPrint('✅ [SubscriptionService] Subscription status refreshed');
       }
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Error refreshing subscription: $e');
-      // Don't rethrow - this is a background refresh
-    } finally {
-      _setLoading(false);
+      
+      if (e.toString().contains('network') || e.toString().contains('internet')) {
+        _hasNetworkError = true;
+        debugPrint('🌐 [SubscriptionService] Network error - using cached data');
+      }
     }
   }
 
-  /// Create subscription intent on backend
-  Future<Map<String, dynamic>> _createSubscriptionIntent({
-    required SubscriptionTier tier,
-    String? customerId,
-  }) async {
-    // TODO: Replace with your actual backend endpoint
-    const backendUrl = 'https://your-backend.com/api/subscription/create-intent';
-    
-    // FIXED: Properly await the getCurrentUser() call
-    final currentUser = await UserService.instance.getCurrentUser();
-    
-    final response = await http.post(
-      Uri.parse(backendUrl),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'tier': tier.id,
-        'customer_id': customerId,
-        'user_id': currentUser?.id,
-      }),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Failed to create subscription intent: ${response.body}');
-    }
-
-    return jsonDecode(response.body);
-  }
-
-  /// Cancel subscription on backend
-  Future<void> _cancelSubscriptionOnBackend({
-    required String subscriptionId,
-    required bool immediate,
-  }) async {
-    // TODO: Replace with your actual backend endpoint
-    const backendUrl = 'https://your-backend.com/api/subscription/cancel';
-    
-    final response = await http.post(
-      Uri.parse(backendUrl),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'subscription_id': subscriptionId,
-        'immediate': immediate,
-      }),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Failed to cancel subscription: ${response.body}');
-    }
-  }
-
-  /// Pause subscription on backend
-  Future<void> _pauseSubscriptionOnBackend(String subscriptionId) async {
-    // TODO: Replace with your actual backend endpoint
-    const backendUrl = 'https://your-backend.com/api/subscription/pause';
-    
-    final response = await http.post(
-      Uri.parse(backendUrl),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'subscription_id': subscriptionId}),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Failed to pause subscription: ${response.body}');
-    }
-  }
-
-  /// Resume subscription on backend
-  Future<void> _resumeSubscriptionOnBackend(String subscriptionId) async {
-    // TODO: Replace with your actual backend endpoint
-    const backendUrl = 'https://your-backend.com/api/subscription/resume';
-    
-    final response = await http.post(
-      Uri.parse(backendUrl),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'subscription_id': subscriptionId}),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Failed to resume subscription: ${response.body}');
-    }
-  }
-
-  /// Get subscription status from backend
-  Future<SubscriptionData?> _getSubscriptionStatus(String customerId) async {
-    // TODO: Replace with your actual backend endpoint
-    final backendUrl = 'https://your-backend.com/api/subscription/status/$customerId';
-    
-    final response = await http.get(
-      Uri.parse(backendUrl),
-      headers: {'Content-Type': 'application/json'},
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return SubscriptionData.fromJson(data);
-    } else if (response.statusCode == 404) {
-      // No subscription found
-      return SubscriptionData.empty();
-    } else {
-      throw Exception('Failed to get subscription status: ${response.body}');
+  /// Get subscription status from Firebase Callable Function
+  Future<SubscriptionData?> _getSubscriptionStatusFromFirebase() async {
+    try {
+      final callable = _functions.httpsCallable('getSubscriptionStatus');
+      final result = await callable.call();
+      
+      final data = result.data as Map<String, dynamic>;
+      
+      if (data['hasSubscription'] == true && data['subscription'] != null) {
+        final subscriptionInfo = data['subscription'] as Map<String, dynamic>;
+        
+        // Convert Firebase Callable Function response to SubscriptionData
+        return SubscriptionData(
+          status: SubscriptionStatus.fromString(subscriptionInfo['status'] ?? 'none'),
+          tier: SubscriptionTier.fromString(subscriptionInfo['tier'] ?? 'free'),
+          subscriptionId: subscriptionInfo['id'],
+          customerId: subscriptionInfo['customerId'],
+          currentPeriodStart: subscriptionInfo['currentPeriodStart'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((subscriptionInfo['currentPeriodStart'] as int) * 1000)
+              : null,
+          currentPeriodEnd: subscriptionInfo['currentPeriodEnd'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((subscriptionInfo['currentPeriodEnd'] as int) * 1000)
+              : null,
+          trialEnd: subscriptionInfo['trialEnd'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((subscriptionInfo['trialEnd'] as int) * 1000)
+              : null,
+          cancelAtPeriodEnd: subscriptionInfo['cancelAtPeriodEnd'] == true ? 'true' : null,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+      } else {
+        // No subscription found - return empty subscription
+        debugPrint('ℹ️ [SubscriptionService] No subscription data found for user');
+        return SubscriptionData.empty();
+      }
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('❌ [SubscriptionService] Firebase Functions error: ${e.message}');
+      
+      // If user not found or no subscription, return empty data
+      if (e.code == 'not-found' || e.message?.contains('no subscription') == true) {
+        return SubscriptionData.empty();
+      }
+      
+      return null; // Return null to indicate error, not empty subscription
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] Error getting subscription status: $e');
+      return null;
     }
   }
 
@@ -425,7 +434,9 @@ class SubscriptionService extends ChangeNotifier {
     
     if (FirebaseUserService.instance.isLoggedIn) {
       _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-        refreshSubscriptionStatus();
+        if (_isInitialized) {
+          refreshSubscriptionStatus();
+        }
       });
     }
   }
@@ -435,6 +446,22 @@ class SubscriptionService extends ChangeNotifier {
     if (_isLoading != loading) {
       _isLoading = loading;
       notifyListeners();
+    }
+  }
+
+  /// Test Firebase Functions connectivity (for debugging)
+  Future<void> testFirebaseFunctions() async {
+    try {
+      debugPrint('🔄 [SubscriptionService] Testing Firebase Functions connectivity...');
+      
+      final callable = _functions.httpsCallable('getSubscriptionStatus');
+      final result = await callable.call();
+      
+      debugPrint('✅ [SubscriptionService] Firebase Functions test successful');
+      debugPrint('📋 [SubscriptionService] Test result: ${result.data}');
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] Firebase Functions test failed: $e');
+      rethrow;
     }
   }
 

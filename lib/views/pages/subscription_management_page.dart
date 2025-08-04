@@ -1,9 +1,11 @@
-// lib/views/pages/subscription_management_page.dart - Fixed imports and responsive design
+// lib/views/pages/subscription_management_page.dart - Updated with Stripe integration
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import '../../services/subscription_service.dart';
+import '../../services/firebase_user_service.dart';
 import '../../models/subscription/subscription_models.dart';
-import '../../constants/ui_constants.dart'; // Use existing ResponsiveConstants
+import '../../constants/ui_constants.dart';
 import '../widgets/subscription/subscription_star_widget.dart';
 import '../widgets/common/app_bar.dart';
 
@@ -15,12 +17,14 @@ class SubscriptionManagementPage extends StatefulWidget {
 }
 
 class _SubscriptionManagementPageState extends State<SubscriptionManagementPage> {
+  bool _processingPayment = false;
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final orientation = MediaQuery.of(context).orientation;
-    final deviceType = ResponsiveConstants.getDeviceType(screenWidth); // FIXED: Use ResponsiveConstants
+    final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
     final isLandscape = orientation == Orientation.landscape;
 
     return Scaffold(
@@ -42,14 +46,23 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 children: [
                   _buildStatusCard(context, service, deviceType),
                   const SizedBox(height: 24),
-                  if (!service.hasActiveSubscription) ...[
+                  
+                  // Show login prompt if not authenticated
+                  if (!FirebaseUserService.instance.isLoggedIn) ...[
+                    _buildLoginPrompt(context, deviceType),
+                    const SizedBox(height: 24),
+                  ],
+                  
+                  if (!service.hasActiveSubscription && FirebaseUserService.instance.isLoggedIn) ...[
                     _buildPricingTiers(context, service, deviceType),
                     const SizedBox(height: 24),
                   ],
+                  
                   if (service.hasActiveSubscription) ...[
                     _buildSubscriptionActions(context, service, deviceType),
                     const SizedBox(height: 24),
                   ],
+                  
                   _buildPremiumFeatures(context, service, deviceType),
                 ],
               );
@@ -67,10 +80,63 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     return deviceType == DeviceType.mobile ? 20.0 : 32.0;
   }
 
+  Widget _buildLoginPrompt(BuildContext context, DeviceType deviceType) {
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.blue.shade50,
+          border: Border.all(color: Colors.blue.shade200),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.login,
+              size: 48,
+              color: Colors.blue.shade600,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Sign In Required',
+              style: TextStyle(
+                fontSize: deviceType == DeviceType.mobile ? 18 : 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue.shade700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Please sign in to your account to manage subscriptions and sync your progress across devices.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: deviceType == DeviceType.mobile ? 14 : 16,
+                color: Colors.blue.shade600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/auth'),
+              icon: const Icon(Icons.login),
+              label: const Text('Sign In'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatusCard(BuildContext context, SubscriptionService service, DeviceType deviceType) {
     final subscription = service.currentSubscription;
     
-    return Material( // FIXED: Use Material instead of Card to avoid import conflict
+    return Material(
       elevation: 3,
       borderRadius: BorderRadius.circular(12),
       child: Container(
@@ -166,6 +232,40 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 ),
               ),
             ],
+            // Loading indicator during processing
+            if (service.isLoading || _processingPayment) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _processingPayment ? 'Processing payment...' : 'Updating subscription...',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -204,6 +304,7 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 () => _handlePauseSubscription(context, service),
                 Colors.orange,
                 deviceType,
+                enabled: !service.isLoading && !_processingPayment,
               ),
               const SizedBox(height: 12),
               _buildActionButton(
@@ -213,9 +314,11 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 () => _handleCancelSubscription(context, service),
                 Colors.red,
                 deviceType,
+                enabled: !service.isLoading && !_processingPayment,
               ),
             ],
-            if (subscription.status == SubscriptionStatus.paused) ...[
+            if (subscription.status == SubscriptionStatus.paused || 
+                subscription.status == SubscriptionStatus.canceled) ...[
               _buildActionButton(
                 context,
                 'Resume Subscription',
@@ -223,6 +326,7 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 () => _handleResumeSubscription(context, service),
                 Colors.green,
                 deviceType,
+                enabled: !service.isLoading && !_processingPayment,
               ),
             ],
           ],
@@ -280,6 +384,8 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     DeviceType deviceType, {
     bool isPopular = false,
   }) {
+    final isLoading = service.isLoading || _processingPayment;
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(
@@ -293,7 +399,7 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: service.isLoading ? null : () => _handleSubscribe(context, service, tier),
+          onTap: isLoading ? null : () => _handleSubscribe(context, service, tier),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -339,6 +445,17 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                           color: Colors.grey.shade600,
                         ),
                       ),
+                      if (tier == SubscriptionTier.premiumAnnual) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Save 17% vs monthly',
+                          style: TextStyle(
+                            fontSize: deviceType == DeviceType.mobile ? 12 : 14,
+                            color: Colors.green.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -346,13 +463,14 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                   width: deviceType == DeviceType.mobile ? 80 : 100,
                   height: 36,
                   child: ElevatedButton(
-                    onPressed: service.isLoading ? null : () => _handleSubscribe(context, service, tier),
+                    onPressed: isLoading ? null : () => _handleSubscribe(context, service, tier),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isPopular ? Colors.blue : Colors.grey.shade600,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
+                      disabledBackgroundColor: Colors.grey.shade300,
                     ),
-                    child: service.isLoading
+                    child: isLoading
                         ? const SizedBox(
                             width: 16,
                             height: 16,
@@ -424,6 +542,20 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
               service.hasActiveSubscription,
               deviceType,
             ),
+            _buildFeatureItem(
+              'Unlimited Fretboards',
+              'Create and save unlimited custom fretboards',
+              Icons.library_music,
+              service.hasActiveSubscription,
+              deviceType,
+            ),
+            _buildFeatureItem(
+              'Advanced Quizzes',
+              'Access to comprehensive music theory quizzes',
+              Icons.quiz,
+              service.hasActiveSubscription,
+              deviceType,
+            ),
           ],
         ),
       ),
@@ -487,12 +619,13 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     IconData icon,
     VoidCallback onPressed,
     Color color,
-    DeviceType deviceType,
-  ) {
+    DeviceType deviceType, {
+    bool enabled = true,
+  }) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: onPressed,
+        onPressed: enabled ? onPressed : null,
         icon: Icon(icon, size: deviceType == DeviceType.mobile ? 18 : 20),
         label: Text(
           label,
@@ -501,34 +634,57 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
           ),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
+          backgroundColor: enabled ? color : Colors.grey.shade300,
+          foregroundColor: enabled ? Colors.white : Colors.grey.shade600,
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
       ),
     );
   }
 
-  // Action handlers
+  // Action handlers with improved error handling and user feedback
+
   Future<void> _handleSubscribe(BuildContext context, SubscriptionService service, SubscriptionTier tier) async {
+    if (!FirebaseUserService.instance.isLoggedIn) {
+      _showErrorSnackBar(context, 'Please sign in to subscribe');
+      return;
+    }
+
+    setState(() => _processingPayment = true);
+
     try {
-      final result = await service.startSubscription(tier: tier);
+      await service.startSubscription(tier: tier);
+      
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Subscription started for ${tier.displayName}'),
+            content: Row(
+              children: [
+                const Icon(Icons.check, color: Colors.white),
+                const SizedBox(width: 8),
+                Text('Welcome to ${tier.displayName}!'),
+              ],
+            ),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
+    } on StripeException catch (e) {
+      if (context.mounted) {
+        String message = 'Payment failed';
+        if (e.error.message != null) {
+          message = e.error.message!;
+        }
+        _showErrorSnackBar(context, message);
+      }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showErrorSnackBar(context, 'Subscription failed: ${e.toString()}');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _processingPayment = false);
       }
     }
   }
@@ -538,27 +694,19 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
       context,
       'Pause Subscription',
       'Are you sure you want to pause your subscription? You can resume it anytime.',
+      confirmText: 'Pause',
+      confirmColor: Colors.orange,
     );
 
     if (confirmed && context.mounted) {
       try {
         await service.pauseSubscription();
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Subscription paused successfully'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+          _showSuccessSnackBar(context, 'Subscription paused successfully');
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          _showErrorSnackBar(context, 'Failed to pause subscription: ${e.toString()}');
         }
       }
     }
@@ -568,21 +716,11 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     try {
       await service.resumeSubscription();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Subscription resumed successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        _showSuccessSnackBar(context, 'Subscription resumed successfully');
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showErrorSnackBar(context, 'Failed to resume subscription: ${e.toString()}');
       }
     }
   }
@@ -592,35 +730,34 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
       context,
       'Cancel Subscription',
       'Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period.',
+      confirmText: 'Cancel Subscription',
+      confirmColor: Colors.red,
     );
 
     if (confirmed && context.mounted) {
       try {
         await service.cancelSubscription();
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Subscription canceled successfully'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          _showSuccessSnackBar(context, 'Subscription canceled successfully');
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          _showErrorSnackBar(context, 'Failed to cancel subscription: ${e.toString()}');
         }
       }
     }
   }
 
-  Future<bool> _showConfirmationDialog(BuildContext context, String title, String content) async {
+  Future<bool> _showConfirmationDialog(
+    BuildContext context, 
+    String title, 
+    String content, {
+    String confirmText = 'Confirm',
+    Color confirmColor = Colors.red,
+  }) async {
     return await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: Text(title),
         content: Text(content),
@@ -631,11 +768,48 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Confirm'),
+            style: TextButton.styleFrom(foregroundColor: confirmColor),
+            child: Text(confirmText),
           ),
         ],
       ),
     ) ?? false;
+  }
+
+  void _showSuccessSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Dismiss',
+          textColor: Colors.white,
+          onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+        ),
+      ),
+    );
   }
 }
