@@ -32,7 +32,7 @@ Future<void> _initializeStripe() async {
     // TODO: Replace with your actual Stripe publishable key
     // Get this from your Stripe Dashboard
     const stripePublishableKey = kDebugMode 
-        ? 'pk_test_your_test_key_here'  // Test key for development
+        ? 'pk_test_51Rs7HVILJ0OoLUiBc8PBRibh5acqX5EI2cI7D7Au1us6UcSZzF01hDXn9jo7F0Tv0x8B0V4ydH9pzcSGDqpQGYwg00tQapSRq4'  // Test key for development
         : 'pk_live_your_live_key_here'; // Live key for production
     
     Stripe.publishableKey = stripePublishableKey;
