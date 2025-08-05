@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/fretboard/fretboard_config.dart';
 import '../../constants/ui_constants.dart';
-import '../widgets/settings/audio_settings_section.dart'; // NEW: Import audio settings
+import 'audio_settings_section.dart'; // NEW: Import audio settings
 import 'settings_sections.dart';
 
 void showSettingsDialog(BuildContext context) {

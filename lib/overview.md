@@ -1,231 +1,394 @@
-# Theorie - Project Structure Overview
+# Theorie - Complete Project Structure Overview
 
 ## Project Description
-Theorie is a comprehensive Flutter web application for interactive guitar fretboard theory learning. It provides real-time visualization of scales, chords, and intervals across configurable fretboards, helping musicians understand music theory concepts through visual and interactive learning. The application includes a complete quiz system with multiple question types, progress tracking, and adaptive learning features.
+Theorie is a comprehensive Flutter web application for interactive guitar fretboard theory learning with full-stack architecture including Firebase Functions backend, Stripe payment integration, and advanced music theory visualization. The application provides real-time visualization of scales, chords, and intervals across configurable fretboards, complete quiz systems, subscription management, audio integration, and cloud-based progress tracking.
 
-## Architecture
-The application follows strict MVC (Model-View-Controller) architecture with clear separation of concerns:
+## Full System Architecture
 
-- **Models**: Data structures and domain entities for music theory, fretboard configuration, quiz system, and user management
-- **Controllers**: Business logic for music calculations, fretboard rendering, state management, quiz operations, and question generation
-- **Views**: UI components including pages, widgets, and dialogs for theory visualization and quiz interfaces
-- **Services**: User management, data persistence, progress tracking, and Firebase integration
-- **Utils**: Helper functions for music theory calculations, color generation, and quiz utilities
-- **Constants**: Configuration values, music theory data, and quiz constants
+### Frontend (Flutter Web - `/lib/`)
+Comprehensive Flutter web application with strict MVC architecture, advanced state management, and real-time music theory visualization.
 
-## Key Architectural Principles
-1. **File Size Limit**: All files maintained around or under 500 lines unless strongly justified (e.g., chord.dart with hundreds of chord variations, unified_quiz_generator.dart with comprehensive quiz logic)
-2. **MVC Separation**: Clear separation between models, controllers, and views
-3. **Separation of Concerns**: Each file has a single, well-defined responsibility
-4. **Reusability**: Common functionality extracted into utility modules
-5. **Testability**: Business logic isolated from UI for easy unit testing
-6. **Performance**: Efficient rendering with CustomPainter and selective repainting
+### Backend (Firebase Functions - `/functions/src/`)
+**`index.ts`** - Complete Firebase Functions v2 implementation with:
+- **Stripe Integration**: Subscription management, payment processing, webhook handling
+- **Authentication**: Firebase Auth integration with JWT token verification
+- **CORS Handling**: Comprehensive cross-origin request management
+- **Error Handling**: Detailed logging and error categorization
+- **Payment Flows**: Both web checkout and mobile payment method flows
+- **Webhook Processing**: Complete Stripe event handling and data synchronization
 
-## Core Features
+### Database & Cloud Services
+- **Firebase Firestore**: User data, progress tracking, subscription status
+- **Firebase Authentication**: Secure user account management
+- **Stripe**: Payment processing and subscription management
+- **Firebase Hosting**: Web application deployment
 
-### Music Theory Visualization
-- **Multi-Fretboard Display**: Support for multiple simultaneous fretboard instances
-- **Three Theory Modes**: Scales, intervals, and chord visualization with real-time switching
-- **Interactive Controls**: Live updates for root notes, scale types, modes, octaves, and intervals
-- **Visual Learning**: Color-coded notes based on scale degrees and interval relationships
-- **Customizable Experience**: Multiple tunings, layouts, themes, and display options
-- **Responsive Design**: Optimized for web browsers with adaptive layouts
+## Detailed Directory Structure
 
-### Comprehensive Quiz System
-- **Multiple Question Types**: Multiple choice questions (single and multi-select) with detailed explanations
-- **Topic-Based Learning**: Focused quizzes on specific music theory concepts
-- **Section-Based Assessment**: Comprehensive quizzes covering multiple related topics
-- **Progressive Difficulty**: Questions that adapt to user skill level (beginner to expert)
-- **Performance Tracking**: Detailed quiz results, progress analytics, and learning insights
-- **Timed Assessments**: Optional time limits with real-time countdown and time tracking
-- **Educational Feedback**: Comprehensive explanations for both correct and incorrect answers
-- **Session Management**: Complete lifecycle from quiz start to results analysis
+### `/lib/` - Main Application Code
 
-### User Management & Persistence
-- **Dual Authentication**: Complete user account system with Firebase authentication and guest access
-- **Hybrid Storage**: Local storage with SharedPreferences and Firebase cloud sync
-- **Progress Tracking**: Learning progress history and quiz performance analytics
-- **User Preferences**: Personalized settings and customizable configurations
-- **Data Export/Import**: User data backup and restoration capabilities
-- **Offline Support**: Full functionality without internet connection
+#### **Root Files**
+- **`main.dart`** - Application entry point, Provider setup, routing configuration
+- **`firebase_options.dart`** - Firebase configuration and initialization
 
-## Technology Stack
-- **Framework**: Flutter 3.24.3 (web-optimized)
-- **Language**: Dart 3.5.3
-- **State Management**: Provider 6.1.1 with ChangeNotifier pattern
-- **Architecture**: Strict MVC (Model-View-Controller) with clear separation of concerns
-- **Local Persistence**: SharedPreferences for user data and settings
-- **Cloud Storage**: Firebase Firestore for authenticated user data sync
-- **Authentication**: Firebase Authentication for user account management
-- **Deployment**: GitLab Pages with automated CI/CD pipeline
-- **Development Tools**: Flutter DevTools 2.37.3
+#### **Documentation Files** *(Reference guides for system modifications)*
+- **`persistence_integration.md`** - Local storage, Firebase sync, offline support strategies
+- **`question_type_integration.md`** - Adding new quiz question types and interactions
+- **`quiz_creation.md`** - Quiz content creation workflows and standards
+- **`scale_strip_question.md`** - Interactive visual question system documentation
+- **`sections_and_topics_creation.md`** - Educational content creation guidelines
+- **`stripe_integration.md`** - Payment processing integration with Stripe
 
-## State Management Architecture
+### `/lib/constants/` - Configuration & Reference Data
+- **`app_constants.dart`** - Application-wide configuration, version info, feature flags
+- **`music_constants.dart`** - Scale intervals, chord formulas, tuning presets, MIDI mappings
+- **`quiz_constants.dart`** - Quiz timing, scoring, difficulty levels, question limits
+- **`ui_constants.dart`** - Layout dimensions, colors, themes, responsive breakpoints
 
-### Provider Pattern Implementation
-```dart
-// Global state access
-final appState = Provider.of<AppState>(context);
+### `/lib/controllers/` - Business Logic & State Management
+- **`audio_controller.dart`** - Audio playback, MIDI generation, sound synthesis
+- **`chord_controller.dart`** - Chord construction, voicing analysis, inversion handling
+- **`fretboard_controller.dart`** - Fretboard logic, note highlighting, visual mapping algorithms
+- **`music_controller.dart`** - Core music theory calculations, mode operations, note transformations
+- **`quiz_controller.dart`** - Quiz session lifecycle, answer validation, progress tracking
+- **`unified_quiz_generator.dart`** - Comprehensive question generation system (>500 lines - justified)
 
-// Targeted updates with selectors  
-Consumer<AppState>(
-  builder: (context, appState, child) => Widget(),
-)
+### `/lib/models/` - Data Structures & Domain Entities
 
-// State modifications
-appState.updateRootNote(newNote);
-appState.notifyListeners();
+#### **Fretboard Models** (`/fretboard/`)
+- **`fret_position.dart`** - Individual fret position data structure
+- **`fretboard_config.dart`** - Display configuration and user preferences
+- **`fretboard_instance.dart`** - Active fretboard state and properties
+- **`highlight_info.dart`** - Note highlighting and color mapping data
+
+#### **Learning System Models** (`/learning/`)
+- **`learning_content.dart`** - Core learning content structure and repository
+- **`learning_tier.dart`** - Base tier structure and progression system
+
+**Learning Tiers** (`/learning/tiers/`) - *8-tier progressive education system*:
+- **`introduction_tier.dart`** - Start your musical journey
+- **`fundamentals_tier.dart`** - Build essential knowledge  
+- **`essentials_tier.dart`** - Core concepts for musicians
+- **`intermediate_tier.dart`** - Develop deeper understanding
+- **`advanced_tier.dart`** - Master complex concepts
+- **`professional_tier.dart`** - Industry-level expertise
+- **`master_tier.dart`** - Comprehensive mastery
+- **`virtuoso_tier.dart`** - Push the boundaries
+
+#### **Music Theory Models** (`/music/`)
+- **`chord.dart`** - Chord construction, voicings, inversions, extensions
+- **`interval.dart`** - Interval relationships, quality, compound intervals
+- **`note.dart`** - Note representation, MIDI numbers, enharmonic equivalents
+- **`scale.dart`** - Scale construction, modes, theoretical analysis
+- **`tuning.dart`** - Instrument tunings, alternative configurations
+
+#### **Quiz System Models** (`/quiz/`)
+- **`multiple_choice_question.dart`** - Multiple choice question structure and validation
+- **`question_result.dart`** - Individual question results and analytics
+- **`quiz_question.dart`** - Abstract base class for all question types
+- **`quiz_result.dart`** - Complete quiz session results and scoring
+- **`quiz_session.dart`** - Quiz session lifecycle and state management
+- **`scale_strip_question.dart`** - Interactive visual question system
+
+**Quiz Content** (`/quiz/sections/`) - *Organized by learning tiers*:
+- **`fundamentals/`** - All quiz questions for fundamental music theory topics
+- **`introduction/`** - All quiz questions for introductory concepts
+
+#### **Subscription & Payment Models** (`/subscription/`)
+- **`payment_models.dart`** - Payment data structures, transaction records
+- **`subscription_models.dart`** - Subscription tiers, billing cycles, access levels
+
+#### **User System Models** (`/user/`)
+- **`user.dart`** - User account information and authentication data
+- **`user_preferences.dart`** - Personal settings, display preferences, customizations
+- **`user_progress.dart`** - Learning progress, quiz results, achievement tracking
+
+#### **Global State**
+- **`app_state.dart`** - Central application state with ChangeNotifier pattern
+
+### `/lib/services/` - External Integrations & Data Management
+
+#### **Audio Services** (`/audio/`)
+- **`audio_service.dart`** - Main audio service implementation
+- **`audio_service_interface.dart`** - Abstract audio service interface
+- **`file_audio_service.dart`** - File-based audio playback
+- **`web_audio_service.dart`** - Web Audio API integration
+
+#### **Firebase Services**
+- **`firebase_auth_service.dart`** - Authentication state management
+- **`firebase_config.dart`** - Firebase configuration and initialization
+- **`firebase_database_service.dart`** - Firestore operations and data management
+- **`firebase_user_service.dart`** - User data synchronization and cloud storage
+
+#### **Core Services**
+- **`progress_tracking_service.dart`** - Learning analytics and progress persistence
+- **`quiz_integration_service.dart`** - Quiz system integration and debugging utilities
+- **`subscription_service.dart`** - Subscription management and premium feature access
+- **`user_service.dart`** - Local user data management and offline support
+
+#### **Payment Integration**
+- **`stripe_config.dart`** - Stripe configuration and API setup
+
+### `/lib/utils/` - Helper Functions & Algorithms
+- **`chord_utils.dart`** - Chord analysis, progression validation, voicing algorithms
+- **`color_utils.dart`** - Color generation for theory visualization, accessibility
+- **`music_utils.dart`** - Core music theory calculations and transformations
+- **`note_utils.dart`** - Note manipulation, conversion utilities, MIDI operations
+- **`scale_strip_question_generator.dart`** - Question generation for scale strip interactions
+- **`scale_strip_utils.dart`** - Scale strip calculations and layout algorithms
+- **`scale_utils.dart`** - Scale analysis, mode calculations, interval patterns
+- **`web_utils.dart`** - Web-specific utilities and browser compatibility
+
+### `/lib/views/` - User Interface Components
+
+#### **Dialog Components** (`/dialogs/`)
+- **`audio_settings_section.dart`** - Audio configuration interface
+- **`settings_dialog.dart`** - Main settings modal
+- **`settings_sections.dart`** - Organized settings categories
+
+#### **Page Components** (`/pages/`) - *Full-screen interfaces*
+- **`fretboard_page.dart`** - Main fretboard visualization interface
+- **`home_page.dart`** - Application dashboard and navigation
+- **`instrument_selection_page.dart`** - Instrument and tuning selection
+- **`learning_sections_page.dart`** - Educational content navigation
+- **`learning_topics_page.dart`** - Topic-specific learning interface
+- **`login_page.dart`** - Authentication and account management
+- **`quiz_landing_page.dart`** - Quiz selection and setup
+- **`quiz_page.dart`** - Active quiz interface and interaction
+- **`quiz_placeholder_page.dart`** - Placeholder for unimplemented quizzes
+- **`settings_page.dart`** - Application configuration
+- **`subscription_management_page.dart`** - Premium subscription interface
+- **`topic_detail_page.dart`** - Detailed topic content and progression
+- **`welcome_page.dart`** - Onboarding and first-time user experience
+
+#### **Widget Components** (`/widgets/`)
+
+**Common Widgets** (`/common/`):
+- **`app_bar.dart`** - Application header and navigation
+
+**Control Widgets** (`/controls/`) - *User input components*:
+- **`chord_selector.dart`** - Chord type and voicing selection
+- **`fretboard_controls.dart`** - Fretboard display configuration
+- **`interval_selector.dart`** - Interval type and quality selection
+- **`mode_selector.dart`** - Musical mode selection interface
+- **`octave_selector.dart`** - Octave range configuration
+- **`root_selector.dart`** - Root note selection
+- **`scale_selector.dart`** - Scale type and pattern selection
+- **`tuning_selector.dart`** - Instrument tuning configuration
+- **`view_mode_selector.dart`** - Display mode switching (scales/chords/intervals)
+
+**Fretboard Widgets** (`/fretboard/`) - *Core visualization components*:
+- **`audio_controls.dart`** - Audio playback controls and settings
+- **`fretboard_container.dart`** - Container and layout management
+- **`fretboard_painter.dart`** - Custom Canvas-based fretboard rendering
+- **`fretboard_widget.dart`** - Main fretboard display component
+- **`scale_strip.dart`** - Horizontal scale visualization component
+
+**Quiz Widgets** (`/quiz/`) - *Interactive quiz interfaces*:
+- **`multiple_choice_widget.dart`** - Multiple choice question interface
+- **`question_widget.dart`** - Centralized question factory and router
+- **`quiz_progress_bar.dart`** - Quiz progress visualization
+- **`quiz_results_widget.dart`** - Quiz completion and scoring display
+- **`scale_strip_question_widget.dart`** - Interactive scale strip question interface
+
+**Subscription Widgets** (`/subscription/`) - *Payment and premium features*:
+- **`payment_form_widget.dart`** - Payment method collection and processing
+- **`subscription_star_widget.dart`** - Premium feature indicators
+
+## Backend Integration (Firebase Functions)
+
+### **`functions/src/index.ts`** - Complete Firebase Functions Implementation
+
+#### **Core Infrastructure**
+- **Firebase Functions v2**: Latest generation with enhanced performance
+- **Stripe Integration**: Complete payment processing and subscription management
+- **CORS Configuration**: Comprehensive cross-origin request handling
+- **Authentication Middleware**: JWT token verification and user validation
+- **Error Handling**: Detailed logging and error categorization
+
+#### **HTTP Endpoints**
+
+**Authentication & Testing:**
+- **`testAuth`** - Authentication testing and connectivity verification
+- **`getSubscriptionStatus`** - Retrieve user subscription status and details
+
+**Subscription Management:**
+- **`createSubscriptionSetup`** - Handle both web checkout and mobile payment flows
+- **`cancelSubscription`** - Subscription cancellation with period-end handling
+- **`resumeSubscription`** - Reactivate canceled subscriptions
+
+**Payment Processing:**
+- **`createPaymentIntent`** - One-time payment processing
+- **`stripeWebhook`** - Complete webhook event handling and data synchronization
+
+#### **Webhook Event Handling**
+Comprehensive Stripe event processing:
+- **Subscription Events**: Created, updated, deleted, trial ending
+- **Payment Events**: Succeeded, failed, action required
+- **Customer Events**: Created, updated, payment method changes
+- **Invoice Events**: Payment processing and billing updates
+
+#### **Data Synchronization**
+- **Firestore Integration**: Real-time user data synchronization
+- **Payment Records**: Complete transaction history and analytics
+- **Subscription Status**: Automatic access level updates
+- **Error Recovery**: Robust handling of sync failures and conflicts
+
+## Integration Documentation Reference
+
+When modifying specific systems, always reference these documentation files:
+
+### **`persistence_integration.md`**
+**Use when**: Adding user data fields, modifying storage strategies, implementing offline features, troubleshooting data synchronization
+**Covers**: SharedPreferences, Firebase Firestore, data sync, offline support, conflict resolution
+
+### **`question_type_integration.md`**
+**Use when**: Adding new question types, modifying quiz interactions, implementing custom question widgets, extending quiz system capabilities
+**Covers**: Question type architecture, polymorphic design, UI widget development, answer validation, quiz integration
+
+### **`quiz_creation.md`**
+**Use when**: Creating new quiz content, organizing educational topics, implementing quiz workflows, maintaining quiz quality standards
+**Covers**: Quiz content creation, question authoring guidelines, topic organization, quality assurance, session management
+
+### **`scale_strip_question.md`**
+**Use when**: Working with Scale Strip questions, implementing visual music theory interfaces, modifying interactive components, debugging scale strip functionality
+**Covers**: Scale Strip architecture, interactive visual interface, answer validation, educational content integration
+
+### **`sections_and_topics_creation.md`**
+**Use when**: Adding new learning sections, creating educational topics, organizing curriculum content, maintaining educational content quality
+**Covers**: Learning content structure, progressive difficulty, content authoring standards, quiz integration, quality assurance
+
+### **`stripe_integration.md`**
+**Use when**: Implementing payment features, managing subscriptions, handling billing issues, adding premium content access controls
+**Covers**: Stripe payment gateway, subscription management, security compliance, premium features, payment analytics
+
+## Data Flow Architecture
+
+### **User Authentication Flow**
+```
+User Login → Firebase Auth → Backend Verification → Token Validation → User Service → State Update → UI Refresh
 ```
 
-### State Flow & Data Management
-1. **User Interactions** → Control Widgets → Controller Methods
-2. **Controller Logic** → Model Updates → AppState Changes  
-3. **State Notifications** → Provider Updates → Widget Rebuilds
-4. **Persistence Layer** → UserService/FirebaseUserService → Local/Cloud Storage
-5. **Quiz Flow** → QuizController → Quiz Models → Quiz UI Updates
+### **Subscription Flow**
+```
+Payment Request → Frontend Validation → Firebase Function → Stripe Processing → Webhook Events → Data Sync → Access Update
+```
 
-## Music Theory Implementation
+### **Quiz System Flow**
+```
+Topic Selection → Question Generation → UI Rendering → User Interaction → Answer Validation → Progress Tracking → Results Display
+```
 
-### Note System Architecture
-- **MIDI Foundation**: All calculations based on MIDI note numbers (60 = Middle C)
-- **Enharmonic Support**: Proper handling of sharps/flats (C# = Db, B# = C)
-- **Octave Management**: Scientific pitch notation with flexible octave selection
-- **Chromatic Base**: 12-tone equal temperament as calculation foundation
+### **Music Theory Visualization Flow**
+```
+User Input → Controller Logic → Model Updates → State Changes → CustomPainter → Canvas Rendering → Visual Display
+```
 
-### Scale System Features  
-- **20+ Scale Types**: Major, minor modes, pentatonic, blues, exotic scales
-- **Modal Relationships**: Automatic mode rotation and root calculation
-- **Pitch Class Sets**: Efficient scale membership testing and comparison
-- **Mode Display**: Proper mode names and interval patterns
-
-### Chord System Capabilities
-- **Extensive Database**: Major, minor, diminished, augmented, extended chords
-- **Inversion Support**: Root position, 1st, 2nd, 3rd inversions with proper voicing
-- **Voice Leading**: Intelligent chord progression and voice movement
-- **Fretboard Mapping**: Optimal fingering suggestions and chord shape analysis
-
-### Fretboard Calculations
-- **Multiple Tunings**: Standard (E-A-D-G-B-E) plus alternative tunings
-- **Layout Options**: Right/left-handed, bass-top/bottom configurations  
-- **Fret Positioning**: Accurate mathematical fret spacing and note placement
-- **Visual Optimization**: Efficient coordinate calculation and rendering
-
-## Quiz System Implementation
-
-### Question Generation Architecture
-- **Unified Generator**: Central system (`UnifiedQuizGenerator`) for creating all question types
-- **Topic-Based Generation**: Specialized question creation for each music theory topic
-- **Difficulty Scaling**: Questions adapted to different skill levels
-- **Quality Assurance**: Comprehensive validation of question accuracy
-
-### Quiz Session Management
-- **Session Lifecycle**: Complete management of quiz sessions from start to finish
-- **Progress Tracking**: Real-time progress monitoring and time management
-- **Answer Validation**: Sophisticated answer checking and feedback generation
-- **Results Calculation**: Detailed scoring and performance analysis
-
-### Learning Content Structure
-- **8-Tier System**: Introduction → Fundamentals → Essentials → Intermediate → Advanced → Professional → Master → Virtuoso
-- **Topic Organization**: Each section contains multiple focused topics
-- **Progressive Learning**: Topics build upon each other for comprehensive understanding
-- **Flexible Access**: Users can access topics at their skill level
-
-## Persistence & Data Management
-
-### Local Storage Strategy
-- **SharedPreferences**: Primary storage for user preferences and offline data
-- **Cache Management**: Efficient caching of frequently accessed data
-- **Offline Support**: Full functionality without internet connection
-- **Data Validation**: Comprehensive error handling and data integrity checks
-
-### Cloud Sync Architecture
-- **Firebase Integration**: Seamless sync between local and cloud storage
-- **User Authentication**: Secure user account management with Firebase Auth
-- **Data Synchronization**: Automatic sync of user progress and preferences
-- **Conflict Resolution**: Intelligent handling of data conflicts between local and cloud
-
-### Progress Tracking System
-- **Real-time Updates**: Live tracking of learning progress and quiz performance
-- **Analytics**: Detailed insights into user learning patterns
-- **Export Capabilities**: Data backup and migration features
-- **Performance Metrics**: Comprehensive tracking of quiz scores and topic completion
+### **Data Persistence Flow**
+```
+User Actions → Local Storage (SharedPreferences) → Cloud Sync (Firebase) → Conflict Resolution → State Updates → UI Refresh
+```
 
 ## Performance Optimizations
-- **Efficient Rendering**: CustomPainter with selective repainting
-- **State Granularity**: Targeted widget updates using Provider selectors
-- **Memory Management**: Cached calculations and optimized color generation
-- **Responsive UI**: Adaptive layouts and efficient widget composition
-- **Quiz Performance**: Optimized question generation and state management
-- **Firebase Optimization**: Efficient data synchronization and caching strategies
 
-## Development Workflow
-- **Architecture**: Strict MVC pattern enforcement
-- **Code Quality**: Comprehensive linting and formatting standards
-- **Testing Strategy**: Unit tests for business logic, widget tests for UI
-- **CI/CD**: Automated builds and deployment to GitLab Pages
-- **Version Control**: GitLab primary, GitHub mirror for lib/ directory
-- **Documentation**: Comprehensive inline documentation and architectural guides
+### **Frontend Performance**
+- **CustomPainter**: High-performance Canvas-based rendering with selective repainting
+- **Provider Selectors**: Granular widget updates to minimize rebuilds
+- **Color Caching**: Pre-calculated color maps for theory visualization
+- **Memory Management**: Proper disposal of controllers and cached data
+- **Web Optimization**: Lazy loading, code splitting, efficient asset management
 
-## File Organization Standards
+### **Backend Performance**
+- **Function Optimization**: Memory allocation and timeout configuration
+- **Database Efficiency**: Batched operations and optimized queries
+- **Caching Strategies**: Intelligent data caching to reduce API calls
+- **Error Handling**: Comprehensive error recovery and retry mechanisms
+
+### **Payment Processing Performance**
+- **Stripe Optimization**: Efficient API usage and webhook processing
+- **Data Synchronization**: Smart sync strategies to minimize conflicts
+- **Security**: PCI compliance and secure payment method handling
+
+## Development Guidelines
+
+### **Code Organization Standards**
 - **Naming Conventions**: `snake_case.dart`, `PascalCase` classes, `camelCase` methods
 - **Import Organization**: Relative imports for project files, package imports first
 - **File Structure**: Logical grouping with clear hierarchies and dependencies
-- **Size Constraints**: Maintain files under 500 lines except when strongly justified
+- **Documentation**: Comprehensive inline documentation and integration guides
 
-## Key Components & Responsibilities
+### **Testing Strategy**
+- **Unit Testing**: All business logic and controller methods
+- **Widget Testing**: Critical UI interactions and state management
+- **Integration Testing**: End-to-end user workflows and payment processing
+- **Firebase Testing**: Authentication, database operations, and cloud functions
 
-### Models (`/models`)
-- **Music Theory**: `Note`, `Scale`, `Chord`, `Interval` - Core music domain entities
-- **Fretboard**: `FretboardConfig`, `FretboardInstance` - Display and state configuration  
-- **User System**: `User`, `UserPreferences`, `UserProgress` - Account and learning management
-- **Quiz System**: `QuizQuestion`, `MultipleChoiceQuestion`, `QuizSession`, `QuizResult` - Quiz infrastructure
-- **Learning Content**: `LearningSection`, `LearningTopic`, `LearningLevel` - Educational content structure
-- **App State**: `AppState` - Central state management with ChangeNotifier
+### **Common Development Tasks**
 
-### Controllers (`/controllers`) 
-- **MusicController**: Music theory calculations, mode operations, note transformations
-- **FretboardController**: Fretboard logic, note highlighting algorithms, visual mapping
-- **ChordController**: Chord construction, voicing analysis, inversion handling
-- **QuizController**: Quiz session management, answer validation, progress tracking
-- **UnifiedQuizGenerator**: Comprehensive question generation system (>500 lines - justified)
+#### **Music Theory Features**
+1. **Adding Scale Types**: Update `music_constants.dart` → Test with `scale_utils.dart` → Verify fretboard rendering
+2. **New Chord Types**: Extend `chord.dart` formulas → Update `chord_controller.dart` → Test voicing algorithms
+3. **Custom Tunings**: Add to `music_constants.dart` → Update `tuning_selector.dart` → Test fret calculations
+4. **Audio Integration**: Modify `audio_controller.dart` → Update audio services → Test playback
 
-### Views (`/views`)
-- **Pages**: Full-screen interfaces (`LoginPage`, `WelcomePage`, `HomePage`, `FretboardPage`, `SettingsPage`, `LearningTopicsPage`, `QuizPage`)
-- **Fretboard Widgets**: `FretboardWidget`, `FretboardPainter`, `ScaleStrip` - Core visualization
-- **Control Widgets**: All user input components (selectors, dropdowns, checkboxes)
-- **Quiz Widgets**: `QuizProgressBar`, `MultipleChoiceWidget`, `QuizResultsWidget` - Quiz interfaces
-- **Dialogs**: Modal interfaces for settings and configuration
+#### **Quiz System Features**
+5. **Quiz Questions**: Add to appropriate section files → *Reference: `quiz_creation.md`*
+6. **Question Types**: Implement new interaction patterns → *Reference: `question_type_integration.md`*
+7. **Scale Strip Questions**: Develop visual interactions → *Reference: `scale_strip_question.md`*
 
-### Services (`/services`)
-- **UserService**: Local user data management, authentication, persistence
-- **FirebaseUserService**: Firebase authentication and cloud data sync
-- **ProgressTrackingService**: Learning progress and quiz performance tracking
-- **FirebaseDatabaseService**: Firebase Firestore operations and data management
+#### **User & Data Features**
+8. **UI Components**: Follow widget patterns in `/widgets/` → Implement proper state management
+9. **Firebase Integration**: Update service layers → *Reference: `persistence_integration.md`*
+10. **Learning Content**: Create educational topics → *Reference: `sections_and_topics_creation.md`*
+11. **Subscription Features**: Integrate premium functionality → *Reference: `stripe_integration.md`*
 
-## Recent Enhancements
-- **Complete Quiz System**: Comprehensive quiz functionality with multiple question types
-- **Firebase Integration**: Cloud storage and authentication system
-- **Progress Tracking**: Advanced analytics and learning insights
-- **Educational Content**: Structured learning topics and progressive content
-- **User Experience**: Improved navigation and responsive design
-- **Performance Optimizations**: Enhanced rendering and state management
+### **Testing & Debugging Protocol**
+1. **Check Browser Console**: Web-specific errors and performance warnings
+2. **Verify Music Constants**: Ensure scales/chords match music theory standards
+3. **Test State Updates**: Confirm Provider notifications and widget rebuilds
+4. **Validate Calculations**: Check MIDI numbers and interval mathematics
+5. **Review Performance**: Profile CustomPainter and state management efficiency
+6. **Quiz Validation**: Test question generation and answer checking logic
+7. **Payment Testing**: Verify subscription flows and webhook processing
+8. **Firebase Testing**: Validate authentication and data synchronization
+9. **Audio Testing**: Confirm audio playback and synthesis functionality
 
-## Future Considerations
-- **Audio Integration**: MIDI playback and audio generation for quiz questions
-- **Advanced Question Types**: Interactive fretboard questions, audio-based questions, and visual exercises
-- **Social Features**: Shared quiz sessions and collaborative learning
-- **Mobile Support**: Native mobile app development
-- **Advanced Analytics**: Machine learning-based learning recommendations
-- **Gamification**: Achievement systems and learning rewards
-- **Content Expansion**: Additional instruments (piano, bass, ukulele)
-- **Advanced Theory**: Complex harmony, jazz theory, and composition tools
+## Future Enhancements
 
-## Development Guidelines
-- **File Organization**: Each file serves a single, clear purpose
-- **Size Constraints**: Maintain files under 500 lines except when strongly justified
-- **Testing**: Write tests for all business logic and critical UI components
-- **Documentation**: Keep inline documentation current with code changes
-- **Performance**: Profile and optimize rendering and state management regularly
-- **Quiz Quality**: Ensure all quiz questions are educationally valuable and technically accurate
-- **User Experience**: Prioritize intuitive navigation and responsive design
-- **Data Integrity**: Implement comprehensive error handling and data validation
+### **Planned Features**
+- **Advanced Audio**: Real-time audio generation, ear training exercises
+- **Interactive Fretboard Questions**: Touch-based quiz interactions
+- **Social Learning**: Collaborative sessions and shared progress
+- **Mobile Applications**: Native iOS/Android apps with full feature parity
+- **Additional Instruments**: Piano, bass, ukulele, mandolin support
+- **Advanced Theory**: Jazz harmony, composition tools, modal interchange
+- **AI Integration**: Personalized learning paths and intelligent recommendations
+
+### **System Scalability**
+- **Microservices**: Potential migration to distributed backend services
+- **Content Management**: Dynamic content creation and management system
+- **Real-time Collaboration**: Multi-user learning sessions and competitions
+- **Advanced Analytics**: Machine learning-based progress analysis
+- **Internationalization**: Multi-language support and cultural adaptations
+
+## Security & Compliance
+
+### **Data Protection**
+- **Firebase Security Rules**: Comprehensive access control and data validation
+- **User Privacy**: GDPR compliance and data anonymization
+- **Payment Security**: PCI DSS compliance with Stripe integration
+- **Authentication**: Secure JWT token handling and session management
+
+### **Error Handling & Monitoring**
+- **Comprehensive Logging**: Detailed error tracking and performance monitoring
+- **User Feedback**: Graceful error handling and informative user messages
+- **System Recovery**: Automatic retry mechanisms and fallback strategies
+- **Performance Monitoring**: Real-time application performance tracking
+
+---
+
+## Summary
+
+Theorie is a full-stack music education platform combining advanced Flutter frontend development with robust Firebase Functions backend, comprehensive Stripe payment integration, and sophisticated music theory visualization. The system provides a complete learning experience from basic note recognition to advanced harmonic analysis, supported by intelligent quiz systems, progress tracking, and premium subscription features.
+
+**When making any system modifications, always consult the relevant integration documentation files listed above to ensure consistency and maintain system integrity.**
