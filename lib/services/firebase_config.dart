@@ -1,16 +1,25 @@
-// lib/services/firebase_config.dart
+// lib/services/firebase_config.dart - Environment-aware Firebase configuration
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
-/// Firebase configuration for web platform
+/// Firebase configuration for web platform with environment variable support
 class FirebaseConfig {
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: "your-api-key-here",
-    authDomain: "your-project-id.firebaseapp.com",
-    projectId: "your-project-id",
-    storageBucket: "your-project-id.appspot.com",
-    messagingSenderId: "your-sender-id",
-    appId: "your-app-id",
-    measurementId: "your-measurement-id", // Optional for analytics
+  /// Get Firebase options from environment variables with fallbacks
+  static FirebaseOptions get web => FirebaseOptions(
+    apiKey: const String.fromEnvironment('FIREBASE_API_KEY', 
+      defaultValue: 'AIzaSyBMSV6xCg43QFpOlMuCRRu0bBRyqOmV2rM'), // Your current key as fallback
+    authDomain: const String.fromEnvironment('FIREBASE_AUTH_DOMAIN', 
+      defaultValue: 'theorie-3ef8a.firebaseapp.com'),
+    projectId: const String.fromEnvironment('FIREBASE_PROJECT_ID', 
+      defaultValue: 'theorie-3ef8a'),
+    storageBucket: const String.fromEnvironment('FIREBASE_STORAGE_BUCKET', 
+      defaultValue: 'theorie-3ef8a.firebasestorage.app'),
+    messagingSenderId: const String.fromEnvironment('FIREBASE_MESSAGING_SENDER_ID', 
+      defaultValue: '338181134596'),
+    appId: const String.fromEnvironment('FIREBASE_APP_ID', 
+      defaultValue: '1:338181134596:web:33d6319ea70205f6631851'),
+    measurementId: const String.fromEnvironment('FIREBASE_MEASUREMENT_ID', 
+      defaultValue: 'G-FXHPYNH9Q4'),
   );
 
   /// Initialize Firebase with error handling
@@ -19,9 +28,14 @@ class FirebaseConfig {
       await Firebase.initializeApp(
         options: web,
       );
-      print('Firebase initialized successfully');
+      
+      if (kDebugMode) {
+        print('🔥 Firebase initialized successfully');
+        print('📍 Project ID: ${web.projectId}');
+        print('🌍 Environment: ${AppConfig.environment}');
+      }
     } catch (e) {
-      print('Error initializing Firebase: $e');
+      print('❌ Error initializing Firebase: $e');
       rethrow;
     }
   }
@@ -36,15 +50,40 @@ class FirebaseConfig {
   }
 }
 
-/// Environment-specific configuration
+/// Application configuration with environment variables
+class AppConfig {
+  static const String apiUrl = String.fromEnvironment('API_BASE_URL', 
+    defaultValue: 'https://us-central1-theorie-3ef8a.cloudfunctions.net'); // Your Firebase Functions URL
+  static const String environment = String.fromEnvironment('ENVIRONMENT', 
+    defaultValue: 'development');
+  static const String stripePublishableKey = String.fromEnvironment('STRIPE_PUBLISHABLE_KEY', 
+    defaultValue: kDebugMode ? 'pk_test_51Rs7HVILJ0OoLUiBc8PBRibh5acqX5EI2cI7D7Au1us6UcSZzF01hDXn9jo7F0Tv0x8B0V4ydH9pzcSGDqpQGYwg00tQapSRq4' : '');
+  
+  static bool get isProduction => environment == 'production';
+  static bool get isDevelopment => environment == 'development';
+  static bool get isTest => environment == 'test';
+  
+  /// Debug method to log configuration (never log secrets in production)
+  static void logConfiguration() {
+    if (kDebugMode) {
+      print('🔧 App Configuration:');
+      print('  • Environment: $environment');
+      print('  • API URL: $apiUrl');
+      print('  • Stripe Key: ${stripePublishableKey.isNotEmpty ? "✅ Configured (${stripePublishableKey.substring(0, 12)}...)" : "❌ Missing"}');
+      print('  • Debug Mode: ${kDebugMode ? "ON" : "OFF"}');
+      print('  • Firebase Project: ${FirebaseConfig.web.projectId}');
+    }
+  }
+}
+
+/// Environment-specific configuration (kept for backward compatibility)
 class FirebaseEnvironment {
-  static const bool isDevelopment = true; // Set to false for production
-
-  static const String developmentProjectId = "theorie-dev";
+  static bool get isDevelopment => AppConfig.isDevelopment;
+  static String get currentProjectId => FirebaseConfig.web.projectId;
+  
+  // Legacy constants
+  static const String developmentProjectId = "theorie-3ef8a";
   static const String productionProjectId = "theorie-prod";
-
-  static String get currentProjectId =>
-      isDevelopment ? developmentProjectId : productionProjectId;
 }
 
 /// Firebase collection and document naming conventions

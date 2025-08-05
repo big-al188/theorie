@@ -1,4 +1,4 @@
-// lib/main.dart - Fixed with proper subscription service integration and loop prevention
+// lib/main.dart - Updated with environment variable support
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'firebase_options.dart';
+import 'services/firebase_config.dart'; // Import our new config
+import 'services/stripe_config.dart';   // Import our new Stripe config
 import 'models/app_state.dart';
 import 'controllers/quiz_controller.dart';
 import 'controllers/audio_controller.dart';
@@ -19,25 +21,26 @@ import 'views/pages/welcome_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Stripe first
+  // Initialize Stripe using environment-aware configuration
   await _initializeStripe();
 
   runApp(const TheorieApp());
 }
 
-/// Initialize Stripe with proper error handling
+/// Initialize Stripe with environment variable support and fallback
 Future<void> _initializeStripe() async {
   try {
-    // TODO: Replace with your actual Stripe publishable key
-    const stripePublishableKey = kDebugMode 
-        ? 'pk_test_51Rs7HVILJ0OoLUiBc8PBRibh5acqX5EI2cI7D7Au1us6UcSZzF01hDXn9jo7F0Tv0x8B0V4ydH9pzcSGDqpQGYwg00tQapSRq4'
-        : 'pk_live_your_live_key_here';
+    debugPrint('🔄 [Stripe] Initializing Stripe with environment variables...');
     
-    Stripe.publishableKey = stripePublishableKey;
-    Stripe.merchantIdentifier = 'merchant.com.yourcompany.theorie';
-    Stripe.urlScheme = 'flutterstripe';
+    // Use the new StripeConfig class which handles environment variables
+    await StripeConfig.initialize();
     
-    debugPrint('✅ [Stripe] Stripe initialized successfully');
+    // Log configuration info in debug mode
+    if (kDebugMode) {
+      final info = StripeConfig.getEnvironmentInfo();
+      debugPrint('✅ [Stripe] Configuration: $info');
+    }
+    
   } catch (e) {
     debugPrint('❌ [Stripe] Error initializing Stripe: $e');
     // Continue without Stripe - app should still work for non-payment features
@@ -75,7 +78,7 @@ class TheorieApp extends StatelessWidget {
   }
 }
 
-/// Firebase initialization wrapper with enhanced error handling
+/// Firebase initialization wrapper with enhanced error handling and environment support
 class FirebaseInitializer extends StatefulWidget {
   const FirebaseInitializer({super.key});
 
@@ -97,12 +100,10 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
 
   Future<void> _initializeFirebase() async {
     try {
-      debugPrint('🔄 [Firebase] Initializing Firebase...');
+      debugPrint('🔄 [Firebase] Initializing Firebase with environment variables...');
 
-      // Initialize Firebase
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      // Initialize Firebase using environment-aware configuration
+      await FirebaseConfig.initialize();
 
       // Configure Firebase for web platform
       if (kIsWeb) {
@@ -111,6 +112,11 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
 
       // Initialize core services in proper order
       await _initializeCoreServices();
+
+      // Log configuration in debug mode
+      if (kDebugMode) {
+        AppConfig.logConfiguration();
+      }
 
       if (mounted) {
         setState(() {
@@ -248,6 +254,18 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
                       : const Icon(Icons.refresh),
                   label: Text(_isRetrying ? 'Retrying...' : 'Try Again'),
                 ),
+                // Debug info in development
+                if (kDebugMode) ...[
+                  const SizedBox(height: 16),
+                  ExpansionTile(
+                    title: const Text('Debug Info'),
+                    children: [
+                      Text('Environment: ${AppConfig.environment}'),
+                      Text('API URL: ${AppConfig.apiUrl}'),
+                      Text('Firebase Project: ${FirebaseConfig.web.projectId}'),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -280,13 +298,23 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Loading your music theory workspace...',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 16,
                   color: Colors.grey,
                 ),
               ),
+              if (kDebugMode) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Environment: ${AppConfig.environment}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 32),
               SizedBox(
                 width: 200,
@@ -322,7 +350,7 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
   }
 }
 
-/// Main application with providers - FIXED: Proper subscription service integration
+/// Main application with providers - Updated with environment support
 class MainApp extends StatelessWidget {
   const MainApp({super.key});
 
@@ -364,6 +392,36 @@ class MainApp extends StatelessWidget {
                 colorSchemeSeed: Colors.indigo,
                 brightness: Brightness.dark,
               ),
+              // Add environment indicator in debug mode
+              builder: (context, child) {
+                if (kDebugMode && !AppConfig.isProduction) {
+                  return Stack(
+                    children: [
+                      child!,
+                      Positioned(
+                        top: 40,
+                        right: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppConfig.isDevelopment ? Colors.orange : Colors.green,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            AppConfig.environment.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return child!;
+              },
               home: const AuthWrapper(),
             );
           },
@@ -540,6 +598,17 @@ class _AuthWrapperState extends State<AuthWrapper> {
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[600],
+                  ),
+                ),
+              ],
+              // Show environment info in debug mode
+              if (kDebugMode) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Environment: ${AppConfig.environment}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey[500],
                   ),
                 ),
               ],

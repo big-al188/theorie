@@ -1,30 +1,46 @@
-// lib/services/stripe_config.dart - Stripe initialization and configuration
+// lib/services/stripe_config.dart - Environment-aware Stripe configuration
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'firebase_config.dart'; // Import AppConfig
 
-/// Stripe configuration service
+/// Stripe configuration service with environment variable support
 class StripeConfig {
-  // Stripe Publishable Keys - Replace with your actual keys
-  static const String _testPublishableKey = 'pk_test_your_test_publishable_key_here';
-  static const String _livePublishableKey = 'pk_live_your_live_publishable_key_here';
-  
-  // Use test key for development, live key for production
-  static const bool _useTestKey = kDebugMode; // Automatically use test in debug mode
-  
-  static String get publishableKey => _useTestKey ? _testPublishableKey : _livePublishableKey;
+  // Get publishable key from environment variables or fallback to hardcoded for local dev
+  static String get publishableKey {
+    final envKey = AppConfig.stripePublishableKey;
+    if (envKey.isNotEmpty) {
+      return envKey;
+    }
+    
+    // Fallback for local development
+    return kDebugMode 
+        ? 'pk_test_51Rs7HVILJ0OoLUiBc8PBRibh5acqX5EI2cI7D7Au1us6UcSZzF01hDXn9jo7F0Tv0x8B0V4ydH9pzcSGDqpQGYwg00tQapSRq4'
+        : '';
+  }
   
   /// Initialize Stripe with configuration
   static Future<void> initialize() async {
     try {
       debugPrint('🔄 [StripeConfig] Initializing Stripe...');
       
+      if (publishableKey.isEmpty) {
+        throw Exception('Stripe publishable key not configured');
+      }
+      
       Stripe.publishableKey = publishableKey;
+      
+      // Set additional Stripe configuration
+      Stripe.merchantIdentifier = 'merchant.com.yourcompany.theorie';
+      Stripe.urlScheme = 'flutterstripe';
       
       // Configure Stripe settings
       await Stripe.instance.applySettings();
       
       debugPrint('✅ [StripeConfig] Stripe initialized successfully');
-      debugPrint('🔑 [StripeConfig] Using ${_useTestKey ? 'TEST' : 'LIVE'} environment');
+      debugPrint('🔑 [StripeConfig] Using ${AppConfig.environment} environment');
+      debugPrint('🔒 [StripeConfig] Key: ${publishableKey.substring(0, 12)}...');
+      debugPrint('🧪 [StripeConfig] Test mode: ${isTestMode ? "YES" : "NO"}');
     } catch (e) {
       debugPrint('❌ [StripeConfig] Error initializing Stripe: $e');
       rethrow;
@@ -34,11 +50,21 @@ class StripeConfig {
   /// Get environment info for debugging
   static Map<String, dynamic> getEnvironmentInfo() {
     return {
-      'isTestMode': _useTestKey,
-      'publishableKey': publishableKey.substring(0, 12) + '...', // Masked for security
+      'environment': AppConfig.environment,
+      'isTestMode': isTestMode,
+      'isLiveMode': isLiveMode,
+      'publishableKey': publishableKey.isNotEmpty 
+        ? '${publishableKey.substring(0, 12)}...' 
+        : 'Not configured',
       'isDebugMode': kDebugMode,
+      'isConfigured': isConfigured,
     };
   }
+  
+  /// Validate Stripe configuration
+  static bool get isConfigured => publishableKey.isNotEmpty;
+  static bool get isTestMode => publishableKey.startsWith('pk_test_');
+  static bool get isLiveMode => publishableKey.startsWith('pk_live_');
 }
 
 /// Extension for common Stripe operations
@@ -48,7 +74,7 @@ extension StripeHelpers on Stripe {
     required String clientSecret,
     String? customerId,
     String? ephemeralKeySecret,
-    String merchantDisplayName = 'Theorie App',
+    String merchantDisplayName = 'Theorie Music Learning',
     ThemeMode style = ThemeMode.system,
   }) async {
     await Stripe.instance.initPaymentSheet(
@@ -62,12 +88,12 @@ extension StripeHelpers on Stripe {
           primaryButton: PaymentSheetPrimaryButtonAppearance(
             colors: PaymentSheetPrimaryButtonTheme(
               light: PaymentSheetPrimaryButtonThemeColors(
-                background: const Color(0xFF007AFF),
-                text: const Color(0xFFFFFFFF),
+                background: Colors.blue,
+                text: Colors.white,
               ),
               dark: PaymentSheetPrimaryButtonThemeColors(
-                background: const Color(0xFF0A84FF),
-                text: const Color(0xFFFFFFFF),
+                background: Colors.lightBlue,
+                text: Colors.white,
               ),
             ),
           ),
@@ -77,13 +103,17 @@ extension StripeHelpers on Stripe {
   }
   
   /// Present payment sheet and handle result
-  static Future<PaymentSheetPaymentOption?> presentPaymentSheetWithResult() async {
+  static Future<bool> presentPaymentSheetWithResult() async {
     try {
       await Stripe.instance.presentPaymentSheet();
-      return await Stripe.instance.retrievePaymentIntent();
+      return true; // Payment successful
     } catch (e) {
       debugPrint('❌ [StripeHelpers] Payment sheet error: $e');
-      rethrow;
+      if (e is StripeException) {
+        debugPrint('❌ [StripeHelpers] Stripe error code: ${e.error.code}');
+        debugPrint('❌ [StripeHelpers] Stripe error message: ${e.error.message}');
+      }
+      return false; // Payment failed or cancelled
     }
   }
 }
