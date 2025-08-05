@@ -406,92 +406,119 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  /// Handle web checkout flow (redirects to Stripe Checkout)
-  Future<Map<String, dynamic>> _handleWebCheckoutFlow(
-    SubscriptionTier tier, 
-    String email, 
-    String? name
-  ) async {
-    // Call Firebase Function to create Stripe Checkout Session
-    debugPrint('🔄 [SubscriptionService] Calling createSubscriptionSetup for web checkout...');
+// Add this method to your SubscriptionService class
+
+/// Get the current app URL for redirect purposes
+String _getCurrentAppUrl() {
+  if (kIsWeb) {
+    // Get current URL from browser
+    final currentUrl = Uri.parse(html.window.location.href);
+    final origin = '${currentUrl.scheme}://${currentUrl.host}';
     
-    final requestBody = {
-      'tier': tier.id,
-      'email': email,
-      'name': name,
-      // Don't include paymentMethodId for web checkout flow
-    };
+    // Add port if it's not default (80/443)
+    if (currentUrl.hasPort && 
+        currentUrl.port != 80 && 
+        currentUrl.port != 443) {
+      return '$origin:${currentUrl.port}';
+    }
     
-    final result = await _makeHttpRequest(
-      'createSubscriptionSetup', 
-      'POST', 
-      body: requestBody,
-      requireAuth: true,
+    return origin;
+  } else {
+    // For mobile apps, you might want to use deep links
+    return 'your-app://subscription';
+  }
+}
+
+/// Handle web checkout flow (redirects to Stripe Checkout)
+Future<Map<String, dynamic>> _handleWebCheckoutFlow(
+  SubscriptionTier tier, 
+  String email, 
+  String? name
+) async {
+  // Call Firebase Function to create Stripe Checkout Session
+  debugPrint('🔄 [SubscriptionService] Calling createSubscriptionSetup for web checkout...');
+  
+  // Get current app URL for redirects
+  final baseUrl = _getCurrentAppUrl();
+  
+  final requestBody = {
+    'tier': tier.id,
+    'email': email,
+    'name': name,
+    // Add redirect URLs based on current environment
+    'successUrl': '$baseUrl/subscription/success?session_id={CHECKOUT_SESSION_ID}',
+    'cancelUrl': '$baseUrl/subscription/cancel',
+    // Don't include paymentMethodId for web checkout flow
+  };
+  
+  debugPrint('🔄 [SubscriptionService] Request body: $requestBody');
+  debugPrint('🔄 [SubscriptionService] Success URL: ${requestBody['successUrl']}');
+  debugPrint('🔄 [SubscriptionService] Cancel URL: ${requestBody['cancelUrl']}');
+  
+  final result = await _makeHttpRequest(
+    'createSubscriptionSetup', 
+    'POST', 
+    body: requestBody,
+    requireAuth: true,
+  );
+  
+  debugPrint('✅ [SubscriptionService] Firebase Function call successful');
+  debugPrint('📋 [SubscriptionService] Response data: $result');
+  
+  if (result['success'] == true && result.containsKey('checkoutUrl')) {
+    debugPrint('🔄 [SubscriptionService] Checkout URL received, redirecting...');
+    debugPrint('📋 [SubscriptionService] Checkout URL: ${result['checkoutUrl']}');
+    
+    // For web, we need to redirect to the checkout URL
+    if (kIsWeb) {
+      try {
+        debugPrint('✅ [SubscriptionService] Web checkout URL ready for redirect');
+        return {
+          ...result,
+          'requiresRedirect': true,
+          'redirectUrl': result['checkoutUrl'],
+        };
+      } catch (e) {
+        debugPrint('❌ [SubscriptionService] Failed to redirect to checkout: $e');
+        throw Exception('Failed to redirect to checkout: ${e.toString()}');
+      }
+    } else {
+      // For mobile, this shouldn't happen, but handle gracefully
+      debugPrint('⚠️ [SubscriptionService] Received checkout URL on mobile platform');
+      return result;
+    }
+  } else if (result['success'] == true && result.containsKey('clientSecret')) {
+    // Fallback to payment sheet if clientSecret is provided
+    debugPrint('🔄 [SubscriptionService] Client secret received as fallback...');
+    
+    // Initialize payment sheet
+    await Stripe.instance.initPaymentSheet(
+      paymentSheetParameters: SetupPaymentSheetParameters(
+        paymentIntentClientSecret: result['clientSecret'],
+        merchantDisplayName: 'Theorie App',
+        style: ThemeMode.light,
+      ),
     );
     
-    debugPrint('✅ [SubscriptionService] Firebase Function call successful');
-    debugPrint('📋 [SubscriptionService] Response data: $result');
-    
-    if (result['success'] == true && result.containsKey('checkoutUrl')) {
-      debugPrint('🔄 [SubscriptionService] Checkout URL received, redirecting...');
-      debugPrint('📋 [SubscriptionService] Checkout URL: ${result['checkoutUrl']}');
-      
-      // For web, we need to redirect to the checkout URL
-      if (kIsWeb) {
-        // Import dart:html for web-specific functionality
-        // Add this import at the top of the file: import 'dart:html' as html;
-        try {
-          // Redirect to Stripe Checkout
-          // html.window.location.href = result['checkoutUrl'];
-          // For now, we'll return the URL and let the UI handle the redirect
-          
-          debugPrint('✅ [SubscriptionService] Web checkout URL ready for redirect');
-          return {
-            ...result,
-            'requiresRedirect': true,
-            'redirectUrl': result['checkoutUrl'],
-          };
-        } catch (e) {
-          debugPrint('❌ [SubscriptionService] Failed to redirect to checkout: $e');
-          throw Exception('Failed to redirect to checkout: ${e.toString()}');
-        }
-      } else {
-        // For mobile, this shouldn't happen, but handle gracefully
-        debugPrint('⚠️ [SubscriptionService] Received checkout URL on mobile platform');
-        return result;
-      }
-    } else if (result['success'] == true && result.containsKey('clientSecret')) {
-      // Fallback to payment sheet if clientSecret is provided
-      debugPrint('🔄 [SubscriptionService] Client secret received as fallback...');
-      
-      // Initialize payment sheet
-      await Stripe.instance.initPaymentSheet(
-        paymentSheetParameters: SetupPaymentSheetParameters(
-          paymentIntentClientSecret: result['clientSecret'],
-          merchantDisplayName: 'Theorie App',
-          style: ThemeMode.light,
-        ),
-      );
-      
-      debugPrint('✅ [SubscriptionService] Payment sheet initialized');
+    debugPrint('✅ [SubscriptionService] Payment sheet initialized');
 
-      // Present payment sheet
-      debugPrint('🔄 [SubscriptionService] Presenting payment sheet');
-      await Stripe.instance.presentPaymentSheet();
-      
-      debugPrint('✅ [SubscriptionService] Payment sheet completed successfully');
-      
-      // Refresh subscription status after successful payment
-      debugPrint('🔄 [SubscriptionService] Refreshing subscription status');
-      await refreshSubscriptionStatus();
-      
-      debugPrint('✅ [SubscriptionService] Web checkout completed successfully');
-      return result;
-    } else {
-      debugPrint('❌ [SubscriptionService] Invalid response from subscription setup');
-      throw Exception('Subscription setup failed: ${result['error'] ?? 'Unknown error'}');
-    }
+    // Present payment sheet
+    debugPrint('🔄 [SubscriptionService] Presenting payment sheet');
+    await Stripe.instance.presentPaymentSheet();
+    
+    debugPrint('✅ [SubscriptionService] Payment sheet completed successfully');
+    
+    // Refresh subscription status after successful payment
+    debugPrint('🔄 [SubscriptionService] Refreshing subscription status');
+    await refreshSubscriptionStatus();
+    
+    debugPrint('✅ [SubscriptionService] Web checkout completed successfully');
+    return result;
+  } else {
+    debugPrint('❌ [SubscriptionService] Invalid response from subscription setup');
+    throw Exception('Subscription setup failed: ${result['error'] ?? 'Unknown error'}');
   }
+}
 
   /// Handle mobile payment flow (uses provided payment method)
   Future<Map<String, dynamic>> _handleMobilePaymentFlow(
