@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:http/http.dart' as http;
+import 'dart:html' as html show window;  // ADD THIS LINE
 import '../models/subscription/subscription_models.dart';
 import '../models/subscription/payment_models.dart';
 import './firebase_user_service.dart';
