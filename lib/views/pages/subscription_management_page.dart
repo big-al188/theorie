@@ -1,13 +1,20 @@
-// lib/views/pages/subscription_management_page.dart - Updated with Stripe integration
+// lib/views/pages/subscription_management_page.dart - Updated with Payment Form Integration
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'dart:html' as html show window;
 import '../../services/subscription_service.dart';
 import '../../services/firebase_user_service.dart';
+import '../../services/user_service.dart';
 import '../../models/subscription/subscription_models.dart';
+import '../../models/subscription/payment_models.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/subscription/subscription_star_widget.dart';
+import '../widgets/subscription/payment_form_widget.dart';
 import '../widgets/common/app_bar.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SubscriptionManagementPage extends StatefulWidget {
   const SubscriptionManagementPage({super.key});
@@ -18,6 +25,31 @@ class SubscriptionManagementPage extends StatefulWidget {
 
 class _SubscriptionManagementPageState extends State<SubscriptionManagementPage> {
   bool _processingPayment = false;
+  bool _showDebugPanel = false;
+  String _debugOutput = '';
+  bool _runningTest = false;
+  int _debugTapCount = 0;
+
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Handle return from Stripe Checkout (web only)
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final uri = Uri.parse(html.window.location.href);
+        final sessionId = uri.queryParameters['session_id'];
+        
+        if (sessionId != null) {
+          _handleCheckoutSuccess(sessionId);
+        } else if (uri.path.contains('/subscription/cancel')) {
+          _handleCheckoutCancel();
+        }
+      });
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +66,18 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
         showLogout: true,
         actions: [
           SubscriptionStarWidget(size: 24),
+          // Debug trigger - tap 5 times to show debug panel
+          GestureDetector(
+            onTap: _handleDebugTap,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                Icons.bug_report,
+                size: 20,
+                color: _showDebugPanel ? Colors.orange : Colors.grey,
+              ),
+            ),
+          ),
         ],
       ),
       body: SafeArea(
@@ -64,6 +108,12 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                   ],
                   
                   _buildPremiumFeatures(context, service, deviceType),
+                  
+                  // Debug panel (shown in debug mode or when manually enabled)
+                  if (kDebugMode || _showDebugPanel) ...[
+                    const SizedBox(height: 32),
+                    _buildDebugPanel(context, service, deviceType),
+                  ],
                 ],
               );
             },
@@ -71,6 +121,333 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
         ),
       ),
     );
+  }
+
+  void _handleDebugTap() {
+    setState(() {
+      _debugTapCount++;
+      if (_debugTapCount >= 5) {
+        _showDebugPanel = !_showDebugPanel;
+        _debugTapCount = 0;
+        if (_showDebugPanel) {
+          _addDebugOutput('🔧 Debug panel enabled');
+        }
+      }
+    });
+    
+    // Reset tap count after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _debugTapCount = 0;
+        });
+      }
+    });
+  }
+
+  Widget _buildDebugPanel(BuildContext context, SubscriptionService service, DeviceType deviceType) {
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(deviceType == DeviceType.mobile ? 16.0 : 20.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.orange.shade50,
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.bug_report,
+                  color: Colors.orange.shade700,
+                  size: deviceType == DeviceType.mobile ? 20 : 24,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Debug & Testing Panel',
+                  style: TextStyle(
+                    fontSize: deviceType == DeviceType.mobile ? 18 : 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade700,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => setState(() => _showDebugPanel = false),
+                  icon: Icon(Icons.close, color: Colors.orange.shade700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // Test buttons grid
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildTestButton(
+                  'Basic Connectivity',
+                  Icons.wifi,
+                  () => _testBasicConnectivity(service),
+                  Colors.blue,
+                ),
+                _buildTestButton(
+                  'Authentication',
+                  Icons.lock,
+                  () => _testAuthentication(service),
+                  Colors.green,
+                ),
+                _buildTestButton(
+                  'Get Subscription',
+                  Icons.receipt,
+                  () => _testGetSubscription(service),
+                  Colors.purple,
+                ),
+                _buildTestButton(
+                  'Refresh Status',
+                  Icons.refresh,
+                  () => _testRefreshStatus(service),
+                  Colors.cyan,
+                ),
+                _buildTestButton(
+                  'Clear Local Data',
+                  Icons.delete,
+                  () => _testClearLocalData(service),
+                  Colors.red,
+                ),
+                _buildTestButton(
+                  'Test Functions',
+                  Icons.functions,
+                  () => _testFirebaseFunctions(service),
+                  Colors.indigo,
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Debug output area
+            Container(
+              width: double.infinity,
+              height: 200,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade400),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Debug Output',
+                        style: TextStyle(
+                          color: Colors.green.shade400,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => setState(() => _debugOutput = ''),
+                        child: Text(
+                          'Clear',
+                          style: TextStyle(
+                            color: Colors.orange.shade400,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Text(
+                        _debugOutput.isEmpty ? 'No debug output yet. Run a test to see results.' : _debugOutput,
+                        style: TextStyle(
+                          color: Colors.green.shade300,
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            if (_runningTest) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Running test...',
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTestButton(String label, IconData icon, VoidCallback onPressed, Color color) {
+    return SizedBox(
+      height: 36,
+      child: ElevatedButton.icon(
+        onPressed: _runningTest ? null : onPressed,
+        icon: Icon(icon, size: 16),
+        label: Text(
+          label,
+          style: const TextStyle(fontSize: 11),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          minimumSize: const Size(120, 36),
+          disabledBackgroundColor: Colors.grey.shade300,
+        ),
+      ),
+    );
+  }
+
+  void _addDebugOutput(String message) {
+    final timestamp = DateTime.now().toString().substring(11, 19);
+    setState(() {
+      _debugOutput += '[$timestamp] $message\n';
+    });
+  }
+
+  Future<void> _testBasicConnectivity(SubscriptionService service) async {
+    setState(() => _runningTest = true);
+    _addDebugOutput('🔄 Testing basic connectivity...');
+    
+    try {
+      final result = await service.testBasicConnectivity();
+      _addDebugOutput('✅ Basic connectivity test passed');
+      _addDebugOutput('📋 Result: ${result.toString()}');
+    } catch (e) {
+      _addDebugOutput('❌ Basic connectivity test failed');
+      _addDebugOutput('📋 Error: ${e.toString()}');
+    } finally {
+      setState(() => _runningTest = false);
+    }
+  }
+
+  Future<void> _testAuthentication(SubscriptionService service) async {
+    setState(() => _runningTest = true);
+    _addDebugOutput('🔄 Testing authentication...');
+    
+    try {
+      final result = await service.testAuthentication();
+      _addDebugOutput('✅ Authentication test passed');
+      _addDebugOutput('📋 Authenticated: ${result['authenticated']}');
+      _addDebugOutput('📋 User ID: ${result['userId'] ?? 'N/A'}');
+      _addDebugOutput('📋 Email: ${result['email'] ?? 'N/A'}');
+    } catch (e) {
+      _addDebugOutput('❌ Authentication test failed');
+      _addDebugOutput('📋 Error: ${e.toString()}');
+    } finally {
+      setState(() => _runningTest = false);
+    }
+  }
+
+  Future<void> _testGetSubscription(SubscriptionService service) async {
+    setState(() => _runningTest = true);
+    _addDebugOutput('🔄 Testing get subscription status...');
+    
+    try {
+      await service.refreshSubscriptionStatus();
+      final subscription = service.currentSubscription;
+      _addDebugOutput('✅ Get subscription test completed');
+      _addDebugOutput('📋 Has subscription: ${service.hasActiveSubscription}');
+      _addDebugOutput('📋 Status: ${subscription.status.displayName}');
+      _addDebugOutput('📋 Tier: ${subscription.tier.displayName}');
+      if (subscription.subscriptionId != null) {
+        _addDebugOutput('📋 Subscription ID: ${subscription.subscriptionId}');
+      }
+    } catch (e) {
+      _addDebugOutput('❌ Get subscription test failed');
+      _addDebugOutput('📋 Error: ${e.toString()}');
+    } finally {
+      setState(() => _runningTest = false);
+    }
+  }
+
+  Future<void> _testRefreshStatus(SubscriptionService service) async {
+    setState(() => _runningTest = true);
+    _addDebugOutput('🔄 Testing refresh subscription status...');
+    
+    try {
+      await service.refreshSubscriptionStatus();
+      _addDebugOutput('✅ Refresh status test completed');
+      _addDebugOutput('📋 Current status: ${service.currentSubscription.status.displayName}');
+      _addDebugOutput('📋 Has access: ${service.hasActiveSubscription}');
+    } catch (e) {
+      _addDebugOutput('❌ Refresh status test failed');
+      _addDebugOutput('📋 Error: ${e.toString()}');
+    } finally {
+      setState(() => _runningTest = false);
+    }
+  }
+
+  Future<void> _testClearLocalData(SubscriptionService service) async {
+    setState(() => _runningTest = true);
+    _addDebugOutput('🔄 Testing clear local data...');
+    
+    try {
+      await service.clearSubscription();
+      _addDebugOutput('✅ Clear local data test completed');
+      _addDebugOutput('📋 Local subscription data cleared');
+      _addDebugOutput('📋 Current status: ${service.currentSubscription.status.displayName}');
+    } catch (e) {
+      _addDebugOutput('❌ Clear local data test failed');
+      _addDebugOutput('📋 Error: ${e.toString()}');
+    } finally {
+      setState(() => _runningTest = false);
+    }
+  }
+
+  Future<void> _testFirebaseFunctions(SubscriptionService service) async {
+    setState(() => _runningTest = true);
+    _addDebugOutput('🔄 Testing Firebase Functions connectivity...');
+    
+    try {
+      final result = await service.testFirebaseFunctions();
+      _addDebugOutput('✅ Firebase Functions test passed');
+      _addDebugOutput('📋 Result: ${result.toString()}');
+    } catch (e) {
+      _addDebugOutput('❌ Firebase Functions test failed');
+      _addDebugOutput('📋 Error: ${e.toString()}');
+    } finally {
+      setState(() => _runningTest = false);
+    }
   }
 
   double _getPadding(DeviceType deviceType, bool isLandscape) {
@@ -646,23 +1023,138 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
 
   Future<void> _handleSubscribe(BuildContext context, SubscriptionService service, SubscriptionTier tier) async {
     if (!FirebaseUserService.instance.isLoggedIn) {
+      _addDebugOutput('❌ Subscribe failed: User not signed in');
       _showErrorSnackBar(context, 'Please sign in to subscribe');
       return;
     }
 
+    _addDebugOutput('🔄 Showing payment form for ${tier.displayName}...');
+
+    // Get user information
+    final currentUser = await UserService.instance.getCurrentUser();
+    final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    
+    final userEmail = currentUser?.email ?? firebaseUser?.email ?? '';
+    final userName = currentUser?.username ?? firebaseUser?.displayName ?? userEmail.split('@')[0];
+
+    if (userEmail.isEmpty) {
+      _addDebugOutput('❌ User email not available');
+      _showErrorSnackBar(context, 'User email is required for subscription');
+      return;
+    }
+
+    // Show payment form as bottom sheet
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (context) => PaymentFormWidget(
+        tier: tier,
+        userEmail: userEmail,
+        userName: userName,
+        onPaymentSubmitted: (paymentMethodData) async {
+          // Close the payment form
+          Navigator.of(context).pop();
+          
+          // Process the subscription with payment method
+          await _processSubscriptionWithPaymentMethod(
+            context, 
+            service, 
+            tier, 
+            paymentMethodData,
+          );
+        },
+        onCancel: () {
+          Navigator.of(context).pop();
+          _addDebugOutput('ℹ️ Payment form canceled by user');
+        },
+      ),
+    );
+  }
+
+  Future<void> _processSubscriptionWithPaymentMethod(
+    BuildContext context,
+    SubscriptionService service,
+    SubscriptionTier tier,
+    SubscriptionPaymentData paymentMethodData,
+  ) async {
     setState(() => _processingPayment = true);
+    _addDebugOutput('🔄 Processing subscription with payment method...');
 
     try {
-      await service.startSubscription(tier: tier);
+      Map<String, dynamic> result;
       
+      // Handle empty paymentMethodId (web checkout flow)
+      if (paymentMethodData.paymentMethodId.isEmpty) {
+        _addDebugOutput('🔄 Using web checkout flow (no payment method provided)');
+        
+        // For web, we pass empty payment method ID to trigger Stripe Checkout
+        result = await service.startSubscriptionWithPaymentMethod(
+          tier: tier,
+          paymentMethodId: '', // Empty string triggers web checkout
+        );
+        
+        // Handle web redirect if required
+        if (result['requiresRedirect'] == true && result.containsKey('redirectUrl')) {
+          final redirectUrl = result['redirectUrl'] as String;
+          _addDebugOutput('🔄 Redirecting to Stripe Checkout: $redirectUrl');
+          
+          if (kIsWeb) {
+            // Use url_launcher for web-safe redirect
+            final uri = Uri.parse(redirectUrl);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, webOnlyWindowName: '_self');
+              return; // Don't continue processing after redirect
+            } else {
+              throw Exception('Cannot open checkout URL: $redirectUrl');
+            }
+          } else {
+            // For mobile (shouldn't happen), show error
+            throw Exception('Web checkout URL received on mobile platform');
+          }
+        }
+        
+        // Handle direct checkout URL (alternative approach)
+        if (result.containsKey('checkoutUrl')) {
+          final checkoutUrl = result['checkoutUrl'] as String;
+          _addDebugOutput('🔄 Opening Stripe Checkout URL: $checkoutUrl');
+          
+          final uri = Uri.parse(checkoutUrl);
+          if (await canLaunchUrl(uri)) {
+            if (kIsWeb) {
+              // For web, replace current page
+              await launchUrl(uri, webOnlyWindowName: '_self');
+            } else {
+              // For mobile, open in external browser
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+            return;
+          } else {
+            throw Exception('Cannot open checkout URL: $checkoutUrl');
+          }
+        }
+      } else {
+        _addDebugOutput('🔄 Using mobile flow with payment method: ${paymentMethodData.paymentMethodId}');
+        
+        // Call the subscription service method with payment method
+        result = await service.startSubscriptionWithPaymentMethod(
+          tier: tier,
+          paymentMethodId: paymentMethodData.paymentMethodId,
+        );
+      }
+      
+      // If we reach here, the subscription was processed successfully without redirect
       if (context.mounted) {
+        _addDebugOutput('✅ Subscription completed successfully');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
                 const Icon(Icons.check, color: Colors.white),
                 const SizedBox(width: 8),
-                Text('Welcome to ${tier.displayName}!'),
+                Text('Welcome to ${tier.displayName}! Your 7-day free trial has started.'),
               ],
             ),
             backgroundColor: Colors.green,
@@ -671,14 +1163,23 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
         );
       }
     } on StripeException catch (e) {
+      _addDebugOutput('❌ Stripe error: ${e.error.message}');
       if (context.mounted) {
-        String message = 'Payment failed';
-        if (e.error.message != null) {
-          message = e.error.message!;
+        String errorMessage = 'Payment failed: ';
+        switch (e.error.type) {
+          case 'card_error':
+            errorMessage += e.error.message ?? 'Card was declined';
+            break;
+          case 'invalid_request_error':
+            errorMessage += 'Invalid payment request';
+            break;
+          default:
+            errorMessage += e.error.message ?? 'Unknown payment error';
         }
-        _showErrorSnackBar(context, message);
+        _showErrorSnackBar(context, errorMessage);
       }
     } catch (e) {
+      _addDebugOutput('❌ Subscription error: ${e.toString()}');
       if (context.mounted) {
         _showErrorSnackBar(context, 'Subscription failed: ${e.toString()}');
       }
@@ -699,12 +1200,15 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     );
 
     if (confirmed && context.mounted) {
+      _addDebugOutput('🔄 Pausing subscription...');
       try {
         await service.pauseSubscription();
         if (context.mounted) {
+          _addDebugOutput('✅ Subscription paused successfully');
           _showSuccessSnackBar(context, 'Subscription paused successfully');
         }
       } catch (e) {
+        _addDebugOutput('❌ Failed to pause subscription: ${e.toString()}');
         if (context.mounted) {
           _showErrorSnackBar(context, 'Failed to pause subscription: ${e.toString()}');
         }
@@ -713,18 +1217,68 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
   }
 
   Future<void> _handleResumeSubscription(BuildContext context, SubscriptionService service) async {
+    _addDebugOutput('🔄 Resuming subscription...');
     try {
       await service.resumeSubscription();
       if (context.mounted) {
+        _addDebugOutput('✅ Subscription resumed successfully');
         _showSuccessSnackBar(context, 'Subscription resumed successfully');
       }
     } catch (e) {
+      _addDebugOutput('❌ Failed to resume subscription: ${e.toString()}');
       if (context.mounted) {
         _showErrorSnackBar(context, 'Failed to resume subscription: ${e.toString()}');
       }
     }
   }
 
+  /// Handle return from Stripe Checkout (success)
+  void _handleCheckoutSuccess(String sessionId) {
+    _addDebugOutput('✅ Returned from Stripe Checkout successfully: $sessionId');
+    
+    // Refresh subscription status
+    final service = Provider.of<SubscriptionService>(context, listen: false);
+    service.refreshSubscriptionStatus().then((_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Welcome to Premium! Your subscription is now active.'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }).catchError((error) {
+      _addDebugOutput('❌ Failed to refresh subscription after checkout: $error');
+    });
+  }
+
+  /// Handle return from Stripe Checkout (cancelled)
+  void _handleCheckoutCancel() {
+    _addDebugOutput('ℹ️ User cancelled Stripe Checkout');
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.info, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Checkout was cancelled. You can try again anytime.'),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
   Future<void> _handleCancelSubscription(BuildContext context, SubscriptionService service) async {
     final confirmed = await _showConfirmationDialog(
       context,
@@ -735,12 +1289,15 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     );
 
     if (confirmed && context.mounted) {
+      _addDebugOutput('🔄 Canceling subscription...');
       try {
         await service.cancelSubscription();
         if (context.mounted) {
+          _addDebugOutput('✅ Subscription canceled successfully');
           _showSuccessSnackBar(context, 'Subscription canceled successfully');
         }
       } catch (e) {
+        _addDebugOutput('❌ Failed to cancel subscription: ${e.toString()}');
         if (context.mounted) {
           _showErrorSnackBar(context, 'Failed to cancel subscription: ${e.toString()}');
         }

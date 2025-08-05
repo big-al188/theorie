@@ -1,4 +1,4 @@
-// lib/services/subscription_service.dart - Updated to use Firebase Callable Functions
+// lib/services/subscription_service.dart - Updated with HTTPS requests
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -6,20 +6,20 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:cloud_functions/cloud_functions.dart'; // NEW: Firebase Functions
+import 'package:http/http.dart' as http;
 import '../models/subscription/subscription_models.dart';
-import '../models/user/user.dart';
+import '../models/subscription/payment_models.dart';
 import './firebase_user_service.dart';
 import './user_service.dart';
 
-/// Subscription service using Firebase Callable Functions
+/// Subscription service using HTTPS Firebase Functions
 class SubscriptionService extends ChangeNotifier {
   static SubscriptionService? _instance;
   static SubscriptionService get instance => _instance ??= SubscriptionService._();
   SubscriptionService._();
 
-  // Firebase Functions instance
-  static final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  // Firebase Functions base URL (update with your project ID)
+  static const String _baseUrl = 'https://us-central1-theorie-3ef8a.cloudfunctions.net';
   
   // Local storage keys
   static const String _subscriptionDataKey = 'subscription_data';
@@ -73,6 +73,163 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
+  /// Get Firebase ID Token for authentication
+  Future<String?> _getAuthToken() async {
+    try {
+      final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        debugPrint('⚠️ [SubscriptionService] No Firebase user found');
+        return null;
+      }
+
+      final idToken = await firebaseUser.getIdToken(true);
+      debugPrint('✅ [SubscriptionService] Got ID token: ${idToken?.length ?? 0} characters');
+      return idToken;
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] Error getting auth token: $e');
+      return null;
+    }
+  }
+
+  /// Make authenticated HTTP request to Firebase Functions
+  Future<Map<String, dynamic>> _makeHttpRequest(
+    String endpoint,
+    String method, {
+    Map<String, dynamic>? body,
+    bool requireAuth = true,
+  }) async {
+    try {
+      final url = Uri.parse('$_baseUrl/$endpoint');
+      debugPrint('🔄 [SubscriptionService] Making $method request to: $url');
+
+      // Prepare headers
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+
+      // Add authentication if required
+      if (requireAuth) {
+        final token = await _getAuthToken();
+        if (token == null) {
+          throw Exception('Authentication required but no token available');
+        }
+        headers['Authorization'] = 'Bearer $token';
+      }
+
+      debugPrint('📋 [SubscriptionService] Headers: ${headers.keys.join(', ')}');
+      if (body != null) {
+        debugPrint('📋 [SubscriptionService] Request body: ${jsonEncode(body)}');
+      }
+
+      // Make request
+      http.Response response;
+      switch (method.toUpperCase()) {
+        case 'GET':
+          response = await http.get(url, headers: headers);
+          break;
+        case 'POST':
+          response = await http.post(
+            url,
+            headers: headers,
+            body: body != null ? jsonEncode(body) : null,
+          );
+          break;
+        default:
+          throw Exception('Unsupported HTTP method: $method');
+      }
+
+      debugPrint('📋 [SubscriptionService] Response status: ${response.statusCode}');
+      debugPrint('📋 [SubscriptionService] Response body: ${response.body}');
+
+      // Parse response
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        return responseData;
+      } else {
+        // Handle error response
+        Map<String, dynamic> errorData;
+        try {
+          errorData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          errorData = {'error': 'HTTP ${response.statusCode}', 'message': response.body};
+        }
+        
+        final errorMessage = errorData['message'] ?? errorData['error'] ?? 'Unknown error';
+        throw Exception('HTTP ${response.statusCode}: $errorMessage');
+      }
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] HTTP request failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Enhanced authentication test with detailed debugging
+  Future<Map<String, dynamic>> testAuthentication() async {
+    try {
+      debugPrint('🔄 [SubscriptionService] Testing authentication...');
+      
+      // Get current Firebase user
+      final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        throw Exception('No Firebase user found');
+      }
+
+      debugPrint('📋 [SubscriptionService] Firebase user ID: ${firebaseUser.uid}');
+      debugPrint('📋 [SubscriptionService] Firebase user email: ${firebaseUser.email}');
+
+      // Test the testAuth endpoint
+      debugPrint('🔄 [SubscriptionService] Calling testAuth endpoint...');
+      final result = await _makeHttpRequest('testAuth', 'GET', requireAuth: true);
+      debugPrint('✅ [SubscriptionService] testAuth success: $result');
+      return result;
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] Auth test failed: $e');
+      debugPrint('❌ [SubscriptionService] Error type: ${e.runtimeType}');
+      
+      // Provide specific debugging information
+      if (e.toString().contains('CORS')) {
+        debugPrint('🌐 [SubscriptionService] CORS error detected');
+      } else if (e.toString().contains('401')) {
+        debugPrint('🔐 [SubscriptionService] Authentication error');
+      } else if (e.toString().contains('404')) {
+        debugPrint('📍 [SubscriptionService] Function not found - check deployment and URL');
+      } else if (e.toString().contains('500')) {
+        debugPrint('🔧 [SubscriptionService] Internal server error - check function deployment');
+      }
+      
+      rethrow;
+    }
+  }
+
+  /// Test basic connectivity without authentication
+  Future<Map<String, dynamic>> testBasicConnectivity() async {
+    try {
+      debugPrint('🔄 [SubscriptionService] Testing basic connectivity...');
+      debugPrint('📋 [SubscriptionService] Base URL: $_baseUrl');
+      
+      // Try calling testAuth endpoint without authentication
+      final result = await _makeHttpRequest('testAuth', 'GET', requireAuth: false);
+      debugPrint('✅ [SubscriptionService] Basic connectivity successful: $result');
+      return result;
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] Basic connectivity failed: $e');
+      debugPrint('❌ [SubscriptionService] Error details: ${e.toString()}');
+      
+      // Provide specific guidance based on error
+      if (e.toString().contains('404')) {
+        debugPrint('🔧 [Debug] Function not found - check if functions are deployed');
+      } else if (e.toString().contains('500')) {
+        debugPrint('🔧 [Debug] Internal error - check Firebase Functions logs');
+      } else if (e.toString().contains('network') || e.toString().contains('SocketException')) {
+        debugPrint('🔧 [Debug] Network error - check internet connection');
+      } else {
+        debugPrint('🔧 [Debug] Unknown error - check Firebase configuration');
+      }
+      
+      rethrow;
+    }
+  }
+
   /// Load subscription data
   Future<void> _loadSubscriptionData() async {
     try {
@@ -121,7 +278,8 @@ class SubscriptionService extends ChangeNotifier {
       
       if (e.toString().contains('network') || 
           e.toString().contains('internet') ||
-          e.toString().contains('connection')) {
+          e.toString().contains('connection') ||
+          e.toString().contains('SocketException')) {
         _hasNetworkError = true;
         debugPrint('🌐 [SubscriptionService] Network error detected - using local data');
       }
@@ -177,7 +335,205 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  /// Start subscription flow using Firebase Callable Function
+// Updated subscription service method to handle web payments
+// Add this method to your SubscriptionService class
+
+  /// Start subscription flow with payment method (updated for web support)
+  Future<Map<String, dynamic>> startSubscriptionWithPaymentMethod({
+    required SubscriptionTier tier,
+    required String paymentMethodId,
+    String? customerId,
+  }) async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+    
+    try {
+      _setLoading(true);
+      debugPrint('🔄 [SubscriptionService] Starting subscription with payment method for tier: ${tier.displayName}');
+      
+      // Check authentication
+      final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        throw Exception('User must be signed in to create subscription');
+      }
+
+      debugPrint('🔄 [SubscriptionService] Firebase user ID: ${firebaseUser.uid}');
+      debugPrint('🔄 [SubscriptionService] Payment method ID: $paymentMethodId');
+
+      // Get user data
+      final currentUser = await UserService.instance.getCurrentUser();
+      final email = currentUser?.email ?? firebaseUser.email;
+      final name = currentUser?.username ?? firebaseUser.displayName ?? email?.split('@')[0];
+      
+      if (email == null) {
+        debugPrint('❌ [SubscriptionService] No email available from any source');
+        throw Exception('User email is required for subscription');
+      }
+
+      // Handle web vs mobile flows differently
+      if (paymentMethodId.isEmpty) {
+        // Web flow - use Stripe Checkout (no payment method provided)
+        debugPrint('🔄 [SubscriptionService] Using web checkout flow');
+        return await _handleWebCheckoutFlow(tier, email, name);
+      } else {
+        // Mobile flow - use provided payment method
+        debugPrint('🔄 [SubscriptionService] Using mobile payment method flow');
+        return await _handleMobilePaymentFlow(tier, email, name, paymentMethodId);
+      }
+      
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] Unexpected error: $e');
+      debugPrint('❌ [SubscriptionService] Error type: ${e.runtimeType}');
+      
+      if (e.toString().contains('network') || 
+          e.toString().contains('internet') || 
+          e.toString().contains('connection') ||
+          e.toString().contains('SocketException')) {
+        throw Exception('Network error: Please check your internet connection and try again');
+      } else if (e.toString().contains('401')) {
+        throw Exception('Authentication error: Please sign out and sign in again');
+      } else if (e.toString().contains('403')) {
+        throw Exception('Permission error: Please ensure you have the necessary permissions');
+      } else if (e is Exception) {
+        rethrow; // Re-throw our custom exceptions
+      } else {
+        throw Exception('Subscription setup failed: ${e.toString()}');
+      }
+    } finally {
+      _setLoading(false);
+      debugPrint('🔄 [SubscriptionService] Subscription attempt completed, loading state cleared');
+    }
+  }
+
+  /// Handle web checkout flow (redirects to Stripe Checkout)
+  Future<Map<String, dynamic>> _handleWebCheckoutFlow(
+    SubscriptionTier tier, 
+    String email, 
+    String? name
+  ) async {
+    // Call Firebase Function to create Stripe Checkout Session
+    debugPrint('🔄 [SubscriptionService] Calling createSubscriptionSetup for web checkout...');
+    
+    final requestBody = {
+      'tier': tier.id,
+      'email': email,
+      'name': name,
+      // Don't include paymentMethodId for web checkout flow
+    };
+    
+    final result = await _makeHttpRequest(
+      'createSubscriptionSetup', 
+      'POST', 
+      body: requestBody,
+      requireAuth: true,
+    );
+    
+    debugPrint('✅ [SubscriptionService] Firebase Function call successful');
+    debugPrint('📋 [SubscriptionService] Response data: $result');
+    
+    if (result['success'] == true && result.containsKey('checkoutUrl')) {
+      debugPrint('🔄 [SubscriptionService] Checkout URL received, redirecting...');
+      debugPrint('📋 [SubscriptionService] Checkout URL: ${result['checkoutUrl']}');
+      
+      // For web, we need to redirect to the checkout URL
+      if (kIsWeb) {
+        // Import dart:html for web-specific functionality
+        // Add this import at the top of the file: import 'dart:html' as html;
+        try {
+          // Redirect to Stripe Checkout
+          // html.window.location.href = result['checkoutUrl'];
+          // For now, we'll return the URL and let the UI handle the redirect
+          
+          debugPrint('✅ [SubscriptionService] Web checkout URL ready for redirect');
+          return {
+            ...result,
+            'requiresRedirect': true,
+            'redirectUrl': result['checkoutUrl'],
+          };
+        } catch (e) {
+          debugPrint('❌ [SubscriptionService] Failed to redirect to checkout: $e');
+          throw Exception('Failed to redirect to checkout: ${e.toString()}');
+        }
+      } else {
+        // For mobile, this shouldn't happen, but handle gracefully
+        debugPrint('⚠️ [SubscriptionService] Received checkout URL on mobile platform');
+        return result;
+      }
+    } else if (result['success'] == true && result.containsKey('clientSecret')) {
+      // Fallback to payment sheet if clientSecret is provided
+      debugPrint('🔄 [SubscriptionService] Client secret received as fallback...');
+      
+      // Initialize payment sheet
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: result['clientSecret'],
+          merchantDisplayName: 'Theorie App',
+          style: ThemeMode.light,
+        ),
+      );
+      
+      debugPrint('✅ [SubscriptionService] Payment sheet initialized');
+
+      // Present payment sheet
+      debugPrint('🔄 [SubscriptionService] Presenting payment sheet');
+      await Stripe.instance.presentPaymentSheet();
+      
+      debugPrint('✅ [SubscriptionService] Payment sheet completed successfully');
+      
+      // Refresh subscription status after successful payment
+      debugPrint('🔄 [SubscriptionService] Refreshing subscription status');
+      await refreshSubscriptionStatus();
+      
+      debugPrint('✅ [SubscriptionService] Web checkout completed successfully');
+      return result;
+    } else {
+      debugPrint('❌ [SubscriptionService] Invalid response from subscription setup');
+      throw Exception('Subscription setup failed: ${result['error'] ?? 'Unknown error'}');
+    }
+  }
+
+  /// Handle mobile payment flow (uses provided payment method)
+  Future<Map<String, dynamic>> _handleMobilePaymentFlow(
+    SubscriptionTier tier, 
+    String email, 
+    String? name,
+    String paymentMethodId
+  ) async {
+    // Call Firebase Function to create subscription setup WITH payment method
+    debugPrint('🔄 [SubscriptionService] Calling createSubscriptionSetup with payment method...');
+    
+    final requestBody = {
+      'tier': tier.id,
+      'email': email,
+      'name': name,
+      'paymentMethodId': paymentMethodId,
+    };
+    
+    final result = await _makeHttpRequest(
+      'createSubscriptionSetup', 
+      'POST', 
+      body: requestBody,
+      requireAuth: true,
+    );
+    
+    debugPrint('✅ [SubscriptionService] Firebase Function call successful');
+    debugPrint('📋 [SubscriptionService] Response data: $result');
+    
+    if (result['success'] == true) {
+      // Refresh subscription status after successful creation
+      debugPrint('🔄 [SubscriptionService] Refreshing subscription status');
+      await refreshSubscriptionStatus();
+      
+      debugPrint('✅ [SubscriptionService] Mobile payment flow completed successfully');
+      return result;
+    } else {
+      debugPrint('❌ [SubscriptionService] Invalid response from subscription setup');
+      throw Exception('Subscription setup failed: ${result['error'] ?? 'Unknown error'}');
+    }
+  }
+
+  /// Start subscription flow with enhanced debugging and error handling (deprecated - use startSubscriptionWithPaymentMethod)
   Future<Map<String, dynamic>> startSubscription({
     required SubscriptionTier tier,
     String? customerId,
@@ -190,72 +546,152 @@ class SubscriptionService extends ChangeNotifier {
       _setLoading(true);
       debugPrint('🔄 [SubscriptionService] Starting subscription for tier: ${tier.displayName}');
       
-      // Get current user info
-      final currentUser = await UserService.instance.getCurrentUser();
+      // First, test basic connectivity
+      debugPrint('🔄 [SubscriptionService] Testing basic connectivity first...');
+      await testBasicConnectivity();
+      
+      // Check authentication
       final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        throw Exception('User must be signed in to create subscription');
+      }
+
+      debugPrint('🔄 [SubscriptionService] Firebase user exists: ${firebaseUser != null}');
+      debugPrint('🔄 [SubscriptionService] Firebase user ID: ${firebaseUser.uid}');
+      debugPrint('🔄 [SubscriptionService] Firebase user email: ${firebaseUser.email}');
+      debugPrint('🔄 [SubscriptionService] Firebase user email verified: ${firebaseUser.emailVerified}');
+
+      // Force refresh the ID token
+      try {
+        final idToken = await firebaseUser.getIdToken(true);
+        if (idToken == null || idToken.isEmpty) {
+          throw Exception('Failed to obtain valid authentication token');
+        }
+        debugPrint('✅ [SubscriptionService] ID token refreshed successfully: ${idToken.length} characters');
+        if (idToken.length >= 20) {
+          debugPrint('🔄 [SubscriptionService] Token starts with: ${idToken.substring(0, 20)}...');
+        }
+      } catch (tokenError) {
+        debugPrint('❌ [SubscriptionService] Failed to refresh token: $tokenError');
+        throw Exception('Authentication error: Please sign out and sign in again');
+      }
       
-      // FIXED: Better data validation and fallbacks
-      final email = currentUser?.email ?? firebaseUser?.email;
-      final name = currentUser?.username ?? firebaseUser?.displayName ?? email?.split('@')[0];
+      // Get user data
+      final currentUser = await UserService.instance.getCurrentUser();
+      debugPrint('🔄 [SubscriptionService] Current app user exists: ${currentUser != null}');
+      debugPrint('🔄 [SubscriptionService] Current app user: ${currentUser?.username}');
       
-      debugPrint('🔄 [SubscriptionService] User data - Email: $email, Name: $name');
+      final email = currentUser?.email ?? firebaseUser.email;
+      final name = currentUser?.username ?? firebaseUser.displayName ?? email?.split('@')[0];
+      
+      debugPrint('🔄 [SubscriptionService] Final user data - Email: $email, Name: $name');
       
       if (email == null) {
+        debugPrint('❌ [SubscriptionService] No email available from any source');
         throw Exception('User email is required for subscription');
       }
       
       // Call Firebase Function to create subscription setup
-      final callable = _functions.httpsCallable('createSubscriptionSetup');
+      debugPrint('🔄 [SubscriptionService] Calling createSubscriptionSetup endpoint...');
       
-      debugPrint('🔄 [SubscriptionService] Calling Firebase Function with data: {tier: ${tier.id}, email: $email, name: $name}');
-      
-      final result = await callable.call({
+      final requestBody = {
         'tier': tier.id,
         'email': email,
         'name': name,
-      });
+      };
       
-      final data = result.data as Map<String, dynamic>;
+      debugPrint('🔄 [SubscriptionService] Request body: $requestBody');
       
-      if (data.containsKey('clientSecret')) {
+      final result = await _makeHttpRequest(
+        'createSubscriptionSetup', 
+        'POST', 
+        body: requestBody,
+        requireAuth: true,
+      );
+      
+      debugPrint('✅ [SubscriptionService] Firebase Function call successful');
+      debugPrint('📋 [SubscriptionService] Response data: $result');
+      
+      if (result['success'] == true && result.containsKey('clientSecret')) {
+        debugPrint('🔄 [SubscriptionService] Client secret received, initializing payment...');
+        debugPrint('📋 [SubscriptionService] Subscription ID: ${result['subscriptionId']}');
+        debugPrint('📋 [SubscriptionService] Customer ID: ${result['customerId']}');
+        debugPrint('📋 [SubscriptionService] Trial end: ${result['trialEnd']}');
+        
         // Initialize payment with Stripe
         await Stripe.instance.initPaymentSheet(
           paymentSheetParameters: SetupPaymentSheetParameters(
-            paymentIntentClientSecret: data['clientSecret'],
+            paymentIntentClientSecret: result['clientSecret'],
             merchantDisplayName: 'Theorie App',
             style: ThemeMode.light,
           ),
         );
+        
+        debugPrint('✅ [SubscriptionService] Payment sheet initialized');
 
         // Present payment sheet
+        debugPrint('🔄 [SubscriptionService] Presenting payment sheet');
         await Stripe.instance.presentPaymentSheet();
         
+        debugPrint('✅ [SubscriptionService] Payment sheet completed successfully');
+        
         // Refresh subscription status after successful payment
+        debugPrint('🔄 [SubscriptionService] Refreshing subscription status');
         await refreshSubscriptionStatus();
         
         debugPrint('✅ [SubscriptionService] Subscription started successfully');
-        return data;
+        return result;
       } else {
-        throw Exception('Invalid response from subscription setup');
+        debugPrint('❌ [SubscriptionService] Invalid response - missing clientSecret or success flag');
+        debugPrint('📋 [SubscriptionService] Response data: $result');
+        throw Exception('Invalid response from subscription setup: ${result['error'] ?? 'Unknown error'}');
       }
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('❌ [SubscriptionService] Firebase Functions error: ${e.message}');
-      throw Exception('Subscription setup failed: ${e.message}');
+    } on StripeException catch (e) {
+      debugPrint('❌ [SubscriptionService] Stripe error: ${e.error.type} - ${e.error.message}');
+      debugPrint('❌ [SubscriptionService] Stripe error code: ${e.error.code}');
+      
+      // Stripe-specific error handling
+      switch (e.error.type) {
+        case 'card_error':
+          throw Exception('Payment error: ${e.error.message ?? 'Card was declined'}');
+        case 'invalid_request_error':
+          throw Exception('Payment setup error: ${e.error.message ?? 'Invalid payment request'}');
+        case 'api_connection_error':
+          throw Exception('Unable to connect to payment service. Please check your internet connection.');
+        case 'api_error':
+          throw Exception('Payment service error. Please try again.');
+        case 'authentication_error':
+          throw Exception('Payment authentication error. Please try again.');
+        case 'rate_limit_error':
+          throw Exception('Too many payment attempts. Please wait and try again.');
+        default:
+          throw Exception('Payment error: ${e.error.message ?? 'Unknown payment error'}');
+      }
     } catch (e) {
-      debugPrint('❌ [SubscriptionService] Error starting subscription: $e');
+      debugPrint('❌ [SubscriptionService] Unexpected error: $e');
+      debugPrint('❌ [SubscriptionService] Error type: ${e.runtimeType}');
       
-      // Provide user-friendly error messages
-      if (e.toString().contains('network') || e.toString().contains('internet')) {
-        throw Exception('Unable to connect to subscription service. Please check your internet connection and try again.');
+      if (e.toString().contains('network') || 
+          e.toString().contains('internet') || 
+          e.toString().contains('connection') ||
+          e.toString().contains('SocketException')) {
+        throw Exception('Network error: Please check your internet connection and try again');
+      } else if (e.toString().contains('401')) {
+        throw Exception('Authentication error: Please sign out and sign in again');
+      } else if (e.toString().contains('403')) {
+        throw Exception('Permission error: Please ensure you have the necessary permissions');
+      } else if (e is Exception) {
+        rethrow; // Re-throw our custom exceptions
+      } else {
+        throw Exception('Subscription setup failed: ${e.toString()}');
       }
-      
-      rethrow;
     } finally {
       _setLoading(false);
+      debugPrint('🔄 [SubscriptionService] Subscription attempt completed, loading state cleared');
     }
   }
 
-  /// Cancel subscription using Firebase Callable Function
+  /// Cancel subscription using HTTPS endpoint
   Future<void> cancelSubscription({bool immediate = false}) async {
     if (!_isInitialized) {
       await initialize();
@@ -271,23 +707,30 @@ class SubscriptionService extends ChangeNotifier {
       debugPrint('🔄 [SubscriptionService] Canceling subscription');
       
       // Call Firebase Function to cancel subscription
-      final callable = _functions.httpsCallable('cancelSubscription');
-      await callable.call({
-        'subscriptionId': _currentSubscription!.subscriptionId!,
-        'cancelAtPeriodEnd': !immediate, // If immediate is true, set cancelAtPeriodEnd to false
-      });
+      final result = await _makeHttpRequest(
+        'cancelSubscription',
+        'POST',
+        body: {
+          'subscriptionId': _currentSubscription!.subscriptionId!,
+          'cancelAtPeriodEnd': !immediate, // If immediate is true, set cancelAtPeriodEnd to false
+        },
+        requireAuth: true,
+      );
+      
+      if (result['success'] != true) {
+        throw Exception('Failed to cancel subscription: ${result['error'] ?? 'Unknown error'}');
+      }
       
       // Refresh subscription status
       await refreshSubscriptionStatus();
       
       debugPrint('✅ [SubscriptionService] Subscription canceled');
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('❌ [SubscriptionService] Firebase Functions error: ${e.message}');
-      throw Exception('Failed to cancel subscription: ${e.message}');
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Error canceling subscription: $e');
       
-      if (e.toString().contains('network') || e.toString().contains('internet')) {
+      if (e.toString().contains('network') || 
+          e.toString().contains('internet') ||
+          e.toString().contains('SocketException')) {
         throw Exception('Unable to connect to subscription service. Please try again later.');
       }
       
@@ -302,7 +745,7 @@ class SubscriptionService extends ChangeNotifier {
     return cancelSubscription(immediate: false);
   }
 
-  /// Resume subscription using Firebase Callable Function
+  /// Resume subscription using HTTPS endpoint
   Future<void> resumeSubscription() async {
     if (!_isInitialized) {
       await initialize();
@@ -318,22 +761,29 @@ class SubscriptionService extends ChangeNotifier {
       debugPrint('🔄 [SubscriptionService] Resuming subscription');
       
       // Call Firebase Function to resume subscription
-      final callable = _functions.httpsCallable('resumeSubscription');
-      await callable.call({
-        'subscriptionId': _currentSubscription!.subscriptionId!,
-      });
+      final result = await _makeHttpRequest(
+        'resumeSubscription',
+        'POST',
+        body: {
+          'subscriptionId': _currentSubscription!.subscriptionId!,
+        },
+        requireAuth: true,
+      );
+      
+      if (result['success'] != true) {
+        throw Exception('Failed to resume subscription: ${result['error'] ?? 'Unknown error'}');
+      }
       
       // Refresh subscription status
       await refreshSubscriptionStatus();
       
       debugPrint('✅ [SubscriptionService] Subscription resumed');
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('❌ [SubscriptionService] Firebase Functions error: ${e.message}');
-      throw Exception('Failed to resume subscription: ${e.message}');
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Error resuming subscription: $e');
       
-      if (e.toString().contains('network') || e.toString().contains('internet')) {
+      if (e.toString().contains('network') || 
+          e.toString().contains('internet') ||
+          e.toString().contains('SocketException')) {
         throw Exception('Unable to connect to subscription service. Please try again later.');
       }
       
@@ -343,7 +793,7 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  /// Refresh subscription status using Firebase Callable Function
+  /// Refresh subscription status using HTTPS endpoint
   Future<void> refreshSubscriptionStatus() async {
     if (!_isInitialized) {
       debugPrint('ℹ️ [SubscriptionService] Service not initialized, skipping refresh');
@@ -371,25 +821,28 @@ class SubscriptionService extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Error refreshing subscription: $e');
       
-      if (e.toString().contains('network') || e.toString().contains('internet')) {
+      if (e.toString().contains('network') || 
+          e.toString().contains('internet') ||
+          e.toString().contains('SocketException')) {
         _hasNetworkError = true;
         debugPrint('🌐 [SubscriptionService] Network error - using cached data');
       }
     }
   }
 
-  /// Get subscription status from Firebase Callable Function
+  /// Get subscription status from HTTPS endpoint
   Future<SubscriptionData?> _getSubscriptionStatusFromFirebase() async {
     try {
-      final callable = _functions.httpsCallable('getSubscriptionStatus');
-      final result = await callable.call();
+      final result = await _makeHttpRequest(
+        'getSubscriptionStatus',
+        'GET',
+        requireAuth: true,
+      );
       
-      final data = result.data as Map<String, dynamic>;
-      
-      if (data['hasSubscription'] == true && data['subscription'] != null) {
-        final subscriptionInfo = data['subscription'] as Map<String, dynamic>;
+      if (result['success'] == true && result['hasSubscription'] == true && result['subscription'] != null) {
+        final subscriptionInfo = result['subscription'] as Map<String, dynamic>;
         
-        // Convert Firebase Callable Function response to SubscriptionData
+        // Convert HTTPS response to SubscriptionData
         return SubscriptionData(
           status: SubscriptionStatus.fromString(subscriptionInfo['status'] ?? 'none'),
           tier: SubscriptionTier.fromString(subscriptionInfo['tier'] ?? 'free'),
@@ -413,18 +866,15 @@ class SubscriptionService extends ChangeNotifier {
         debugPrint('ℹ️ [SubscriptionService] No subscription data found for user');
         return SubscriptionData.empty();
       }
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('❌ [SubscriptionService] Firebase Functions error: ${e.message}');
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] Error getting subscription status: $e');
       
       // If user not found or no subscription, return empty data
-      if (e.code == 'not-found' || e.message?.contains('no subscription') == true) {
+      if (e.toString().contains('404') || e.toString().contains('no subscription')) {
         return SubscriptionData.empty();
       }
       
       return null; // Return null to indicate error, not empty subscription
-    } catch (e) {
-      debugPrint('❌ [SubscriptionService] Error getting subscription status: $e');
-      return null;
     }
   }
 
@@ -449,18 +899,29 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  /// Test Firebase Functions connectivity (for debugging)
-  Future<void> testFirebaseFunctions() async {
+  /// Test Firebase Functions connectivity
+  Future<Map<String, dynamic>> testFirebaseFunctions() async {
     try {
       debugPrint('🔄 [SubscriptionService] Testing Firebase Functions connectivity...');
       
-      final callable = _functions.httpsCallable('getSubscriptionStatus');
-      final result = await callable.call();
+      // First test a simple function call
+      final result = await _makeHttpRequest('getSubscriptionStatus', 'GET', requireAuth: true);
       
       debugPrint('✅ [SubscriptionService] Firebase Functions test successful');
-      debugPrint('📋 [SubscriptionService] Test result: ${result.data}');
+      debugPrint('📋 [SubscriptionService] Test result: $result');
+      return result;
     } catch (e) {
       debugPrint('❌ [SubscriptionService] Firebase Functions test failed: $e');
+      
+      // Provide helpful error information for debugging
+      if (e.toString().contains('CORS')) {
+        debugPrint('🌐 [SubscriptionService] CORS error - check Firebase Functions CORS configuration');
+      } else if (e.toString().contains('401')) {
+        debugPrint('🔐 [SubscriptionService] Authentication error - ensure user is signed in');
+      } else if (e.toString().contains('network') || e.toString().contains('SocketException')) {
+        debugPrint('🌐 [SubscriptionService] Network error - check internet connection');
+      }
+      
       rethrow;
     }
   }
