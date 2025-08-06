@@ -1,16 +1,14 @@
-// lib/main.dart - UPDATED: Fixed URL parameter handling for GitLab Pages deployment
-
+// lib/main.dart - Updated with environment variable support
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'dart:html' as html show window;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'firebase_options.dart';
-import 'services/firebase_config.dart';
-import 'services/stripe_config.dart';
+import 'services/firebase_config.dart'; // Import our new config
+import 'services/stripe_config.dart';   // Import our new Stripe config
 import 'models/app_state.dart';
 import 'controllers/quiz_controller.dart';
 import 'controllers/audio_controller.dart';
@@ -18,25 +16,34 @@ import 'services/firebase_user_service.dart';
 import 'services/user_service.dart';
 import 'services/subscription_service.dart';
 import 'views/pages/login_page.dart';
-import 'views/pages/subscription_management_page.dart';
 import 'views/pages/welcome_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Stripe using environment-aware configuration
   await _initializeStripe();
+
   runApp(const TheorieApp());
 }
 
+/// Initialize Stripe with environment variable support and fallback
 Future<void> _initializeStripe() async {
   try {
     debugPrint('🔄 [Stripe] Initializing Stripe with environment variables...');
+    
+    // Use the new StripeConfig class which handles environment variables
     await StripeConfig.initialize();
+    
+    // Log configuration info in debug mode
     if (kDebugMode) {
       final info = StripeConfig.getEnvironmentInfo();
       debugPrint('✅ [Stripe] Configuration: $info');
     }
+    
   } catch (e) {
     debugPrint('❌ [Stripe] Error initializing Stripe: $e');
+    // Continue without Stripe - app should still work for non-payment features
   }
 }
 
@@ -50,9 +57,7 @@ class TheorieApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
-      // UPDATED: Simplified routing - always start at home
       home: const FirebaseInitializer(),
-      // Remove complex routing logic, handle in FirebaseInitializer
     );
   }
 
@@ -73,7 +78,7 @@ class TheorieApp extends StatelessWidget {
   }
 }
 
-/// UPDATED: Firebase initializer with Stripe redirect handling
+/// Firebase initialization wrapper with enhanced error handling and environment support
 class FirebaseInitializer extends StatefulWidget {
   const FirebaseInitializer({super.key});
 
@@ -86,59 +91,29 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
   bool _error = false;
   String? _errorMessage;
   bool _isRetrying = false;
-  Map<String, String>? _stripeParams;
 
   @override
   void initState() {
     super.initState();
-    _checkForStripeParams();
     _initializeFirebase();
-  }
-
-  /// UPDATED: Check for Stripe parameters in URL
-  void _checkForStripeParams() {
-    if (kIsWeb) {
-      final uri = Uri.parse(html.window.location.href);
-      final checkoutStatus = uri.queryParameters['checkout_status'];
-      final sessionId = uri.queryParameters['session_id'];
-      
-      if (checkoutStatus != null || sessionId != null) {
-        debugPrint('🔄 [Firebase] Detected Stripe redirect parameters');
-        debugPrint('📋 [Firebase] Checkout status: $checkoutStatus');
-        debugPrint('📋 [Firebase] Session ID: $sessionId');
-        
-        _stripeParams = {
-          if (checkoutStatus != null) 'checkout_status': checkoutStatus,
-          if (sessionId != null) 'session_id': sessionId,
-        };
-        
-        // Clean URL immediately to prevent issues with navigation
-        _cleanUrl();
-      }
-    }
-  }
-
-  /// Clean URL by removing query parameters
-  void _cleanUrl() {
-    if (kIsWeb) {
-      final cleanUrl = '${html.window.location.origin}${html.window.location.pathname}';
-      html.window.history.replaceState(null, '', cleanUrl);
-      debugPrint('🧹 [Firebase] URL cleaned after parameter extraction');
-    }
   }
 
   Future<void> _initializeFirebase() async {
     try {
       debugPrint('🔄 [Firebase] Initializing Firebase with environment variables...');
 
+      // Initialize Firebase using environment-aware configuration
       await FirebaseConfig.initialize();
 
+      // Configure Firebase for web platform
       if (kIsWeb) {
         await _configureFirebaseForWeb();
       }
 
+      // Initialize core services in proper order
       await _initializeCoreServices();
 
+      // Log configuration in debug mode
       if (kDebugMode) {
         AppConfig.logConfiguration();
       }
@@ -167,32 +142,48 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
 
   Future<void> _configureFirebaseForWeb() async {
     try {
+      // Set authentication persistence for web
       await firebase_auth.FirebaseAuth.instance.setPersistence(
           firebase_auth.Persistence.LOCAL);
+
+      // Enable Firestore offline persistence for web
       await FirebaseFirestore.instance
           .enablePersistence(const PersistenceSettings(synchronizeTabs: true));
+
       debugPrint('✅ [Firebase] Web configuration completed');
     } catch (e) {
+      // Persistence might already be enabled, or not supported
       debugPrint('ℹ️ [Firebase] Web configuration note: $e');
+      // Don't throw error for persistence issues - they're not critical
     }
   }
 
+  /// Initialize core services in proper order to prevent loops
   Future<void> _initializeCoreServices() async {
     try {
       debugPrint('🔄 [Services] Initializing core services...');
+
+      // 1. Initialize Firebase user service first
       await FirebaseUserService.instance.initialize();
       debugPrint('✅ [Services] Firebase user service initialized');
+
+      // 2. Initialize fallback user service
       await UserService.instance.initialize();
       debugPrint('✅ [Services] User service initialized');
+
+      // 3. Initialize subscription service - FIXED: Only initialize once
       if (!SubscriptionService.instance.isInitialized) {
         await SubscriptionService.instance.initialize();
         debugPrint('✅ [Services] Subscription service initialized');
       } else {
         debugPrint('ℹ️ [Services] Subscription service already initialized');
       }
+
       debugPrint('✅ [Services] All core services initialized successfully');
     } catch (e) {
       debugPrint('⚠️ [Services] Service initialization warning: $e');
+      // Continue with app initialization even if services have issues
+      // The services have their own fallback mechanisms
     }
   }
 
@@ -206,8 +197,7 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
       return _buildLoadingScreen();
     }
 
-    // UPDATED: Pass Stripe parameters to MainApp
-    return MainApp(stripeParams: _stripeParams);
+    return const MainApp();
   }
 
   Widget _buildErrorScreen() {
@@ -264,6 +254,18 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
                       : const Icon(Icons.refresh),
                   label: Text(_isRetrying ? 'Retrying...' : 'Try Again'),
                 ),
+                // Debug info in development
+                if (kDebugMode) ...[
+                  const SizedBox(height: 16),
+                  ExpansionTile(
+                    title: const Text('Debug Info'),
+                    children: [
+                      Text('Environment: ${AppConfig.environment}'),
+                      Text('API URL: ${AppConfig.apiUrl}'),
+                      Text('Firebase Project: ${FirebaseConfig.web.projectId}'),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -296,9 +298,9 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Loading your music theory workspace...',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 16,
                   color: Colors.grey,
                 ),
@@ -348,21 +350,26 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
   }
 }
 
-/// UPDATED: Main application with Stripe parameter handling
+/// Main application with providers - Updated with environment support
 class MainApp extends StatelessWidget {
-  final Map<String, String>? stripeParams;
-  
-  const MainApp({super.key, this.stripeParams});
+  const MainApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Core app state provider
         ChangeNotifierProvider(create: (_) => AppState()),
+
+        // Quiz controller provider
         ChangeNotifierProvider(create: (_) => QuizController()),
+
+        // FIXED: Use singleton instance to prevent recreation
         ChangeNotifierProvider.value(
           value: SubscriptionService.instance,
         ),
+
+        // Firebase auth state stream provider
         StreamProvider<firebase_auth.User?>(
           create: (_) => FirebaseUserService.instance.authStateChanges,
           initialData: null,
@@ -385,6 +392,7 @@ class MainApp extends StatelessWidget {
                 colorSchemeSeed: Colors.indigo,
                 brightness: Brightness.dark,
               ),
+              // Add environment indicator in debug mode
               builder: (context, child) {
                 if (kDebugMode && !AppConfig.isProduction) {
                   return Stack(
@@ -414,8 +422,7 @@ class MainApp extends StatelessWidget {
                 }
                 return child!;
               },
-              // UPDATED: Pass Stripe parameters to AuthWrapper
-              home: AuthWrapper(stripeParams: stripeParams),
+              home: const AuthWrapper(),
             );
           },
         ),
@@ -424,7 +431,7 @@ class MainApp extends StatelessWidget {
   }
 }
 
-/// UPDATED: App lifecycle manager (unchanged)
+/// App lifecycle manager with enhanced audio and subscription management
 class AppLifecycleManager extends StatefulWidget {
   final Widget child;
   
@@ -453,12 +460,16 @@ class _AppLifecycleManagerState extends State<AppLifecycleManager>
 
   Future<void> _initializeAudioSystem() async {
     try {
+      // Wait for app state to be available
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         final context = this.context;
         if (context.mounted) {
           final appState = context.read<AppState>();
+          
+          // Initialize audio system with user preferences
           await AudioController.instance.initialize(appState.audioBackend);
           await AudioController.instance.setVolume(appState.audioVolume);
+          
           debugPrint('✅ [Audio] Audio system initialized successfully');
         }
       });
@@ -474,6 +485,7 @@ class _AppLifecycleManagerState extends State<AppLifecycleManager>
     switch (state) {
       case AppLifecycleState.resumed:
         debugPrint('🔄 [Lifecycle] App resumed');
+        // FIXED: Only refresh if service is properly initialized
         if (SubscriptionService.instance.isInitialized) {
           SubscriptionService.instance.refreshSubscriptionStatus();
         }
@@ -502,11 +514,9 @@ class _AppLifecycleManagerState extends State<AppLifecycleManager>
   }
 }
 
-/// UPDATED: Authentication wrapper with Stripe redirect handling
+/// Authentication wrapper with enhanced error handling and fixed Firebase loading
 class AuthWrapper extends StatefulWidget {
-  final Map<String, String>? stripeParams;
-  
-  const AuthWrapper({super.key, this.stripeParams});
+  const AuthWrapper({super.key});
 
   @override
   State<AuthWrapper> createState() => _AuthWrapperState();
@@ -518,21 +528,11 @@ class _AuthWrapperState extends State<AuthWrapper> {
   String _errorMessage = '';
   int _loadingAttempts = 0;
   static const int _maxLoadingAttempts = 3;
-  bool _shouldShowSubscriptionPage = false;
 
   @override
   void initState() {
     super.initState();
-    _checkForStripeRedirect();
     _initializeAuth();
-  }
-
-  /// UPDATED: Check if we should show subscription page based on Stripe params
-  void _checkForStripeRedirect() {
-    if (widget.stripeParams != null) {
-      debugPrint('🔄 [Auth] Processing Stripe redirect with params: ${widget.stripeParams}');
-      _shouldShowSubscriptionPage = true;
-    }
   }
 
   Future<void> _initializeAuth() async {
@@ -540,9 +540,11 @@ class _AuthWrapperState extends State<AuthWrapper> {
       debugPrint('🔄 [Auth] Initializing auth wrapper...');
       _loadingAttempts++;
 
+      // Check for existing user session
       final currentUser = await FirebaseUserService.instance.getCurrentUser();
       debugPrint('ℹ️ [Auth] Current user: ${currentUser?.username ?? 'None'}');
 
+      // Update app state with current user
       if (mounted && currentUser != null) {
         final appState = context.read<AppState>();
         await appState.setCurrentUser(currentUser);
@@ -559,6 +561,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       debugPrint('❌ [Auth] Error initializing auth: $e');
 
       if (mounted) {
+        // If we've tried multiple times and still failing, show error
         if (_loadingAttempts >= _maxLoadingAttempts) {
           setState(() {
             _isLoading = false;
@@ -566,6 +569,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             _errorMessage = e.toString();
           });
         } else {
+          // Try again after a short delay
           await Future.delayed(const Duration(milliseconds: 1000));
           if (mounted) {
             _initializeAuth();
@@ -577,6 +581,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading screen during auth initialization
     if (_isLoading) {
       return Scaffold(
         body: Center(
@@ -596,6 +601,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
                   ),
                 ),
               ],
+              // Show environment info in debug mode
               if (kDebugMode) ...[
                 const SizedBox(height: 16),
                 Text(
@@ -612,6 +618,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       );
     }
 
+    // Show error screen if auth initialization failed
     if (_hasError) {
       return Scaffold(
         body: Center(
@@ -661,6 +668,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       );
     }
 
+    // Listen to Firebase auth state changes
     return Consumer<firebase_auth.User?>(
       builder: (context, firebaseUser, child) {
         return Consumer<AppState>(
@@ -669,16 +677,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
             debugPrint('ℹ️ [Auth] Auth state - Firebase: ${firebaseUser?.uid}, App: ${currentUser?.username}');
 
-            // UPDATED: If we have Stripe params and a user, show subscription page
-            if (_shouldShowSubscriptionPage && currentUser != null) {
-              debugPrint('🔄 [Auth] Showing subscription page with Stripe params');
-              return SubscriptionManagementPage(stripeParams: widget.stripeParams);
-            }
-
+            // If we have a current user (either Firebase or guest), show welcome page
             if (currentUser != null) {
               return const WelcomePage();
             }
 
+            // If Firebase user exists but no app user, load the user data
             if (firebaseUser != null && currentUser == null) {
               return FutureBuilder<void>(
                 future: _loadFirebaseUser(firebaseUser),
@@ -713,7 +717,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton(
-                              onPressed: () => setState(() {}),
+                              onPressed: () => setState(() {}), // Retry
                               child: const Text('Retry'),
                             ),
                           ],
@@ -721,12 +725,14 @@ class _AuthWrapperState extends State<AuthWrapper> {
                       ),
                     );
                   } else {
+                    // Loading completed, but still no user - show login
                     return const LoginPage();
                   }
                 },
               );
             }
 
+            // No user logged in, show login page
             return const LoginPage();
           },
         );
@@ -734,20 +740,26 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
+  /// FIXED: Load Firebase user with proper error handling and subscription initialization
   Future<void> _loadFirebaseUser(firebase_auth.User firebaseUser) async {
     try {
       debugPrint('🔄 [Auth] Loading Firebase user data for: ${firebaseUser.uid}');
 
+      // Use FirebaseUserService directly for better integration
       final userService = FirebaseUserService.instance;
       final appUser = await userService.getCurrentUser();
 
       if (appUser != null && mounted) {
         debugPrint('✅ [Auth] User data loaded successfully: ${appUser.username}');
 
+        // Set user in AppState which will trigger proper progress loading
         final appState = context.read<AppState>();
         await appState.setCurrentUser(appUser);
 
+        // FIXED: Initialize subscription service for this user if not already done
+        // This handles the case where users don't have subscription data yet
         if (SubscriptionService.instance.isInitialized) {
+          // Just refresh the status, don't re-initialize
           SubscriptionService.instance.refreshSubscriptionStatus();
         }
 
@@ -755,6 +767,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       } else {
         debugPrint('⚠️ [Auth] No app user data found for Firebase user: ${firebaseUser.uid}');
 
+        // If user exists in Firebase but not in Firestore, sign them out
         if (mounted) {
           setState(() {
             _hasError = true;
@@ -772,6 +785,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
     } catch (e) {
       debugPrint('❌ [Auth] Error loading Firebase user: $e');
 
+      // Update UI state to show error instead of infinite loading
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -779,6 +793,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         });
       }
 
+      // If there's an issue loading the user, sign them out
       try {
         await FirebaseUserService.instance.logout();
         debugPrint('ℹ️ [Auth] Signed out user due to loading error');

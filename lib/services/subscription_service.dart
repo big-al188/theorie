@@ -12,7 +12,6 @@ import '../models/subscription/subscription_models.dart';
 import '../models/subscription/payment_models.dart';
 import './firebase_user_service.dart';
 import './user_service.dart';
-import '../models/user/user.dart'; // Add this import for User model
 
 /// Subscription service using HTTPS Firebase Functions
 class SubscriptionService extends ChangeNotifier {
@@ -344,88 +343,92 @@ class SubscriptionService extends ChangeNotifier {
   Future<Map<String, dynamic>> startSubscriptionWithPaymentMethod({
     required SubscriptionTier tier,
     required String paymentMethodId,
+    String? customerId,
   }) async {
-    debugPrint('🔄 [SubscriptionService] Starting subscription with payment method...');
-    
-    final currentUser = await _getCurrentUser();
-    if (currentUser == null) {
-      throw Exception('User not authenticated');
-    }
-    
-    // Get current app URL for proper redirects
-    final baseUrl = _getCurrentAppUrl();
-    
-    // FIXED: Use base URL with query parameters for success/cancel detection
-    final successUrl = '$baseUrl?checkout_status=success&session_id={CHECKOUT_SESSION_ID}';
-    final cancelUrl = '$baseUrl?checkout_status=cancelled';
-    
-    debugPrint('🔄 [SubscriptionService] Redirect URLs:');
-    debugPrint('📋 [SubscriptionService] Success URL: $successUrl');
-    debugPrint('📋 [SubscriptionService] Cancel URL: $cancelUrl');
-    
-    final requestBody = {
-      'tier': tier.id,
-      'email': currentUser.email,
-      'name': currentUser.username,
-      'successUrl': successUrl,
-      'cancelUrl': cancelUrl,
-    };
-    
-    // Add payment method ID only if provided (for mobile flow)
-    if (paymentMethodId.isNotEmpty) {
-      requestBody['paymentMethodId'] = paymentMethodId;
-      debugPrint('🔄 [SubscriptionService] Using mobile flow with payment method');
-    } else {
-      debugPrint('🔄 [SubscriptionService] Using web checkout flow');
+    if (!_isInitialized) {
+      await initialize();
     }
     
     try {
-      final result = await _makeHttpRequest(
-        'createSubscriptionSetup',
-        'POST',
-        body: requestBody,
-        requireAuth: true,
-      );
+      _setLoading(true);
+      debugPrint('🔄 [SubscriptionService] Starting subscription with payment method for tier: ${tier.displayName}');
       
-      debugPrint('✅ [SubscriptionService] Subscription request successful');
-      debugPrint('📋 [SubscriptionService] Response: $result');
+      // Check authentication
+      final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        throw Exception('User must be signed in to create subscription');
+      }
+
+      debugPrint('🔄 [SubscriptionService] Firebase user ID: ${firebaseUser.uid}');
+      debugPrint('🔄 [SubscriptionService] Payment method ID: $paymentMethodId');
+
+      // Get user data
+      final currentUser = await UserService.instance.getCurrentUser();
+      final email = currentUser?.email ?? firebaseUser.email;
+      final name = currentUser?.username ?? firebaseUser.displayName ?? email?.split('@')[0];
       
-      return result;
+      if (email == null) {
+        debugPrint('❌ [SubscriptionService] No email available from any source');
+        throw Exception('User email is required for subscription');
+      }
+
+      // Handle web vs mobile flows differently
+      if (paymentMethodId.isEmpty) {
+        // Web flow - use Stripe Checkout (no payment method provided)
+        debugPrint('🔄 [SubscriptionService] Using web checkout flow');
+        return await _handleWebCheckoutFlow(tier, email, name);
+      } else {
+        // Mobile flow - use provided payment method
+        debugPrint('🔄 [SubscriptionService] Using mobile payment method flow');
+        return await _handleMobilePaymentFlow(tier, email, name, paymentMethodId);
+      }
+      
     } catch (e) {
-      debugPrint('❌ [SubscriptionService] Subscription request failed: $e');
-      rethrow;
+      debugPrint('❌ [SubscriptionService] Unexpected error: $e');
+      debugPrint('❌ [SubscriptionService] Error type: ${e.runtimeType}');
+      
+      if (e.toString().contains('network') || 
+          e.toString().contains('internet') || 
+          e.toString().contains('connection') ||
+          e.toString().contains('SocketException')) {
+        throw Exception('Network error: Please check your internet connection and try again');
+      } else if (e.toString().contains('401')) {
+        throw Exception('Authentication error: Please sign out and sign in again');
+      } else if (e.toString().contains('403')) {
+        throw Exception('Permission error: Please ensure you have the necessary permissions');
+      } else if (e is Exception) {
+        rethrow; // Re-throw our custom exceptions
+      } else {
+        throw Exception('Subscription setup failed: ${e.toString()}');
+      }
+    } finally {
+      _setLoading(false);
+      debugPrint('🔄 [SubscriptionService] Subscription attempt completed, loading state cleared');
     }
   }
 
 // Add this method to your SubscriptionService class
 
 /// Get the current app URL for redirect purposes
-  String _getCurrentAppUrl() {
-    if (kIsWeb) {
-      final currentUrl = html.window.location.href;
-      final uri = Uri.parse(currentUrl);
-      
-      // For GitLab Pages: https://theorie-ad84fe.gitlab.io
-      // For localhost: http://localhost:3000 or any port
-      final baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
-      
-      debugPrint('🔄 [SubscriptionService] Current app URL: $baseUrl');
-      return baseUrl;
+String _getCurrentAppUrl() {
+  if (kIsWeb) {
+    // Get current URL from browser
+    final currentUrl = Uri.parse(html.window.location.href);
+    final origin = '${currentUrl.scheme}://${currentUrl.host}';
+    
+    // Add port if it's not default (80/443)
+    if (currentUrl.hasPort && 
+        currentUrl.port != 80 && 
+        currentUrl.port != 443) {
+      return '$origin:${currentUrl.port}';
     }
     
-    // Fallback for non-web platforms (shouldn't be used for web checkout)
-    return 'http://localhost:3000';
+    return origin;
+  } else {
+    // For mobile apps, you might want to use deep links
+    return 'your-app://subscription';
   }
-
-  /// Helper method to get current user from UserService
-  Future<User?> _getCurrentUser() async {
-    try {
-      return await UserService.instance.getCurrentUser();
-    } catch (e) {
-      debugPrint('❌ [SubscriptionService] Error getting current user: $e');
-      return null;
-    }
-  }
+}
 
 /// Handle web checkout flow (redirects to Stripe Checkout)
 Future<Map<String, dynamic>> _handleWebCheckoutFlow(

@@ -1,10 +1,10 @@
-// lib/views/pages/subscription_management_page.dart - UPDATED: Fixed Stripe redirect handling
-
+// lib/views/pages/subscription_management_page.dart - Updated with Payment Form Integration
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'dart:html' as html show window;
 import '../../services/subscription_service.dart';
 import '../../services/firebase_user_service.dart';
 import '../../services/user_service.dart';
@@ -17,9 +17,7 @@ import '../widgets/common/app_bar.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SubscriptionManagementPage extends StatefulWidget {
-  final Map<String, String>? stripeParams;
-  
-  const SubscriptionManagementPage({super.key, this.stripeParams});
+  const SubscriptionManagementPage({super.key});
 
   @override
   State<SubscriptionManagementPage> createState() => _SubscriptionManagementPageState();
@@ -32,119 +30,26 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
   bool _runningTest = false;
   int _debugTapCount = 0;
 
+
   @override
   void initState() {
     super.initState();
     
-    // UPDATED: Handle Stripe redirect parameters from constructor
-    if (widget.stripeParams != null) {
+    // Handle return from Stripe Checkout (web only)
+    if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        debugPrint('🔄 [SubscriptionPage] Processing Stripe redirect from constructor');
-        debugPrint('📋 [SubscriptionPage] Stripe params: ${widget.stripeParams}');
-        _handleStripeRedirectFromParams(widget.stripeParams!);
+        final uri = Uri.parse(html.window.location.href);
+        final sessionId = uri.queryParameters['session_id'];
+        
+        if (sessionId != null) {
+          _handleCheckoutSuccess(sessionId);
+        } else if (uri.path.contains('/subscription/cancel')) {
+          _handleCheckoutCancel();
+        }
       });
     }
   }
 
-  /// UPDATED: Handle Stripe redirect from parameters passed via constructor
-  void _handleStripeRedirectFromParams(Map<String, String> params) {
-    final checkoutStatus = params['checkout_status'];
-    final sessionId = params['session_id'];
-    
-    debugPrint('📋 [SubscriptionPage] Processing Stripe redirect parameters');
-    debugPrint('📋 [SubscriptionPage] Checkout status: $checkoutStatus');
-    debugPrint('📋 [SubscriptionPage] Session ID: $sessionId');
-    
-    // Handle success cases
-    if (checkoutStatus == 'success' || sessionId != null) {
-      _addDebugOutput('✅ Stripe checkout completed successfully');
-      _handleCheckoutSuccess(sessionId);
-    }
-    // Handle cancel cases
-    else if (checkoutStatus == 'cancelled') {
-      _addDebugOutput('ℹ️ Stripe checkout cancelled');
-      _handleCheckoutCancel();
-    }
-  }
-
-  /// Handle successful checkout return - UPDATED with better messaging
-  void _handleCheckoutSuccess(String? sessionId) {
-    _addDebugOutput('✅ Processing successful Stripe checkout${sessionId != null ? ' with session: $sessionId' : ''}');
-    
-    // Show immediate success feedback
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.celebration, color: Colors.white),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text('🎉 Welcome to Premium! Your subscription is active and your 7-day free trial has started!'),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 5),
-        ),
-      );
-    }
-    
-    // Refresh subscription status to update UI
-    final service = Provider.of<SubscriptionService>(context, listen: false);
-    service.refreshSubscriptionStatus().then((_) {
-      _addDebugOutput('✅ Subscription status refreshed successfully');
-    }).catchError((error) {
-      _addDebugOutput('⚠️ Failed to refresh subscription after checkout: $error');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.info, color: Colors.white),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text('Subscription created successfully! Please refresh if status doesn\'t update.'),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.blue,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Refresh',
-              textColor: Colors.white,
-              onPressed: () {
-                service.refreshSubscriptionStatus();
-              },
-            ),
-          ),
-        );
-      }
-    });
-  }
-
-  /// Handle cancelled checkout return - UPDATED with better messaging
-  void _handleCheckoutCancel() {
-    _addDebugOutput('ℹ️ Processing cancelled Stripe checkout');
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.info_outline, color: Colors.white),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text('Checkout was cancelled. No worries - you can upgrade to Premium anytime!'),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.blue,
-          duration: Duration(seconds: 4),
-        ),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -279,42 +184,6 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
               ],
             ),
             const SizedBox(height: 16),
-            
-            // Show Stripe redirect info if available
-            if (widget.stripeParams != null) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Stripe Redirect Parameters',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...widget.stripeParams!.entries.map((entry) => 
-                      Text(
-                        '${entry.key}: ${entry.value}',
-                        style: TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                          color: Colors.blue.shade600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
             
             // Test buttons grid
             Wrap(
@@ -475,7 +344,6 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     });
   }
 
-  // Test methods (unchanged from original)
   Future<void> _testBasicConnectivity(SubscriptionService service) async {
     setState(() => _runningTest = true);
     _addDebugOutput('🔄 Testing basic connectivity...');
@@ -948,7 +816,7 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '\${tier.price}/${tier == SubscriptionTier.premiumAnnual ? 'year' : 'month'}',
+                        '\$${tier.price}/${tier == SubscriptionTier.premiumAnnual ? 'year' : 'month'}',
                         style: TextStyle(
                           fontSize: deviceType == DeviceType.mobile ? 14 : 16,
                           color: Colors.grey.shade600,
@@ -1364,6 +1232,53 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     }
   }
 
+  /// Handle return from Stripe Checkout (success)
+  void _handleCheckoutSuccess(String sessionId) {
+    _addDebugOutput('✅ Returned from Stripe Checkout successfully: $sessionId');
+    
+    // Refresh subscription status
+    final service = Provider.of<SubscriptionService>(context, listen: false);
+    service.refreshSubscriptionStatus().then((_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Welcome to Premium! Your subscription is now active.'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }).catchError((error) {
+      _addDebugOutput('❌ Failed to refresh subscription after checkout: $error');
+    });
+  }
+
+  /// Handle return from Stripe Checkout (cancelled)
+  void _handleCheckoutCancel() {
+    _addDebugOutput('ℹ️ User cancelled Stripe Checkout');
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.info, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Checkout was cancelled. You can try again anytime.'),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
   Future<void> _handleCancelSubscription(BuildContext context, SubscriptionService service) async {
     final confirmed = await _showConfirmationDialog(
       context,
