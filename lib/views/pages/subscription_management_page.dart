@@ -64,21 +64,6 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
         title: 'Subscription',
         showSettings: true,
         showLogout: true,
-        actions: [
-          SubscriptionStarWidget(size: 24),
-          // Debug trigger - tap 5 times to show debug panel
-          GestureDetector(
-            onTap: _handleDebugTap,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              child: Icon(
-                Icons.bug_report,
-                size: 20,
-                color: _showDebugPanel ? Colors.orange : Colors.grey,
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

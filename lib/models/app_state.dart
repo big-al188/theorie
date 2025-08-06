@@ -79,11 +79,19 @@ class AppState extends ChangeNotifier {
   SubscriptionService get subscriptionService => 
       _subscriptionService ??= SubscriptionService.instance;
   
-  SubscriptionData get currentSubscription => 
-      subscriptionService.currentSubscription;
+  SubscriptionData get currentSubscription {
+    if (_subscriptionService == null || !_subscriptionInitialized) {
+      return SubscriptionData.empty();
+    }
+    return _subscriptionService!.currentSubscription;
+  }
   
-  bool get hasActiveSubscription => 
-      subscriptionService.hasActiveSubscription;
+  bool get hasActiveSubscription {
+    if (_subscriptionService == null || !_subscriptionInitialized) {
+      return false;
+    }
+    return _subscriptionService!.hasActiveSubscription;
+  }
   
   bool get isSubscriptionInitialized => _subscriptionInitialized;
 
@@ -243,7 +251,16 @@ class AppState extends ChangeNotifier {
     try {
       debugPrint('💳 [AppState] Initializing subscription service...');
       
+      // Only initialize for authenticated users
+      if (_currentUser == null || _currentUser!.isDefaultUser) {
+        debugPrint('ℹ️ [AppState] Skipping subscription service for guest user');
+        _subscriptionInitialized = true;
+        return;
+      }
+      
       _subscriptionService = SubscriptionService.instance;
+      
+      // Initialize the subscription service
       await _subscriptionService!.initialize();
       
       // Listen to subscription changes
@@ -260,9 +277,10 @@ class AppState extends ChangeNotifier {
 
   /// NEW: Handle subscription changes
   void _onSubscriptionChanged() {
-    debugPrint('🔄 [AppState] Subscription status changed');
+    debugPrint('🔄 [AppState] Subscription status changed - updating UI');
     notifyListeners();
   }
+
 
   /// NEW: Check if user has access to premium features
   bool hasAccessToFeature(String featureId) {
@@ -343,51 +361,58 @@ class AppState extends ChangeNotifier {
 
   /// UPDATED: Enhanced user setting with separated models and subscription service
   Future<void> setCurrentUser(User user) async {
-    debugPrint('👤 [AppState] Setting current user: ${user.username}');
-
-    // Remove old progress listener
-    if (_currentUser != null) {
-      ProgressTrackingService.instance.removeListener(_onProgressChanged);
-    }
-
-    // Remove old subscription listener
-    if (_subscriptionService != null) {
-      _subscriptionService!.removeListener(_onSubscriptionChanged);
-    }
-
-    _currentUser = user;
-
-    // Load user data separately
-    await _loadUserData();
-
-    // Setup progress tracking
     try {
-      final existingProgress = await ProgressTrackingService.instance.getCurrentProgress();
-      if (existingProgress.sectionProgress.isEmpty) {
-        await ProgressTrackingService.instance.initializeSectionProgress();
+      debugPrint('👤 [AppState] Setting current user: ${user.isDefaultUser ? 'Guest' : user.username}');
+      
+      // Clean up previous user if switching users (not initial load)
+      if (_currentUser != null && _currentUser!.id != user.id) {
+        debugPrint('🔄 [AppState] Switching users - cleaning up previous user data');
+        
+        // Remove progress listener for previous user
+        ProgressTrackingService.instance.removeListener(_onProgressChanged);
+        
+        // NEW: Clean up subscription service for previous user
+        if (_subscriptionService != null) {
+          _subscriptionService!.removeListener(_onSubscriptionChanged);
+          await _subscriptionService!.clearSubscription();
+          await _subscriptionService!.resetForUserSwitch();
+        }
+        
+        // NEW: Clear all cached data for the previous user (including subscription data)
+        await UserService.instance.clearUserSpecificData(_currentUser!.id);
+        
+        _subscriptionInitialized = false;
       }
-
-      ProgressTrackingService.instance.addListener(_onProgressChanged);
-
+      
+      _currentUser = user;
+      
+      // Load user data for non-guest users
       if (!user.isDefaultUser) {
-        await ProgressTrackingService.instance.onUserAuthenticated();
+        await _loadUserData();
+        
+        // Start listening to progress changes
+        ProgressTrackingService.instance.addListener(_onProgressChanged);
+        
+        // NEW: Re-initialize subscription service for new user
+        await _initializeSubscriptionService();
+      } else {
+        // For guest users, use defaults
+        _currentUserPreferences = UserPreferences.defaults();
+        _currentUserProgress = UserProgress.empty();
+        
+        // NEW: Ensure guest users have empty subscription state
+        if (_subscriptionService != null) {
+          await _subscriptionService!.clearSubscription();
+        }
+        _subscriptionInitialized = true; // Mark as initialized but empty
       }
-
-      debugPrint('✅ [AppState] Enhanced progress tracking setup for user: ${user.username}');
+      
+      notifyListeners();
+      debugPrint('✅ [AppState] Current user set successfully');
     } catch (e) {
-      debugPrint('❌ [AppState] Error setting up progress tracking: $e');
+      debugPrint('❌ [AppState] Error setting current user: $e');
+      rethrow;
     }
-
-    // Reinitialize audio system with new user preferences
-    await _initializeAudioSystem();
-
-    // NEW: Reinitialize subscription service for new user
-    if (_subscriptionService != null) {
-      await _subscriptionService!.initialize();
-      _subscriptionService!.addListener(_onSubscriptionChanged);
-    }
-
-    notifyListeners();
   }
 
   /// Load user preferences into app state with integrated audio preferences
@@ -461,10 +486,15 @@ class AppState extends ChangeNotifier {
         ProgressTrackingService.instance.removeListener(_onProgressChanged);
       }
 
-      // NEW: Stop listening to subscription changes and clear data
+      // ENHANCED: Complete subscription cleanup
       if (_subscriptionService != null) {
+        debugPrint('🧹 [AppState] Cleaning up subscription service...');
         _subscriptionService!.removeListener(_onSubscriptionChanged);
         await _subscriptionService!.clearSubscription();
+        
+        // Reset for next user
+        await _subscriptionService!.resetForUserSwitch();
+        _subscriptionInitialized = false;
       }
 
       // Stop any playing audio
@@ -474,7 +504,7 @@ class AppState extends ChangeNotifier {
       await UserService.instance.logout();
 
       if (switchToGuest) {
-        // Switch to guest user
+        // Switch to guest user with clean state
         final guestUser = await UserService.instance.loginAsGuest();
         await setCurrentUser(guestUser);
         debugPrint('👤 [AppState] Switched to guest user');
@@ -483,18 +513,17 @@ class AppState extends ChangeNotifier {
         _currentUser = null;
         _currentUserPreferences = null;
         _currentUserProgress = null;
-        _subscriptionService = null;
         _subscriptionInitialized = false;
         notifyListeners();
         debugPrint('👤 [AppState] Complete logout - cleared user');
       }
     } catch (e) {
       debugPrint('❌ [AppState] Error during logout: $e');
+      // Ensure cleanup happens even on error
       ProgressTrackingService.instance.removeListener(_onProgressChanged);
       _currentUser = null;
       _currentUserPreferences = null;
       _currentUserProgress = null;
-      _subscriptionService = null;
       _subscriptionInitialized = false;
       notifyListeners();
       rethrow;

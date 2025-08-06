@@ -32,10 +32,6 @@ class WelcomePage extends StatelessWidget {
             showThemeToggle: true,
             showSettings: true,
             showLogout: true,
-            actions: [
-              // NEW: Add subscription star widget
-              const SubscriptionStarWidget(),
-            ],
           ),
           body: SafeArea(
             child: SingleChildScrollView(

@@ -315,6 +315,21 @@ class UserService {
     await _ensureDefaultUserExists(); // Recreate default user
   }
 
+  Future<void> clearUserSpecificData(String userId) async {
+    await initialize();
+    
+    // Get all keys and find ones that contain the userId
+    final keys = _prefs!.getKeys();
+    final userSpecificKeys = keys.where((key) => key.contains(userId)).toList();
+    
+    // Remove all user-specific keys (this includes subscription data)
+    for (final key in userSpecificKeys) {
+      await _prefs!.remove(key);
+    }
+  }
+
+
+
   /// ADDED: Save user preferences separately
   Future<void> _saveUserPreferences(String userId, UserPreferences preferences) async {
     await _prefs!.setString(_userPreferencesKey + userId, jsonEncode(preferences.toJson()));

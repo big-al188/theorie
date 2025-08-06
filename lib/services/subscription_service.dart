@@ -44,8 +44,16 @@ class SubscriptionService extends ChangeNotifier {
 
   /// Initialize the service
   Future<void> initialize() async {
-    if (_isInitialized || _isInitializing) {
-      debugPrint('ℹ️ [SubscriptionService] Already initialized or initializing, skipping...');
+    if (_isInitialized) {
+      debugPrint('ℹ️ [SubscriptionService] Already initialized, skipping...');
+      return;
+    }
+
+    if (_isInitializing) {
+      debugPrint('ℹ️ [SubscriptionService] Already initializing, waiting...');
+      while (_isInitializing) {
+        await Future.delayed(Duration(milliseconds: 100));
+      }
       return;
     }
 
@@ -56,8 +64,33 @@ class SubscriptionService extends ChangeNotifier {
       
       _prefs = await SharedPreferences.getInstance();
       
-      // Load subscription data
-      await _loadSubscriptionData();
+      // NEW: Validate user before loading data
+      final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        debugPrint('ℹ️ [SubscriptionService] No authenticated user - using empty subscription');
+        _currentSubscription = SubscriptionData.empty();
+      } else {
+        debugPrint('👤 [SubscriptionService] Authenticated user found: ${firebaseUser.uid}');
+        
+        // Load subscription data for authenticated user
+        await _loadSubscriptionData();
+        
+        // NEW: Force refresh subscription status from server
+        try {
+          // Use the existing refreshSubscriptionStatus method but prevent recursive calls
+          debugPrint('🔄 [SubscriptionService] Refreshing subscription status from server...');
+          
+          final subscriptionData = await _getSubscriptionStatusFromFirebase();
+          if (subscriptionData != null) {
+            _currentSubscription = subscriptionData;
+            await _saveSubscriptionData(subscriptionData);
+            debugPrint('✅ [SubscriptionService] Fresh subscription status loaded');
+          }
+        } catch (e) {
+          debugPrint('⚠️ [SubscriptionService] Could not refresh subscription status: $e');
+          // Continue with cached data if available
+        }
+      }
       
       // Start periodic sync for authenticated users
       _startPeriodicSync();
@@ -234,26 +267,55 @@ class SubscriptionService extends ChangeNotifier {
   /// Load subscription data
   Future<void> _loadSubscriptionData() async {
     try {
-      debugPrint('📱 [SubscriptionService] Loading subscription data...');
-
-      // First, load from local storage
-      final localData = await _loadFromLocal();
-      if (localData != null) {
-        _currentSubscription = localData;
-        debugPrint('✅ [SubscriptionService] Loaded from local storage');
-      } else {
+      final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        debugPrint('ℹ️ [SubscriptionService] No user - cannot load subscription data');
         _currentSubscription = SubscriptionData.empty();
-        debugPrint('ℹ️ [SubscriptionService] No local data, using empty subscription');
-      }
-
-      // If user is logged in, try to sync with Firebase (but don't block initialization)
-      if (FirebaseUserService.instance.isLoggedIn) {
-        _syncWithFirebaseInBackground();
+        return;
       }
       
+      // Load cached data using user-specific key
+      final userSpecificKey = '${_subscriptionDataKey}_${firebaseUser.uid}';
+      final cachedData = _prefs?.getString(userSpecificKey);
+      
+      if (cachedData != null) {
+        try {
+          final data = jsonDecode(cachedData) as Map<String, dynamic>;
+          _currentSubscription = SubscriptionData.fromJson(data);
+          debugPrint('✅ [SubscriptionService] Loaded cached subscription data for user ${firebaseUser.uid}');
+        } catch (e) {
+          debugPrint('⚠️ [SubscriptionService] Error parsing cached data: $e');
+          _currentSubscription = SubscriptionData.empty();
+        }
+      } else {
+        debugPrint('ℹ️ [SubscriptionService] No cached subscription data found for user ${firebaseUser.uid}');
+        _currentSubscription = SubscriptionData.empty();
+      }
     } catch (e) {
-      debugPrint('❌ [SubscriptionService] Error loading subscription: $e');
+      debugPrint('❌ [SubscriptionService] Error loading subscription data: $e');
       _currentSubscription = SubscriptionData.empty();
+    }
+  }
+
+  Future<void> _saveSubscriptionData(SubscriptionData data) async {
+    try {
+      final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        debugPrint('ℹ️ [SubscriptionService] No user - cannot save subscription data');
+        return;
+      }
+      
+      // Save with user-specific key to avoid conflicts
+      final userSpecificKey = '${_subscriptionDataKey}_${firebaseUser.uid}';
+      await _prefs?.setString(userSpecificKey, jsonEncode(data.toJson()));
+      
+      // Also save last sync time with user-specific key
+      final lastSyncKey = '${_lastSyncKey}_${firebaseUser.uid}';
+      await _prefs?.setInt(lastSyncKey, DateTime.now().millisecondsSinceEpoch);
+      
+      debugPrint('✅ [SubscriptionService] Subscription data saved for user ${firebaseUser.uid}');
+    } catch (e) {
+      debugPrint('❌ [SubscriptionService] Error saving subscription data: $e');
     }
   }
 
@@ -323,8 +385,8 @@ class SubscriptionService extends ChangeNotifier {
       
       _currentSubscription = data;
       
-      // Save to local storage
-      await _saveToLocal(data);
+      // Save to local storage using new user-specific method
+      await _saveSubscriptionData(data);
       
       debugPrint('✅ [SubscriptionService] Subscription updated: ${data.status.displayName}');
       notifyListeners();
@@ -823,38 +885,40 @@ Future<Map<String, dynamic>> _handleWebCheckoutFlow(
 
   /// Refresh subscription status using HTTPS endpoint
   Future<void> refreshSubscriptionStatus() async {
-    if (!_isInitialized) {
-      debugPrint('ℹ️ [SubscriptionService] Service not initialized, skipping refresh');
+    // Remove the recursive initialization check that was causing the infinite loop
+    if (!_isInitialized && !_isInitializing) {
+      debugPrint('⚠️ [SubscriptionService] Service not initialized - cannot refresh');
       return;
     }
     
     try {
-      if (!FirebaseUserService.instance.isLoggedIn) {
-        debugPrint('ℹ️ [SubscriptionService] User not logged in, skipping refresh');
-        return;
-      }
+      _setLoading(true);
+      _hasNetworkError = false;
+      
+      debugPrint('🔄 [SubscriptionService] Refreshing subscription status...');
+      
+      final subscriptionData = await _getSubscriptionStatusFromFirebase();
 
-      debugPrint('🔄 [SubscriptionService] Refreshing subscription status');
-      
-      // Get latest subscription data from Firebase Function
-      final latestData = await _getSubscriptionStatusFromFirebase();
-      
-      if (latestData != null) {
-        _currentSubscription = latestData;
-        await _saveToLocal(latestData);
-        _hasNetworkError = false;
-        notifyListeners();
-        debugPrint('✅ [SubscriptionService] Subscription status refreshed');
+      if (subscriptionData != null) {
+        _currentSubscription = subscriptionData;
+        await _saveSubscriptionData(subscriptionData);
+        debugPrint('✅ [SubscriptionService] Subscription status refreshed successfully');
+      } else {
+        debugPrint('ℹ️ [SubscriptionService] No subscription found - using empty state');
+        _currentSubscription = SubscriptionData.empty();
+        await _saveSubscriptionData(_currentSubscription!);
       }
+      
     } catch (e) {
-      debugPrint('❌ [SubscriptionService] Error refreshing subscription: $e');
+      debugPrint('❌ [SubscriptionService] Error refreshing subscription status: $e');
+      _hasNetworkError = true;
       
-      if (e.toString().contains('network') || 
-          e.toString().contains('internet') ||
-          e.toString().contains('SocketException')) {
-        _hasNetworkError = true;
-        debugPrint('🌐 [SubscriptionService] Network error - using cached data');
+      // If we have cached data, continue using it
+      if (_currentSubscription == null) {
+        _currentSubscription = SubscriptionData.empty();
       }
+    } finally {
+      _setLoading(false);
     }
   }
 
@@ -910,12 +974,16 @@ Future<Map<String, dynamic>> _handleWebCheckoutFlow(
   void _startPeriodicSync() {
     _syncTimer?.cancel();
     
-    if (FirebaseUserService.instance.isLoggedIn) {
+    final firebaseUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (firebaseUser != null) {
+      debugPrint('⏰ [SubscriptionService] Starting periodic sync for user ${firebaseUser.uid}');
       _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-        if (_isInitialized) {
+        if (_isInitialized && firebase_auth.FirebaseAuth.instance.currentUser != null) {
           refreshSubscriptionStatus();
         }
       });
+    } else {
+      debugPrint('ℹ️ [SubscriptionService] No authenticated user - skipping periodic sync');
     }
   }
 
@@ -956,13 +1024,45 @@ Future<Map<String, dynamic>> _handleWebCheckoutFlow(
 
   /// Clear subscription data (for logout)
   Future<void> clearSubscription() async {
-    _currentSubscription = SubscriptionData.empty();
-    await _prefs?.remove(_subscriptionDataKey);
-    await _prefs?.remove(_lastSyncKey);
+    debugPrint('🧹 [SubscriptionService] Clearing subscription data...');
+    
+    // Stop periodic sync
     _syncTimer?.cancel();
+    _syncTimer = null;
+    
+    // Clear in-memory data
+    _currentSubscription = SubscriptionData.empty();
+    
+    // Clear cached data - using existing keys
+    if (_prefs != null) {
+      await _prefs!.remove(_subscriptionDataKey);
+      await _prefs!.remove(_lastSyncKey);
+      debugPrint('🗑️ [SubscriptionService] Cached subscription data removed');
+    }
+    
+    // Reset state flags
+    _hasNetworkError = false;
+    
     notifyListeners();
-    debugPrint('🧹 [SubscriptionService] Subscription data cleared');
+    debugPrint('✅ [SubscriptionService] Subscription data cleared completely');
   }
+
+
+  Future<void> resetForUserSwitch() async {
+    debugPrint('🔄 [SubscriptionService] Resetting for user switch...');
+    
+    // Stop timers and clear state
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    _currentSubscription = SubscriptionData.empty();
+    _isInitialized = false;
+    _isInitializing = false;
+    _hasNetworkError = false;
+    
+    // Don't clear SharedPreferences here - we might need it for the new user
+    debugPrint('✅ [SubscriptionService] Service reset for user switch');
+  }
+
 
   @override
   void dispose() {
