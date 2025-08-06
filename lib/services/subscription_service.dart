@@ -447,8 +447,8 @@ Future<Map<String, dynamic>> _handleWebCheckoutFlow(
     'email': email,
     'name': name,
     // Add redirect URLs based on current environment
-    'successUrl': '$baseUrl/subscription/success?session_id={CHECKOUT_SESSION_ID}',
-    'cancelUrl': '$baseUrl/subscription/cancel',
+    'successUrl': '$baseUrl',             ///subscription/success?session_id={CHECKOUT_SESSION_ID}',
+    'cancelUrl': '$baseUrl',              ///subscription/cancel',
     // Don't include paymentMethodId for web checkout flow
   };
   

@@ -579,8 +579,8 @@ async function handleWebCheckoutFlow(
   console.log(`🔄 [handleWebCheckoutFlow] Creating Stripe Checkout Session`);
   
   // UPDATED: Use dynamic URLs or fallback to environment/default URLs
-  const defaultSuccessUrl = `${process.env.WEBAPP_URL || 'http://localhost:3000'}/subscription/success?session_id={CHECKOUT_SESSION_ID}`;
-  const defaultCancelUrl = `${process.env.WEBAPP_URL || 'http://localhost:3000'}/subscription/cancel`;
+  const defaultSuccessUrl = `${process.env.WEBAPP_URL || 'http://localhost:3000'}`; ///subscription/success?session_id={CHECKOUT_SESSION_ID}`;
+  const defaultCancelUrl = `${process.env.WEBAPP_URL || 'http://localhost:3000'}`;  ///subscription/cancel;
   
   const finalSuccessUrl = successUrl || defaultSuccessUrl;
   const finalCancelUrl = cancelUrl || defaultCancelUrl;
