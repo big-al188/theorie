@@ -72,7 +72,8 @@ class FretboardInstance {
     required FretboardLayout layout,
     required int globalFretCount,
   }) {
-    // Always respect the user's selected octaves
+    // Always respect the user's selected octaves for the config
+    // The scale strip will do its own smart octave detection based on highlighted notes
     Set<int> octavesToUse = Set.from(selectedOctaves);
 
     if (octavesToUse.isEmpty) {
@@ -81,56 +82,10 @@ class FretboardInstance {
       octavesToUse = {3};
     }
 
-    // For chord inversion mode, we still respect user selection but may add adjacent octaves
-    // if the chord voicing naturally extends beyond the selected range
-    if (viewMode == ViewMode.chordInversions) { // FIXED: Updated reference
-      final chord = Chord.get(chordType);
-      if (chord != null) {
-        // Get the user's primary octave selection
-        final userOctave = octavesToUse.first;
-        final rootNote = Note.fromString('$root$userOctave');
-
-        // Build the voicing with the new fixed algorithm
-        final voicingMidiNotes = chord.buildVoicing(
-          root: rootNote,
-          inversion: chordInversion,
-        );
-
-        if (voicingMidiNotes.isNotEmpty) {
-          // Calculate the actual octave span of the voicing
-          final minMidi = voicingMidiNotes.reduce(math.min);
-          final maxMidi = voicingMidiNotes.reduce(math.max);
-          final minOctave = (minMidi ~/ 12) - 1;
-          final maxOctave = (maxMidi ~/ 12) - 1;
-
-          // Only add additional octaves if the voicing actually extends beyond
-          // the user's selection, and only add the necessary adjacent octaves
-          final voicingOctaves = <int>{};
-          for (int i = minOctave; i <= maxOctave; i++) {
-            voicingOctaves.add(i);
-          }
-
-          // If the voicing fits within or close to the user's selection, respect it
-          // Otherwise, include the minimal span needed for the chord
-          if (voicingOctaves.length <= 2 &&
-              voicingOctaves.any((oct) => (oct - userOctave).abs() <= 1)) {
-            // Voicing is reasonable - use user's octave plus any necessary adjacent ones
-            octavesToUse = {userOctave};
-            for (final oct in voicingOctaves) {
-              if ((oct - userOctave).abs() <= 1) {
-                octavesToUse.add(oct);
-              }
-            }
-          } else {
-            // Voicing spans too far - use the calculated span but centered around user's choice
-            octavesToUse = voicingOctaves;
-          }
-
-          debugPrint(
-              'Chord mode: user selected octave $userOctave, voicing spans $voicingOctaves, using $octavesToUse');
-        }
-      }
-    }
+    // Note: We don't do octave expansion here anymore.
+    // The scale strip will determine its own octaves based on highlighted notes.
+    debugPrint(
+        'FretboardInstance.toConfig: using user-selected octaves for config: $octavesToUse');
 
     return FretboardConfig(
       root: root,
@@ -139,7 +94,7 @@ class FretboardInstance {
       modeIndex: modeIndex,
       chordType: chordType,
       chordInversion: chordInversion,
-      selectedOctaves: octavesToUse,
+      selectedOctaves: octavesToUse, // User selection for generating highlights
       selectedIntervals: selectedIntervals,
       tuning: tuning,
       stringCount: stringCount,
@@ -149,9 +104,9 @@ class FretboardInstance {
       showFretboard: true,
       showChordName: false,
       showNoteNames: showNoteNames,
-      showAdditionalOctaves: showAdditionalOctaves, // NEW: Pass through the toggle state
-      width: 400.0, // FIXED: Provide default width
-      height: 300.0, // FIXED: Provide default height
+      showAdditionalOctaves: showAdditionalOctaves,
+      width: 400.0,
+      height: 300.0,
       padding: EdgeInsets.zero,
       visibleFretStart: visibleFretStart,
       visibleFretEnd: visibleFretEnd.clamp(1, globalFretCount),
@@ -191,7 +146,8 @@ class FretboardInstance {
       isCompact: isCompact ?? this.isCompact,
       showScaleStrip: showScaleStrip ?? this.showScaleStrip,
       showNoteNames: showNoteNames ?? this.showNoteNames,
-      showAdditionalOctaves: showAdditionalOctaves ?? this.showAdditionalOctaves, // NEW
+      showAdditionalOctaves:
+          showAdditionalOctaves ?? this.showAdditionalOctaves, // NEW
       visibleFretStart: visibleFretStart ?? this.visibleFretStart,
       visibleFretEnd: visibleFretEnd ?? this.visibleFretEnd,
     );

@@ -25,59 +25,86 @@ class ScaleStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
 
-    // Always use the user's selected octaves, don't override with chord voicing calculation
-    Set<int> displayOctaves =
-        config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
-    int actualOctaveCount = displayOctaves.length;
+    // SMART OCTAVE DETECTION: For chord modes, show octaves based on actual highlighted notes
+    Set<int> displayOctaves;
 
-    // For chord mode, we still respect the user's octave selection
-    // but may show additional context if the chord naturally extends
-    if (config.isChordMode) {
-      final chord = Chord.get(config.chordType);
-      if (chord != null && displayOctaves.isNotEmpty) {
-        // Use the user's selected octave as the primary display
-        final userOctave = displayOctaves.first;
-        final rootNote = Note.fromString('${config.root}$userOctave');
-        final voicingMidiNotes = chord.buildVoicing(
-          root: rootNote,
-          inversion: config.chordInversion,
-        );
+    if (config.isAnyChordMode) {
+      // Get the highlight map to see which notes are actually highlighted
+      final highlightMap = FretboardController.getHighlightMap(config);
 
-        if (voicingMidiNotes.isNotEmpty) {
-          // Check if the chord voicing extends beyond the user's selection
-          final minNote = Note.fromMidi(voicingMidiNotes.reduce(math.min));
-          final maxNote = Note.fromMidi(voicingMidiNotes.reduce(math.max));
+      if (highlightMap.isNotEmpty) {
+        // Calculate which scale strip octaves contain highlighted notes
+        // Scale strip octaves are relative to the root, not absolute MIDI octaves
+        final scaleStripOctaves = <int>{};
 
-          // Only add adjacent octaves if necessary and reasonable
-          final voicingOctaves = <int>{};
-          for (int i = minNote.octave; i <= maxNote.octave; i++) {
-            voicingOctaves.add(i);
-          }
+        // Get the user's selected octave as the base for the scale strip
+        final baseOctave =
+            config.selectedOctaves.isEmpty ? 3 : config.selectedOctaves.first;
+        final rootNote = Note.fromString('${config.root}$baseOctave');
+        final baseMidi = rootNote.midi;
 
-          // If the voicing only extends one octave beyond user selection, include it
-          // Otherwise, stick with user selection
-          if (voicingOctaves.length <= 3) {
-            final combinedOctaves = Set<int>.from(displayOctaves);
-            for (final oct in voicingOctaves) {
-              if (displayOctaves.any((userOct) => (oct - userOct).abs() <= 1)) {
-                combinedOctaves.add(oct);
-              }
-            }
-            displayOctaves = combinedOctaves;
-            actualOctaveCount = displayOctaves.length;
+        for (final midiNote in highlightMap.keys) {
+          // Calculate which scale strip octave this note falls into
+          // Each scale strip covers 12 semitones starting from the root
+          final intervalFromBase = midiNote - baseMidi;
+          final scaleStripOctave = baseOctave + (intervalFromBase ~/ 12);
 
-            debugPrint(
-                'Chord mode scale strip: user octaves=${config.selectedOctaves}, voicing spans=${voicingOctaves}, displaying=$displayOctaves');
+          // SPECIAL CASE: Don't create new scale strips for pure octave notes
+          // If this note is exactly 12, 24, 36... semitones from root (pure octave)
+          // and it's the only note in that scale strip octave, don't add it
+          final isOctaveNote =
+              intervalFromBase > 0 && intervalFromBase % 12 == 0;
+
+          if (!isOctaveNote || scaleStripOctave == baseOctave) {
+            // Either it's not an octave note, or it's in the base octave
+            scaleStripOctaves.add(scaleStripOctave);
           } else {
-            debugPrint(
-                'Chord mode scale strip: voicing too wide, using user selection only: $displayOctaves');
+            // It's an octave note in a higher octave
+            // Check if there are other non-octave notes in this same scale strip octave
+            final hasOtherNotesInOctave = highlightMap.keys.any((otherMidi) {
+              final otherInterval = otherMidi - baseMidi;
+              final otherScaleStripOctave = baseOctave + (otherInterval ~/ 12);
+              final isOtherOctaveNote =
+                  otherInterval > 0 && otherInterval % 12 == 0;
+              return otherScaleStripOctave == scaleStripOctave &&
+                  !isOtherOctaveNote;
+            });
+
+            if (hasOtherNotesInOctave) {
+              // There are other notes in this octave, so include it
+              scaleStripOctaves.add(scaleStripOctave);
+            }
+            // Otherwise, don't add this scale strip octave (pure octave note only)
           }
         }
+
+        if (scaleStripOctaves.isNotEmpty) {
+          displayOctaves = scaleStripOctaves;
+          debugPrint(
+              'Scale strip: chord mode using scale strip octaves relative to ${config.root}$baseOctave: $displayOctaves (octave-only strips filtered out)');
+        } else {
+          // Fallback to user selection if no highlights found
+          displayOctaves =
+              config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+          debugPrint(
+              'Scale strip: chord mode fallback to user octaves: $displayOctaves');
+        }
+      } else {
+        // No highlights - use user selection
+        displayOctaves =
+            config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+        debugPrint(
+            'Scale strip: chord mode no highlights, using user octaves: $displayOctaves');
       }
+    } else {
+      // For non-chord modes, always use user-selected octaves
+      displayOctaves =
+          config.selectedOctaves.isEmpty ? {3} : config.selectedOctaves;
+      debugPrint(
+          'Scale strip: non-chord mode using user octaves: $displayOctaves');
     }
 
-    debugPrint(
-        'Scale strip: final display octaves=$displayOctaves, count=$actualOctaveCount');
+    int actualOctaveCount = displayOctaves.length;
 
     // Use responsive height calculation
     final noteRowHeight = ResponsiveConstants.getNoteRowHeight(screenWidth);
@@ -105,7 +132,8 @@ class ScaleStrip extends StatelessWidget {
             size: Size(actualWidth, totalHeight),
             painter: ScaleStripPainter(
               config: config,
-              displayOctaves: displayOctaves,
+              displayOctaves:
+                  displayOctaves, // Now filters out octave-only strips
               highlightMap: FretboardController.getHighlightMap(config),
               screenWidth: screenWidth,
             ),

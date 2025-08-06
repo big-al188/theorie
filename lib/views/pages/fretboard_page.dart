@@ -1,4 +1,5 @@
 // lib/views/pages/fretboard_page.dart - Enhanced for audio integration
+import 'package:Theorie/controllers/fretboard_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
@@ -67,7 +68,8 @@ class _FretboardPageState extends State<FretboardPage> {
         chordInversion: ChordInversion.root,
         showScaleStrip: true,
         showNoteNames: false,
-        showAdditionalOctaves: false, // NEW: Default to false for new fretboards
+        showAdditionalOctaves:
+            false, // NEW: Default to false for new fretboards
         isCompact: false,
       );
 
@@ -141,7 +143,7 @@ class _FretboardPageState extends State<FretboardPage> {
                     : 'Hide Controls (Clean View)',
                 onPressed: _toggleCleanView,
               ),
-              if (!_cleanViewMode) 
+              if (!_cleanViewMode)
                 IconButton(
                   icon: const Icon(Icons.add),
                   tooltip: 'Add Fretboard',
@@ -251,9 +253,10 @@ class _FretboardCard extends StatelessWidget {
         : fretboard;
 
     // Adjust fret end if needed
-    final adjustedFretboard = finalFretboard.visibleFretEnd > globalState.fretCount
-        ? finalFretboard.copyWith(visibleFretEnd: globalState.fretCount)
-        : finalFretboard;
+    final adjustedFretboard =
+        finalFretboard.visibleFretEnd > globalState.fretCount
+            ? finalFretboard.copyWith(visibleFretEnd: globalState.fretCount)
+            : finalFretboard;
 
     // Check if this mode is not yet implemented
     if (!adjustedFretboard.viewMode.isImplemented) {
@@ -280,8 +283,9 @@ class _FretboardCard extends StatelessWidget {
     );
   }
 
-// ENHANCED: Proper fretboard section with audio controls integration
-  Widget _buildFretboardSection(BuildContext context, FretboardInstance instance) {
+// ENHANCED: Proper fretboard section with smart octave detection
+  Widget _buildFretboardSection(
+      BuildContext context, FretboardInstance instance) {
     final config = instance.toConfig(
       layout: globalState.layout,
       globalFretCount: globalState.fretCount,
@@ -290,98 +294,147 @@ class _FretboardCard extends StatelessWidget {
     // Calculate responsive dimensions
     final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
     final availableWidth = screenWidth - _getHorizontalPadding(deviceType);
-    
+
     // Calculate heights using responsive constants
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
     final fretboardHeight = (instance.stringCount + 1) * stringHeight;
-    
-    // UPDATED: Account for audio controls height for ALL modes (not just intervals)
-    final audioControlsHeight = (globalState.audioEnabled && !cleanViewMode) 
-        ? _getAudioControlsHeight(deviceType) 
+
+    // Account for audio controls height for ALL modes
+    final audioControlsHeight = (globalState.audioEnabled && !cleanViewMode)
+        ? _getAudioControlsHeight(deviceType)
         : 0.0;
-    // OLD CODE WAS:
-    // final audioControlsHeight = (config.isIntervalMode && globalState.audioEnabled && !cleanViewMode) 
-    //     ? _getAudioControlsHeight(deviceType) 
-    //     : 0.0;
-    
-    // FIXED: For chord modes, be more conservative about octave expansion
-    int actualOctaveCount = instance.selectedOctaves.isEmpty ? 1 : instance.selectedOctaves.length;
-    
+
+    // SMART OCTAVE DETECTION: For chord modes, calculate octaves based on scale strip octaves
+    int actualOctaveCount;
+
     if (instance.showScaleStrip && config.isAnyChordMode) {
-      // For chord modes, limit octave expansion to prevent overflow
-      final chord = Chord.get(instance.chordType);
-      if (chord != null) {
-        final userOctave = instance.selectedOctaves.isEmpty ? 3 : instance.selectedOctaves.first;
-        final rootNote = Note.fromString('${instance.root}$userOctave');
-        
-        try {
-          final voicingMidiNotes = chord.buildVoicing(
-            root: rootNote,
-            inversion: instance.chordInversion,
-          );
-          
-          if (voicingMidiNotes.isNotEmpty) {
-            final minNote = Note.fromMidi(voicingMidiNotes.reduce(math.min));
-            final maxNote = Note.fromMidi(voicingMidiNotes.reduce(math.max));
-            final voicingSpan = maxNote.octave - minNote.octave + 1;
-            
-            // FIXED: Limit octave count to prevent overflow (max 3 octaves for chord modes)
-            actualOctaveCount = math.min(voicingSpan, 3);
+      // Get the highlight map to see which notes are actually highlighted
+      final highlightMap = FretboardController.getHighlightMap(config);
+
+      if (highlightMap.isNotEmpty) {
+        // Calculate which scale strip octaves contain highlighted notes
+        // Scale strip octaves are relative to the root, not absolute MIDI octaves
+        final scaleStripOctaves = <int>{};
+
+        // Get the user's selected octave as the base for the scale strip
+        final baseOctave =
+            config.selectedOctaves.isEmpty ? 3 : config.selectedOctaves.first;
+        final rootNote = Note.fromString('${config.root}$baseOctave');
+        final baseMidi = rootNote.midi;
+
+        for (final midiNote in highlightMap.keys) {
+          // Calculate which scale strip octave this note falls into
+          // Each scale strip covers 12 semitones starting from the root
+          final intervalFromBase = midiNote - baseMidi;
+          final scaleStripOctave = baseOctave + (intervalFromBase ~/ 12);
+
+          // SPECIAL CASE: Don't create new scale strips for pure octave notes
+          // If this note is exactly 12, 24, 36... semitones from root (pure octave)
+          // and it's the only note in that scale strip octave, don't add it
+          final isOctaveNote =
+              intervalFromBase > 0 && intervalFromBase % 12 == 0;
+
+          if (!isOctaveNote || scaleStripOctave == baseOctave) {
+            // Either it's not an octave note, or it's in the base octave
+            scaleStripOctaves.add(scaleStripOctave);
+          } else {
+            // It's an octave note in a higher octave
+            // Check if there are other non-octave notes in this same scale strip octave
+            final hasOtherNotesInOctave = highlightMap.keys.any((otherMidi) {
+              final otherInterval = otherMidi - baseMidi;
+              final otherScaleStripOctave = baseOctave + (otherInterval ~/ 12);
+              final isOtherOctaveNote =
+                  otherInterval > 0 && otherInterval % 12 == 0;
+              return otherScaleStripOctave == scaleStripOctave &&
+                  !isOtherOctaveNote;
+            });
+
+            if (hasOtherNotesInOctave) {
+              // There are other notes in this octave, so include it
+              scaleStripOctaves.add(scaleStripOctave);
+            }
+            // Otherwise, don't add this scale strip octave (pure octave note only)
           }
-        } catch (e) {
-          debugPrint('Error calculating chord voicing octaves: $e');
-          actualOctaveCount = 1; // Fallback to single octave
         }
+
+        if (scaleStripOctaves.isNotEmpty) {
+          actualOctaveCount = scaleStripOctaves.length;
+          debugPrint(
+              'Fretboard section: chord mode using ${scaleStripOctaves.length} scale strip octaves relative to ${config.root}$baseOctave: $scaleStripOctaves (octave-only strips filtered out)');
+        } else {
+          // Fallback to user selection if no highlights found
+          actualOctaveCount = instance.selectedOctaves.isEmpty
+              ? 1
+              : instance.selectedOctaves.length;
+          debugPrint(
+              'Fretboard section: chord mode fallback to ${actualOctaveCount} user octaves');
+        }
+      } else {
+        // No highlights - use user selection
+        actualOctaveCount = instance.selectedOctaves.isEmpty
+            ? 1
+            : instance.selectedOctaves.length;
+        debugPrint(
+            'Fretboard section: chord mode no highlights, using ${actualOctaveCount} user octaves');
       }
+    } else {
+      // For non-chord modes or when scale strip is hidden, use user selection
+      actualOctaveCount = instance.selectedOctaves.isEmpty
+          ? 1
+          : instance.selectedOctaves.length;
+      debugPrint(
+          'Fretboard section: non-chord mode using ${actualOctaveCount} user octaves');
     }
-    
-    // Calculate scale strip height with proper octave count
-    final scaleStripHeight = instance.showScaleStrip 
+
+    // Calculate scale strip height with smart octave count
+    final scaleStripHeight = instance.showScaleStrip
         ? _calculateScaleStripHeight(actualOctaveCount)
         : 0.0;
-    
+
     // Add spacing between fretboard and scale strip only when both are shown
-    final spacingHeight = (instance.showScaleStrip && config.showFretboard) 
+    final spacingHeight = (instance.showScaleStrip && config.showFretboard)
         ? ResponsiveConstants.getFretboardScaleStripSpacing(screenWidth)
         : 0.0;
-    
+
     // Chord name height if needed
-    final chordNameHeight = (config.showChordName && config.isAnyChordMode) ? 30.0 : 0.0;
-    
-    // ENHANCED: More generous height calculation with audio controls consideration
-    final baseHeight = fretboardHeight + scaleStripHeight + spacingHeight + chordNameHeight + audioControlsHeight;
-    final minContainerHeight = fretboardHeight + chordNameHeight + audioControlsHeight +
+    final chordNameHeight =
+        (config.showChordName && config.isAnyChordMode) ? 30.0 : 0.0;
+
+    // Height calculation that prevents overflow
+    final baseHeight =
+        fretboardHeight + scaleStripHeight + spacingHeight + chordNameHeight;
+    final minContainerHeight = fretboardHeight +
+        chordNameHeight +
         (config.isAnyChordMode ? 60.0 : 40.0); // Extra space for chord modes
-    final totalHeight = instance.showScaleStrip ? baseHeight : math.max(baseHeight, minContainerHeight);
+
+    final totalHeight = instance.showScaleStrip
+        ? baseHeight
+        : math.max(baseHeight, minContainerHeight);
 
     return Container(
       padding: EdgeInsets.all(_getCardPadding()),
-      // FIXED: Add background color to ensure proper visual appearance
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(8.0),
       ),
       child: Column(
         children: [
-          // UPDATED: Audio controls integration for ALL modes (not just interval mode)
+          // Audio controls integration for ALL modes
           if (globalState.audioEnabled && !cleanViewMode) ...[
             AudioControls(config: config),
-            SizedBox(height: ResponsiveConstants.getAudioControlsSpacing(screenWidth)),
+            SizedBox(
+                height:
+                    ResponsiveConstants.getAudioControlsSpacing(screenWidth)),
           ],
-          // OLD CODE WAS:
-          // if (config.isIntervalMode && globalState.audioEnabled && !cleanViewMode) ...[
-          //   AudioControls(config: config),
-          //   SizedBox(height: ResponsiveConstants.getAudioControlsSpacing(screenWidth)),
-          // ],
-          
-          // Main fretboard widget
+
+          // Main fretboard widget with correct height calculation
           SizedBox(
             width: availableWidth,
-            height: totalHeight - audioControlsHeight,
+            height: totalHeight,
             child: FretboardWidget(
               config: config.copyWith(
                 width: availableWidth,
-                height: totalHeight - audioControlsHeight,
+                height: totalHeight,
                 showChordName: cleanViewMode && config.isAnyChordMode,
               ),
               onFretTap: (stringIndex, fretIndex) {
@@ -420,8 +473,9 @@ class _FretboardCard extends StatelessWidget {
   // RESTORED: Proper responsive calculations
   double _calculateScaleStripHeight(int octaveCount) {
     final noteRowHeight = ResponsiveConstants.getNoteRowHeight(screenWidth);
-    final paddingPerOctave = ResponsiveConstants.getScaleStripPaddingPerOctave(screenWidth);
-    
+    final paddingPerOctave =
+        ResponsiveConstants.getScaleStripPaddingPerOctave(screenWidth);
+
     return UIConstants.scaleStripLabelSpace +
         (octaveCount * noteRowHeight) +
         (octaveCount * paddingPerOctave);
@@ -438,7 +492,8 @@ class _FretboardCard extends StatelessWidget {
     }
   }
 
-  Widget _buildUnimplementedCard(BuildContext context, FretboardInstance instance) {
+  Widget _buildUnimplementedCard(
+      BuildContext context, FretboardInstance instance) {
     return Card(
       margin: cleanViewMode ? EdgeInsets.zero : null,
       elevation: cleanViewMode ? 0 : null,
@@ -456,17 +511,17 @@ class _FretboardCard extends StatelessWidget {
             Text(
               '${instance.viewMode.displayName} Mode',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               'Coming Soon!',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
@@ -480,7 +535,8 @@ class _FretboardCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 TextButton.icon(
-                  onPressed: () => onUpdate(fretboard.copyWith(viewMode: ViewMode.chordInversions)),
+                  onPressed: () => onUpdate(
+                      fretboard.copyWith(viewMode: ViewMode.chordInversions)),
                   icon: const Icon(Icons.music_note),
                   label: const Text('Try Chord Inversions'),
                 ),
@@ -513,7 +569,7 @@ class _FretboardCard extends StatelessWidget {
       layout: globalState.layout,
       globalFretCount: globalState.fretCount,
     );
-    
+
     String headerText = _getHeaderText(config);
 
     // Responsive header font size
@@ -580,16 +636,16 @@ class _FretboardCard extends StatelessWidget {
                 : 24.0,
             tooltip: 'Toggle Scale Strip',
             onPressed: () {
-              onUpdate(instance.copyWith(
-                  showScaleStrip: !instance.showScaleStrip));
+              onUpdate(
+                  instance.copyWith(showScaleStrip: !instance.showScaleStrip));
             },
           ),
           // NEW: Additional Octaves Toggle (only in chord inversion mode)
           if (instance.viewMode == ViewMode.chordInversions)
             IconButton(
               icon: Icon(
-                instance.showAdditionalOctaves 
-                    ? Icons.all_inclusive 
+                instance.showAdditionalOctaves
+                    ? Icons.all_inclusive
                     : Icons.all_inclusive_outlined,
                 color: instance.showAdditionalOctaves
                     ? Theme.of(context).primaryColor
