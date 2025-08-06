@@ -280,7 +280,7 @@ class _FretboardCard extends StatelessWidget {
     );
   }
 
-  // ENHANCED: Proper fretboard section with audio controls integration
+// ENHANCED: Proper fretboard section with audio controls integration
   Widget _buildFretboardSection(BuildContext context, FretboardInstance instance) {
     final config = instance.toConfig(
       layout: globalState.layout,
@@ -295,10 +295,14 @@ class _FretboardCard extends StatelessWidget {
     final stringHeight = ResponsiveConstants.getStringHeight(screenWidth);
     final fretboardHeight = (instance.stringCount + 1) * stringHeight;
     
-    // ENHANCED: Account for audio controls height
-    final audioControlsHeight = (config.isIntervalMode && globalState.audioEnabled && !cleanViewMode) 
+    // UPDATED: Account for audio controls height for ALL modes (not just intervals)
+    final audioControlsHeight = (globalState.audioEnabled && !cleanViewMode) 
         ? _getAudioControlsHeight(deviceType) 
         : 0.0;
+    // OLD CODE WAS:
+    // final audioControlsHeight = (config.isIntervalMode && globalState.audioEnabled && !cleanViewMode) 
+    //     ? _getAudioControlsHeight(deviceType) 
+    //     : 0.0;
     
     // FIXED: For chord modes, be more conservative about octave expansion
     int actualOctaveCount = instance.selectedOctaves.isEmpty ? 1 : instance.selectedOctaves.length;
@@ -359,11 +363,16 @@ class _FretboardCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // NEW: Audio controls integration for interval mode
-          if (config.isIntervalMode && globalState.audioEnabled && !cleanViewMode) ...[
+          // UPDATED: Audio controls integration for ALL modes (not just interval mode)
+          if (globalState.audioEnabled && !cleanViewMode) ...[
             AudioControls(config: config),
             SizedBox(height: ResponsiveConstants.getAudioControlsSpacing(screenWidth)),
           ],
+          // OLD CODE WAS:
+          // if (config.isIntervalMode && globalState.audioEnabled && !cleanViewMode) ...[
+          //   AudioControls(config: config),
+          //   SizedBox(height: ResponsiveConstants.getAudioControlsSpacing(screenWidth)),
+          // ],
           
           // Main fretboard widget
           SizedBox(

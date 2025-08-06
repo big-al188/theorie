@@ -24,8 +24,8 @@ class _AudioControlsState extends State<AudioControls> {
 
   @override
   Widget build(BuildContext context) {
-    // Only show audio controls in interval mode
-    if (!widget.config.isIntervalMode) return const SizedBox.shrink();
+    // UPDATED: Remove interval mode restriction - show audio controls for ALL modes
+    // OLD: if (!widget.config.isIntervalMode) return const SizedBox.shrink();
     
     return Consumer<AppState>(
       builder: (context, appState, child) {

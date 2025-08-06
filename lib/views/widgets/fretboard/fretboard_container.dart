@@ -433,7 +433,7 @@ class _FretboardContainerState extends State<FretboardContainer> {
     }
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
@@ -442,14 +442,13 @@ class _FretboardContainerState extends State<FretboardContainer> {
           globalFretCount: appState.fretCount,
         );
 
-        // NEW: Check if we should show audio controls
-        final shouldShowAudioControls = config.isIntervalMode && 
-                                       appState.audioEnabled && 
+        // UPDATED: Check if we should show audio controls for ALL modes (not just intervals)
+        final shouldShowAudioControls = appState.audioEnabled && 
                                        widget.showControls;
 
         return Column(
           children: [
-            // NEW: Audio controls for interval mode
+            // UPDATED: Audio controls for all modes
             if (shouldShowAudioControls) ...[
               AudioControls(config: config),
               SizedBox(height: ResponsiveConstants.getAudioControlsSpacing(

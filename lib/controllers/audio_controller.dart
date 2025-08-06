@@ -187,10 +187,14 @@ class AudioController {
   
   /// Get MIDI notes from a fretboard configuration's highlighted intervals
   static List<int> getNotesFromConfig(FretboardConfig config) {
-    if (!config.isIntervalMode) return [];
-    
-    final highlightMap = FretboardController.getIntervalHighlightMap(config);
+    final highlightMap = FretboardController.getHighlightMap(config);
     final midiNumbers = highlightMap.keys.toList()..sort();
+    
+    if (kDebugMode) {
+      print('AudioController.getNotesFromConfig: Found ${midiNumbers.length} notes for ${config.viewMode.displayName} mode');
+      print('MIDI notes: $midiNumbers');
+    }
+    
     return midiNumbers;
   }
   
