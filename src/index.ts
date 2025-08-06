@@ -18,7 +18,7 @@ const db = admin.firestore();
 const stripeSecretKey = defineSecret("STRIPE_SECRET_KEY");
 const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
 
-// Enhanced CORS configuration for HTTP functions
+// Enhanced CORS configuration for HTTP functions - UPDATED: Added GitLab Pages regex
 const corsHandler = cors({
   origin: [
     'http://localhost:3000',
@@ -30,7 +30,8 @@ const corsHandler = cors({
     'https://theorie-ad84fe.gitlab.io',           // Your GitLab Pages URL
     /localhost:\d+/,
     /\.web\.app$/,
-    /\.firebaseapp\.com$/
+    /\.firebaseapp\.com$/,
+    /\.gitlab\.io$/  // ADDED: GitLab Pages regex support
   ],
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -92,6 +93,36 @@ function handleRequest(
       }
     });
   };
+}
+
+/**
+ * ADDED: Helper function to determine app URL from request origin
+ */
+function getAppUrlFromOrigin(origin: string): string {
+  console.log(`🔍 [URL] Determining app URL from origin: ${origin}`);
+  
+  // Handle localhost development (any port)
+  if (origin.includes('localhost')) {
+    console.log(`✅ [URL] Using localhost origin: ${origin}`);
+    return origin;
+  }
+  
+  // Handle GitLab Pages
+  if (origin.includes('gitlab.io')) {
+    console.log(`✅ [URL] Using GitLab Pages origin: ${origin}`);
+    return origin;
+  }
+  
+  // Handle Firebase hosting
+  if (origin.includes('web.app') || origin.includes('firebaseapp.com')) {
+    console.log(`✅ [URL] Using Firebase hosting origin: ${origin}`);
+    return origin;
+  }
+  
+  // Fallback for production - use environment variable or default
+  const fallbackUrl = process.env.WEBAPP_URL || 'https://theorie-ad84fe.gitlab.io';
+  console.log(`⚠️ [URL] Unknown origin, using fallback: ${fallbackUrl}`);
+  return fallbackUrl;
 }
 
 /**
@@ -304,11 +335,13 @@ export const createSubscriptionSetup = onRequest(
         emailVerified: user.email_verified,
       });
 
-      // UPDATED: Extract redirect URLs from request body
+      // UPDATED: Extract redirect URLs from request body and add smart URL handling
       const {tier, email, name, paymentMethodId, successUrl, cancelUrl} = req.body;
       const userId = user.uid;
+      const requestOrigin = req.headers?.origin || '';
 
       console.log(`🔄 [createSubscriptionSetup] Creating subscription setup for user ${userId}, tier: ${tier}`);
+      console.log(`📋 [createSubscriptionSetup] Request origin: ${requestOrigin}`);
       console.log(`📋 [createSubscriptionSetup] Request data:`, {
         tier, 
         email, 
@@ -317,6 +350,30 @@ export const createSubscriptionSetup = onRequest(
         userId,
         successUrl,
         cancelUrl
+      });
+
+      // ADDED: Smart URL handling - use provided URLs or generate from origin
+      let finalSuccessUrl: string;
+      let finalCancelUrl: string;
+      
+      if (successUrl && cancelUrl) {
+        // Use provided URLs (from client)
+        finalSuccessUrl = successUrl;
+        finalCancelUrl = cancelUrl;
+        console.log(`✅ [createSubscriptionSetup] Using client-provided URLs`);
+      } else {
+        // Generate URLs from request origin
+        const appUrl = getAppUrlFromOrigin(requestOrigin);
+        finalSuccessUrl = `${appUrl}?checkout_status=success&session_id={CHECKOUT_SESSION_ID}`;
+        finalCancelUrl = `${appUrl}?checkout_status=cancelled`;
+        console.log(`✅ [createSubscriptionSetup] Generated URLs from origin`);
+      }
+      
+      console.log(`📋 [createSubscriptionSetup] Final URLs:`, {
+        successUrl: finalSuccessUrl,
+        cancelUrl: finalCancelUrl,
+        providedByClient: !!(successUrl && cancelUrl),
+        generatedFromOrigin: requestOrigin
       });
 
       // Enhanced validation with specific error messages
@@ -446,15 +503,15 @@ export const createSubscriptionSetup = onRequest(
         return;
       }
 
-      // UPDATED: Pass redirect URLs to the handler functions
+      // UPDATED: Pass smart URLs to the handler functions
       if (paymentMethodId) {
         // Mobile flow: Create subscription with payment method
         console.log(`🔄 [createSubscriptionSetup] Using mobile flow with payment method: ${paymentMethodId}`);
         await handleMobileSubscriptionFlow(stripe, customer, priceId, tier, userId, paymentMethodId, res);
       } else {
-        // Web flow: Create Stripe Checkout Session with dynamic URLs
+        // Web flow: Create Stripe Checkout Session with smart URLs
         console.log(`🔄 [createSubscriptionSetup] Using web checkout flow`);
-        await handleWebCheckoutFlow(stripe, customer, priceId, tier, userId, email, res, successUrl, cancelUrl);
+        await handleWebCheckoutFlow(stripe, customer, priceId, tier, userId, email, res, finalSuccessUrl, finalCancelUrl);
       }
       
     } catch (error: any) {
@@ -563,7 +620,7 @@ async function handleMobileSubscriptionFlow(
 }
 
 /**
- * Handle web checkout flow with Stripe Checkout Session - UPDATED to use dynamic URLs
+ * Handle web checkout flow with Stripe Checkout Session - UPDATED to use smart URLs
  */
 async function handleWebCheckoutFlow(
   stripe: Stripe,
@@ -573,29 +630,17 @@ async function handleWebCheckoutFlow(
   userId: string,
   email: string,
   res: any,
-  successUrl?: string,
-  cancelUrl?: string
+  successUrl: string,  // CHANGED: Now required, not optional
+  cancelUrl: string    // CHANGED: Now required, not optional
 ) {
   console.log(`🔄 [handleWebCheckoutFlow] Creating Stripe Checkout Session`);
-  
-  // UPDATED: Use dynamic URLs or fallback to environment/default URLs
-  const defaultSuccessUrl = `${process.env.WEBAPP_URL || 'http://localhost:3000'}/subscription/success?session_id={CHECKOUT_SESSION_ID}`;
-  const defaultCancelUrl = `${process.env.WEBAPP_URL || 'http://localhost:3000'}/subscription/cancel`;
-  
-  const finalSuccessUrl = successUrl || defaultSuccessUrl;
-  const finalCancelUrl = cancelUrl || defaultCancelUrl;
-  
   console.log(`📋 [handleWebCheckoutFlow] Using URLs:`, {
-    successUrl: finalSuccessUrl,
-    cancelUrl: finalCancelUrl,
-    providedByClient: {
-      success: !!successUrl,
-      cancel: !!cancelUrl
-    }
+    successUrl: successUrl,
+    cancelUrl: cancelUrl
   });
   
   try {
-    // Create Stripe Checkout Session with dynamic URLs
+    // Create Stripe Checkout Session with smart URLs
     const session = await stripe.checkout.sessions.create({
       customer: customer.id,
       mode: 'subscription',
@@ -613,9 +658,9 @@ async function handleWebCheckoutFlow(
           appName: "Theorie",
         },
       },
-      // UPDATED: Use dynamic URLs from client or fallback
-      success_url: finalSuccessUrl,
-      cancel_url: finalCancelUrl,
+      // UPDATED: Use smart URLs passed from createSubscriptionSetup
+      success_url: successUrl,
+      cancel_url: cancelUrl,
       automatic_tax: { enabled: true },
       billing_address_collection: 'required',
       customer_update: {
@@ -626,8 +671,8 @@ async function handleWebCheckoutFlow(
 
     console.log(`✅ [handleWebCheckoutFlow] Checkout session created: ${session.id}`);
     console.log(`📋 [handleWebCheckoutFlow] Session URL: ${session.url}`);
-    console.log(`📋 [handleWebCheckoutFlow] Session will redirect to: ${finalSuccessUrl} on success`);
-    console.log(`📋 [handleWebCheckoutFlow] Session will redirect to: ${finalCancelUrl} on cancel`);
+    console.log(`📋 [handleWebCheckoutFlow] Session will redirect to: ${successUrl} on success`);
+    console.log(`📋 [handleWebCheckoutFlow] Session will redirect to: ${cancelUrl} on cancel`);
     
     const response = {
       success: true,
@@ -637,8 +682,8 @@ async function handleWebCheckoutFlow(
       message: 'Checkout session created successfully',
       // Include URLs in response for debugging
       redirectUrls: {
-        success: finalSuccessUrl,
-        cancel: finalCancelUrl
+        success: successUrl,
+        cancel: cancelUrl
       }
     };
 
@@ -711,7 +756,7 @@ export const createPaymentIntent = onRequest(
       const {amount, currency = "usd", description} = req.body;
       const userId = user.uid;
 
-      console.log(`Creating payment intent for user ${userId}: $${amount}`);
+      console.log(`Creating payment intent for user ${userId}: ${amount}`);
 
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount * 100),
@@ -960,30 +1005,6 @@ function getSubscriptionTier(subscription: Stripe.Subscription): string {
   };
   return tierMapping[priceId || ""] || "premium";
 }
-
-// function buildSubscriptionData(subscription: Stripe.Subscription) {
-//   const hasAccess = ["active", "trialing"].includes(subscription.status);
-//   return {
-//     "id": subscription.id,
-//     "customerId": subscription.customer,
-//     "status": subscription.status,
-//     "tier": getSubscriptionTier(subscription),
-//     "currentPeriodStart": admin.firestore.Timestamp.fromDate(
-//       new Date((subscription as any).current_period_start * 1000)
-//     ),
-//     "currentPeriodEnd": admin.firestore.Timestamp.fromDate(
-//       new Date((subscription as any).current_period_end * 1000)
-//     ),
-//     "hasAccess": hasAccess,
-//     "cancelAtPeriodEnd": subscription.cancel_at_period_end || false,
-//     "trialEnd": subscription.trial_end ? admin.firestore.Timestamp.fromDate(
-//       new Date(subscription.trial_end * 1000)
-//     ) : null,
-//     "needsPaymentUpdate": false,
-//     "statusDescription": getStatusDescription(subscription.status, subscription.cancel_at_period_end || false),
-//     "updatedAt": admin.firestore.FieldValue.serverTimestamp(),
-//   };
-// }
 
 function getStatusDescription(status: string, cancelAtPeriodEnd: boolean): string {
   if (cancelAtPeriodEnd && status === "active") return "Cancels at period end";
