@@ -21,11 +21,14 @@ class FretboardController {
     final effectiveRoot = MusicController.getModeRoot(
         config.root, config.scale, config.modeIndex);
 
+    // Get the mode intervals instead of the original scale intervals
+    final modeIntervals = scale.getModeIntervals(config.modeIndex);
+
     for (final octave in config.selectedOctaves) {
       final rootNote = Note.fromString('$effectiveRoot$octave');
 
-      for (int i = 0; i < scale.intervals.length; i++) {
-        final interval = scale.intervals[i];
+      for (int i = 0; i < modeIntervals.length; i++) {
+        final interval = modeIntervals[i];
         final note = rootNote.transpose(interval);
         final color = ColorUtils.colorForDegree(i);
         map[note.midi] = color;
