@@ -23,6 +23,7 @@ class FretboardInstance {
   bool showScaleStrip;
   bool showNoteNames;
   bool showAdditionalOctaves; // NEW: Show chord notes in additional octaves
+  bool showAllPositions; // NEW: Show all positions for open chords
   int visibleFretStart;
   int visibleFretEnd;
 
@@ -42,6 +43,7 @@ class FretboardInstance {
     this.showScaleStrip = true,
     this.showNoteNames = false,
     this.showAdditionalOctaves = false, // NEW: Default to false
+    this.showAllPositions = false, // NEW: Default to false
     this.visibleFretStart = 0,
     required this.visibleFretEnd,
   });
@@ -105,6 +107,7 @@ class FretboardInstance {
       showChordName: false,
       showNoteNames: showNoteNames,
       showAdditionalOctaves: showAdditionalOctaves,
+      showAllPositions: showAllPositions,
       width: 400.0,
       height: 300.0,
       padding: EdgeInsets.zero,
@@ -128,6 +131,7 @@ class FretboardInstance {
     bool? showScaleStrip,
     bool? showNoteNames,
     bool? showAdditionalOctaves, // NEW: Add to copyWith method
+    bool? showAllPositions, // NEW: Add to copyWith method
     int? visibleFretStart,
     int? visibleFretEnd,
   }) {
@@ -148,6 +152,7 @@ class FretboardInstance {
       showNoteNames: showNoteNames ?? this.showNoteNames,
       showAdditionalOctaves:
           showAdditionalOctaves ?? this.showAdditionalOctaves, // NEW
+      showAllPositions: showAllPositions ?? this.showAllPositions, // NEW
       visibleFretStart: visibleFretStart ?? this.visibleFretStart,
       visibleFretEnd: visibleFretEnd ?? this.visibleFretEnd,
     );

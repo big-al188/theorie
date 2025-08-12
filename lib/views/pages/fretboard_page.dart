@@ -640,8 +640,9 @@ class _FretboardCard extends StatelessWidget {
                   instance.copyWith(showScaleStrip: !instance.showScaleStrip));
             },
           ),
-          // NEW: Additional Octaves Toggle (only in chord inversion mode)
-          if (instance.viewMode == ViewMode.chordInversions)
+          // NEW: Additional Octaves Toggle (for chord inversion and open chord modes)
+          if (instance.viewMode == ViewMode.chordInversions || 
+              instance.viewMode == ViewMode.openChords)
             IconButton(
               icon: Icon(
                 instance.showAdditionalOctaves
@@ -659,6 +660,27 @@ class _FretboardCard extends StatelessWidget {
               onPressed: () {
                 onUpdate(instance.copyWith(
                     showAdditionalOctaves: !instance.showAdditionalOctaves));
+              },
+            ),
+          // NEW: Show All Positions Toggle (only for open chord mode)
+          if (instance.viewMode == ViewMode.openChords)
+            IconButton(
+              icon: Icon(
+                instance.showAllPositions
+                    ? Icons.grid_view
+                    : Icons.grid_view_outlined,
+                color: instance.showAllPositions
+                    ? Theme.of(context).primaryColor
+                    : null,
+              ),
+              iconSize: ResponsiveConstants.getDeviceType(screenWidth) ==
+                      DeviceType.mobile
+                  ? 20.0
+                  : 24.0,
+              tooltip: 'Show All Positions',
+              onPressed: () {
+                onUpdate(instance.copyWith(
+                    showAllPositions: !instance.showAllPositions));
               },
             ),
           IconButton(

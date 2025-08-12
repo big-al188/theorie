@@ -111,8 +111,9 @@ class FretboardController {
   static Map<int, HighlightInfo> getAdditionalOctavesMap(FretboardConfig config) {
     final map = <int, HighlightInfo>{};
     
-    // Only apply in chord inversion mode when toggle is enabled
-    if (!config.showAdditionalOctaves || config.viewMode != ViewMode.chordInversions) {
+    // Only apply in chord modes when toggle is enabled
+    if (!config.showAdditionalOctaves || 
+        (config.viewMode != ViewMode.chordInversions && config.viewMode != ViewMode.openChords)) {
       return map;
     }
 
@@ -120,8 +121,7 @@ class FretboardController {
     if (chord == null) return map;
 
     // Get the chord's letter names (note classes, not specific octaves)
-    final octave = config.selectedChordOctave;
-    final rootNote = Note.fromString('${config.root}$octave');
+    final rootNote = Note.fromString('${config.root}0'); // Use octave 0 for note class calculations
     
     // Get chord note classes by building chord from intervals
     final chordNoteClasses = <String>{};
@@ -132,8 +132,10 @@ class FretboardController {
 
     debugPrint('Additional octaves: Looking for note classes: $chordNoteClasses');
 
-    // Get primary highlights to avoid overlap
-    final primaryMap = getChordInversionHighlightMap(config);
+    // Get primary highlights to avoid overlap (handle both chord modes)
+    final primaryMap = config.viewMode == ViewMode.chordInversions 
+        ? getChordInversionHighlightMap(config)
+        : getOpenChordHighlightMap(config);
 
     // Calculate MIDI range for visible fretboard area
     final minMidi = _calculateMinMidiBounds(config);
@@ -194,6 +196,244 @@ class FretboardController {
     );
   }
 
+  /// Generate highlight map for open chord mode
+  static Map<int, Color> getOpenChordHighlightMap(FretboardConfig config) {
+    final map = <int, Color>{};
+    final chord = Chord.get(config.chordType);
+    if (chord == null) return {};
+
+    debugPrint('=== Building Open Chord Highlight Map ===');
+    debugPrint('Root: ${config.root}, Chord: ${config.chordType}, Inversion: ${config.chordInversion.displayName}');
+    debugPrint('Show all positions: ${config.showAllPositions}');
+    debugPrint('Visible fret start: ${config.visibleFretStart}, range: ${config.visibleFretStart} to ${config.visibleFretStart + 4}');
+
+    if (config.showAllPositions) {
+      // Show all positions: use the existing MIDI-based approach
+      return _getOpenChordAllPositionsMap(config, chord);
+    } else {
+      // Default: only highlight the specific fret positions that form the open chord
+      return _getOpenChordBasicPositionsMap(config, chord);
+    }
+  }
+
+  /// Generate highlight map for open chord mode - all positions (MIDI-based)
+  static Map<int, Color> _getOpenChordAllPositionsMap(FretboardConfig config, Chord chord) {
+    final map = <int, Color>{};
+    final rootNote = Note.fromString('${config.root}0');
+
+    // First find the basic chord shape to get the MIDI notes
+    final basicChordMidiNotes = <int>{};
+    final chordTones = <int>{};
+    for (final interval in chord.intervals) {
+      final chordNote = rootNote.transpose(interval);
+      chordTones.add(chordNote.pitchClass);
+    }
+
+    final bassNotePitchClass = chord.intervals.length > config.chordInversion.index
+        ? rootNote.transpose(chord.intervals[config.chordInversion.index]).pitchClass
+        : rootNote.pitchClass;
+
+    // Find basic chord shape first (same logic as before)
+    final stringIndicesWithTuning = <Map<String, dynamic>>[];
+    for (int i = 0; i < config.tuning.length; i++) {
+      final openNote = Note.fromString(config.tuning[i]);
+      stringIndicesWithTuning.add({
+        'index': i,
+        'openMidi': openNote.midi,
+        'openNote': openNote,
+      });
+    }
+    stringIndicesWithTuning.sort((a, b) => a['openMidi'].compareTo(b['openMidi']));
+
+    int? bassStringIndex;
+    for (final stringData in stringIndicesWithTuning) {
+      final stringIndex = stringData['index'] as int;
+      final openNote = stringData['openNote'] as Note;
+      
+      for (int fret = config.visibleFretStart; fret <= config.visibleFretStart + 4; fret++) {
+        final frettedNote = openNote.transpose(fret);
+        if (frettedNote.pitchClass == bassNotePitchClass) {
+          bassStringIndex = stringIndex;
+          basicChordMidiNotes.add(frettedNote.midi);
+          break;
+        }
+      }
+      if (bassStringIndex != null) break;
+    }
+
+    if (bassStringIndex == null) return {};
+
+    final bassStringMidi = Note.fromString(config.tuning[bassStringIndex]).midi;
+    for (final stringData in stringIndicesWithTuning) {
+      final stringIndex = stringData['index'] as int;
+      final openNote = stringData['openNote'] as Note;
+      
+      if (openNote.midi <= bassStringMidi) continue;
+      
+      for (int fret = config.visibleFretStart; fret <= config.visibleFretStart + 4; fret++) {
+        final frettedNote = openNote.transpose(fret);
+        if (chordTones.contains(frettedNote.pitchClass)) {
+          basicChordMidiNotes.add(frettedNote.midi);
+          break;
+        }
+      }
+    }
+
+    // Now find all occurrences of those MIDI notes
+    debugPrint('Show all positions enabled - highlighting all occurrences of: $basicChordMidiNotes');
+    
+    for (int stringIndex = 0; stringIndex < config.tuning.length; stringIndex++) {
+      final openNote = Note.fromString(config.tuning[stringIndex]);
+      
+      for (int fret = 0; fret <= config.visibleFretEnd; fret++) {
+        final frettedNote = openNote.transpose(fret);
+        
+        if (basicChordMidiNotes.contains(frettedNote.midi)) {
+          final chordToneIndex = chord.intervals.indexWhere((interval) {
+            final chordToneNote = rootNote.transpose(interval);
+            return chordToneNote.pitchClass == frettedNote.pitchClass;
+          });
+          
+          final color = ColorUtils.colorForDegree(chordToneIndex >= 0 ? chordToneIndex : 0);
+          map[frettedNote.midi] = color;
+        }
+      }
+    }
+
+    debugPrint('All positions map complete: ${map.length} notes');
+    return map;
+  }
+
+  /// Generate highlight map for open chord mode - basic positions only (position-based)
+  static Map<int, Color> _getOpenChordBasicPositionsMap(FretboardConfig config, Chord chord) {
+    final map = <int, Color>{};
+    final rootNote = Note.fromString('${config.root}0');
+
+    // Get chord tones as note classes (pitch classes)
+    final chordTones = <int>{};
+    for (final interval in chord.intervals) {
+      final chordNote = rootNote.transpose(interval);
+      chordTones.add(chordNote.pitchClass);
+    }
+
+    // Determine bass note pitch class for the inversion
+    final bassNotePitchClass = chord.intervals.length > config.chordInversion.index
+        ? rootNote.transpose(chord.intervals[config.chordInversion.index]).pitchClass
+        : rootNote.pitchClass;
+
+    debugPrint('Basic positions only - looking for chord tones: $chordTones, bass: $bassNotePitchClass');
+
+    // Track exactly which positions we're highlighting to avoid duplicates
+    final highlightedPositions = <String, Map<String, dynamic>>{};  // "stringIndex:fret" -> note info
+    
+    // Sort strings by pitch (lowest to highest)
+    final stringIndicesWithTuning = <Map<String, dynamic>>[];
+    for (int i = 0; i < config.tuning.length; i++) {
+      final openNote = Note.fromString(config.tuning[i]);
+      stringIndicesWithTuning.add({
+        'index': i,
+        'openMidi': openNote.midi,
+        'openNote': openNote,
+      });
+    }
+    stringIndicesWithTuning.sort((a, b) => a['openMidi'].compareTo(b['openMidi']));
+
+    // Find bass string (lowest string that can play the bass note)
+    int? bassStringIndex;
+    for (final stringData in stringIndicesWithTuning) {
+      final stringIndex = stringData['index'] as int;
+      final openNote = stringData['openNote'] as Note;
+      
+      // Check frets within range for bass note
+      for (int fret = config.visibleFretStart; fret <= config.visibleFretStart + 4; fret++) {
+        final frettedNote = openNote.transpose(fret);
+        if (frettedNote.pitchClass == bassNotePitchClass) {
+          bassStringIndex = stringIndex;
+          
+          // Record this exact position
+          final positionKey = '$stringIndex:$fret';
+          final chordToneIndex = chord.intervals.indexWhere((interval) {
+            final chordToneNote = rootNote.transpose(interval);
+            return chordToneNote.pitchClass == bassNotePitchClass;
+          });
+          
+          highlightedPositions[positionKey] = {
+            'stringIndex': stringIndex,
+            'fret': fret,
+            'midi': frettedNote.midi,
+            'chordToneIndex': chordToneIndex,
+            'note': frettedNote,
+          };
+          
+          debugPrint('Added bass position: string $stringIndex, fret $fret (${frettedNote.name})');
+          break;
+        }
+      }
+      if (bassStringIndex != null) break;
+    }
+
+    if (bassStringIndex == null) {
+      debugPrint('No bass note found within range');
+      return {};
+    }
+
+    // Now find one chord tone per string on higher strings
+    final bassStringMidi = Note.fromString(config.tuning[bassStringIndex]).midi;
+    
+    for (final stringData in stringIndicesWithTuning) {
+      final stringIndex = stringData['index'] as int;
+      final openNote = stringData['openNote'] as Note;
+      
+      // Skip strings lower than or equal to bass string
+      if (openNote.midi <= bassStringMidi) continue;
+      
+      // Find the first chord tone on this string within range
+      for (int fret = config.visibleFretStart; fret <= config.visibleFretStart + 4; fret++) {
+        final frettedNote = openNote.transpose(fret);
+        if (chordTones.contains(frettedNote.pitchClass)) {
+          // Record this exact position
+          final positionKey = '$stringIndex:$fret';
+          final chordToneIndex = chord.intervals.indexWhere((interval) {
+            final chordToneNote = rootNote.transpose(interval);
+            return chordToneNote.pitchClass == frettedNote.pitchClass;
+          });
+          
+          highlightedPositions[positionKey] = {
+            'stringIndex': stringIndex,
+            'fret': fret,
+            'midi': frettedNote.midi,
+            'chordToneIndex': chordToneIndex,
+            'note': frettedNote,
+          };
+          
+          debugPrint('Added chord position: string $stringIndex, fret $fret (${frettedNote.name})');
+          break; // Only one note per string for basic shape
+        }
+      }
+    }
+
+    // Now convert the position-based highlights to MIDI-based map
+    // BUT only include the exact positions we identified
+    for (final positionInfo in highlightedPositions.values) {
+      final midi = positionInfo['midi'] as int;
+      final chordToneIndex = positionInfo['chordToneIndex'] as int;
+      final color = ColorUtils.colorForDegree(chordToneIndex >= 0 ? chordToneIndex : 0);
+      
+      // CRITICAL: Only add this MIDI if it hasn't been added yet, or if it's the exact position we want
+      if (!map.containsKey(midi)) {
+        map[midi] = color;
+      } else {
+        // If MIDI already exists, we have a duplicate note - this shouldn't happen with proper logic
+        // but if it does, we keep the first one (bass note priority)
+        debugPrint('WARNING: Duplicate MIDI $midi found, keeping first occurrence');
+      }
+    }
+
+    debugPrint('Basic positions map complete: ${map.length} notes from ${highlightedPositions.length} positions');
+    debugPrint('Highlighted positions: ${highlightedPositions.keys.toList()}');
+    return map;
+  }
+
   /// Generate highlight map for unimplemented chord modes (placeholder)
   static Map<int, Color> getUnimplementedChordHighlightMap(FretboardConfig config) {
     // For now, return empty map for unimplemented modes
@@ -212,6 +452,7 @@ class FretboardController {
       case ViewMode.chordInversions:
         return getChordInversionHighlightMap(config);
       case ViewMode.openChords:
+        return getOpenChordHighlightMap(config);
       case ViewMode.barreChords:
       case ViewMode.advancedChords:
         return getUnimplementedChordHighlightMap(config);

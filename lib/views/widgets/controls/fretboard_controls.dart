@@ -104,7 +104,8 @@ class FretboardControls extends StatelessWidget {
                     },
                   ),
                 )
-              else if (instance.viewMode == ViewMode.chordInversions)
+              else if (instance.viewMode == ViewMode.chordInversions ||
+                       instance.viewMode == ViewMode.openChords)
                 Expanded(
                   flex: 2,
                   child: ChordSelector(
@@ -138,7 +139,8 @@ class FretboardControls extends StatelessWidget {
                     },
                   ),
                 )
-              else if (instance.viewMode == ViewMode.chordInversions)
+              else if (instance.viewMode == ViewMode.chordInversions ||
+                       instance.viewMode == ViewMode.openChords)
                 Expanded(
                   flex: 2,
                   child: _ChordInversionSelector(
@@ -163,15 +165,18 @@ class FretboardControls extends StatelessWidget {
           // Second row: Octaves and Intervals
           Row(
             children: [
-              Expanded(
-                child: OctaveSelector(
-                  selectedOctaves: instance.selectedOctaves,
-                  isChordMode: _isAnyChordMode(instance.viewMode),
-                  onChanged: (octaves) {
-                    onUpdate(instance.copyWith(selectedOctaves: octaves));
-                  },
-                ),
-              ),
+              if (instance.viewMode != ViewMode.openChords)
+                Expanded(
+                  child: OctaveSelector(
+                    selectedOctaves: instance.selectedOctaves,
+                    isChordMode: _isAnyChordMode(instance.viewMode),
+                    onChanged: (octaves) {
+                      onUpdate(instance.copyWith(selectedOctaves: octaves));
+                    },
+                  ),
+                )
+              else
+                const Expanded(child: SizedBox()), // Placeholder to maintain layout
               const SizedBox(width: 16),
               if (instance.viewMode == ViewMode.intervals)
                 Expanded(
@@ -237,6 +242,7 @@ class FretboardControls extends StatelessWidget {
               ),
             ],
           ),
+          
         ],
       ),
     );
@@ -251,8 +257,7 @@ class FretboardControls extends StatelessWidget {
   }
 
   bool _isUnimplementedChordMode(ViewMode viewMode) {
-    return viewMode == ViewMode.openChords ||
-           viewMode == ViewMode.barreChords ||
+    return viewMode == ViewMode.barreChords ||
            viewMode == ViewMode.advancedChords;
   }
 

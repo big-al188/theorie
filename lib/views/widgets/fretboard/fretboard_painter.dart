@@ -65,10 +65,16 @@ class FretboardPainter extends CustomPainter {
         canvas, size, canvasWidth, headWidth, boardHeight, stringHeight);
     
     // NEW: Use combined highlighting system if additional octaves are enabled
-    if (config.showAdditionalOctaves && config.viewMode == ViewMode.chordInversions) {
+    if (config.showAdditionalOctaves && 
+        (config.viewMode == ViewMode.chordInversions || config.viewMode == ViewMode.openChords)) {
       final combinedHighlights = FretboardController.getCombinedHighlightMap(config);
       _drawFretMarkersWithCombinedHighlights(canvas, size, canvasWidth, headWidth, 
           fretWidth, boardHeight, correctedFretCount, stringHeight, combinedHighlights);
+    } else if (config.viewMode == ViewMode.openChords && !config.showAllPositions) {
+      // Special case: Open chord mode with "show all positions" disabled
+      // Use position-based highlighting instead of MIDI-based
+      _drawOpenChordPositionMarkers(canvas, size, canvasWidth, headWidth, 
+          fretWidth, boardHeight, correctedFretCount, stringHeight);
     } else {
       // Use existing highlighting system
       _drawFretMarkers(canvas, size, canvasWidth, headWidth, fretWidth,
@@ -76,6 +82,160 @@ class FretboardPainter extends CustomPainter {
     }
 
     canvas.restore();
+  }
+
+  /// Draw markers for open chord mode - position-based, not MIDI-based
+  void _drawOpenChordPositionMarkers(
+    Canvas canvas,
+    Size size,
+    double canvasWidth,
+    double headWidth,
+    double fretWidth,
+    double boardHeight,
+    int correctedFretCount,
+    double stringHeight,
+  ) {
+    // Get the specific positions for the open chord
+    final positions = _getOpenChordPositions();
+    if (positions.isEmpty) return;
+
+    debugPrint('Drawing ${positions.length} open chord position markers');
+
+    // Draw each position specifically
+    for (final position in positions) {
+      final stringIndex = position['stringIndex'] as int;
+      final fret = position['fret'] as int;
+      final color = position['color'] as Color;
+      final note = position['note'] as Note;
+
+      // Calculate exact position on fretboard with proper bass top/bottom handling
+      final visualStringIndex = config.isBassTop 
+          ? stringIndex 
+          : config.stringCount - 1 - stringIndex;
+      final y = (visualStringIndex + 1) * stringHeight;
+      
+      double x;
+      if (config.visibleFretStart == 0) {
+        // With headstock - fret 0 is at headWidth, fret positions calculated from there
+        x = fret == 0 ? headWidth / 2 : headWidth + (fret - 0.5) * fretWidth;
+      } else {
+        // Without headstock - fret positions start from 0
+        x = (fret - config.visibleFretStart + 0.5) * fretWidth;
+      }
+
+      // Only draw if position is within visible range
+      if (fret >= config.visibleFretStart && fret <= config.visibleFretEnd) {
+        _drawPrimaryNoteMarker(
+          canvas,
+          x,
+          y,
+          note.midi,
+          color,
+          Note.fromString('${config.root}0').pitchClass,
+          note.preferFlats,
+          fretWidth,
+          canvasWidth,
+        );
+        
+        debugPrint('Drew position marker at string $stringIndex, fret $fret (${note.name})');
+      }
+    }
+  }
+
+  /// Get the exact positions for open chord (not MIDI-based)
+  List<Map<String, dynamic>> _getOpenChordPositions() {
+    final positions = <Map<String, dynamic>>[];
+    final chord = Chord.get(config.chordType);
+    if (chord == null) return positions;
+
+    final rootNote = Note.fromString('${config.root}0');
+    
+    // Get chord tones as note classes
+    final chordTones = <int>{};
+    for (final interval in chord.intervals) {
+      final chordNote = rootNote.transpose(interval);
+      chordTones.add(chordNote.pitchClass);
+    }
+
+    // Determine bass note pitch class for the inversion
+    final bassNotePitchClass = chord.intervals.length > config.chordInversion.index
+        ? rootNote.transpose(chord.intervals[config.chordInversion.index]).pitchClass
+        : rootNote.pitchClass;
+
+    // Sort strings by pitch (lowest to highest)
+    final stringIndicesWithTuning = <Map<String, dynamic>>[];
+    for (int i = 0; i < config.tuning.length; i++) {
+      final openNote = Note.fromString(config.tuning[i]);
+      stringIndicesWithTuning.add({
+        'index': i,
+        'openMidi': openNote.midi,
+        'openNote': openNote,
+      });
+    }
+    stringIndicesWithTuning.sort((a, b) => a['openMidi'].compareTo(b['openMidi']));
+
+    // Find bass string first
+    int? bassStringIndex;
+    for (final stringData in stringIndicesWithTuning) {
+      final stringIndex = stringData['index'] as int;
+      final openNote = stringData['openNote'] as Note;
+      
+      for (int fret = config.visibleFretStart; fret <= config.visibleFretStart + 4; fret++) {
+        final frettedNote = openNote.transpose(fret);
+        if (frettedNote.pitchClass == bassNotePitchClass) {
+          bassStringIndex = stringIndex;
+          
+          // Add bass position
+          final chordToneIndex = chord.intervals.indexWhere((interval) {
+            final chordToneNote = rootNote.transpose(interval);
+            return chordToneNote.pitchClass == bassNotePitchClass;
+          });
+          final color = ColorUtils.colorForDegree(chordToneIndex >= 0 ? chordToneIndex : 0);
+          
+          positions.add({
+            'stringIndex': stringIndex,
+            'fret': fret,
+            'note': frettedNote,
+            'color': color,
+          });
+          break;
+        }
+      }
+      if (bassStringIndex != null) break;
+    }
+
+    if (bassStringIndex == null) return positions;
+
+    // Find chord tones on higher strings
+    final bassStringMidi = Note.fromString(config.tuning[bassStringIndex]).midi;
+    
+    for (final stringData in stringIndicesWithTuning) {
+      final stringIndex = stringData['index'] as int;
+      final openNote = stringData['openNote'] as Note;
+      
+      if (openNote.midi <= bassStringMidi) continue;
+      
+      for (int fret = config.visibleFretStart; fret <= config.visibleFretStart + 4; fret++) {
+        final frettedNote = openNote.transpose(fret);
+        if (chordTones.contains(frettedNote.pitchClass)) {
+          final chordToneIndex = chord.intervals.indexWhere((interval) {
+            final chordToneNote = rootNote.transpose(interval);
+            return chordToneNote.pitchClass == frettedNote.pitchClass;
+          });
+          final color = ColorUtils.colorForDegree(chordToneIndex >= 0 ? chordToneIndex : 0);
+          
+          positions.add({
+            'stringIndex': stringIndex,
+            'fret': fret,
+            'note': frettedNote,
+            'color': color,
+          });
+          break; // Only one per string
+        }
+      }
+    }
+
+    return positions;
   }
 
   /// Calculate responsive font size for note labels based on available space

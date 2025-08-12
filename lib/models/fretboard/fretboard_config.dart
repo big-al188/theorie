@@ -23,6 +23,7 @@ class FretboardConfig {
   final bool showChordName;
   final bool showNoteNames;
   final bool showAdditionalOctaves; // NEW: Show chord notes in additional octaves
+  final bool showAllPositions; // NEW: Show all positions for open chords
   final Set<int> selectedOctaves;
   final Set<int> selectedIntervals;
   final double width;
@@ -47,6 +48,7 @@ class FretboardConfig {
     required this.showChordName,
     required this.showNoteNames,
     required this.showAdditionalOctaves, // NEW: Required parameter
+    required this.showAllPositions, // NEW: Required parameter
     required this.selectedOctaves,
     required this.selectedIntervals,
     required this.width,
@@ -131,6 +133,7 @@ class FretboardConfig {
     bool? showChordName,
     bool? showNoteNames,
     bool? showAdditionalOctaves, // NEW: Add to copyWith method
+    bool? showAllPositions, // NEW: Add to copyWith method
     Set<int>? selectedOctaves,
     Set<int>? selectedIntervals,
     double? width,
@@ -155,6 +158,7 @@ class FretboardConfig {
       showChordName: showChordName ?? this.showChordName,
       showNoteNames: showNoteNames ?? this.showNoteNames,
       showAdditionalOctaves: showAdditionalOctaves ?? this.showAdditionalOctaves, // NEW
+      showAllPositions: showAllPositions ?? this.showAllPositions, // NEW
       selectedOctaves: selectedOctaves ?? this.selectedOctaves,
       selectedIntervals: selectedIntervals ?? this.selectedIntervals,
       width: width ?? this.width,
@@ -195,5 +199,5 @@ enum ViewMode {
   
   // Helper methods for mode categories
   bool get isChordMode => this == chordInversions || this == openChords || this == barreChords || this == advancedChords;
-  bool get isImplemented => this == intervals || this == scales || this == chordInversions;
+  bool get isImplemented => this == intervals || this == scales || this == chordInversions || this == openChords;
 }
