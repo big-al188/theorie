@@ -879,8 +879,9 @@ class _FretboardCard extends StatelessWidget {
     if (fretboard.viewMode == ViewMode.intervals) {
       debugPrint('Scale note tapped with MIDI: $midiNote');
 
-      // Get clicked note details
-      final clickedNote = Note.fromMidi(midiNote);
+      // Get clicked note details with proper flat preference
+      final currentRootNote = Note.fromString('${fretboard.root}0');
+      final clickedNote = Note.fromMidi(midiNote, preferFlats: currentRootNote.preferFlats);
 
       // Calculate the extended interval from the tapped note
       final referenceOctave = fretboard.selectedOctaves.isEmpty

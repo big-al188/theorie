@@ -247,8 +247,9 @@ class _FretboardContainerState extends State<FretboardContainer> {
       
       debugPrint('Scale note tapped with MIDI: $midiNote');
 
-      // Get clicked note details
-      final clickedNote = Note.fromMidi(midiNote);
+      // Get clicked note details with proper flat preference
+      final currentRootNote = Note.fromString('${widget.instance.root}0');
+      final clickedNote = Note.fromMidi(midiNote, preferFlats: currentRootNote.preferFlats);
       
       // Calculate the extended interval from the current root
       final referenceOctave = widget.instance.selectedOctaves.isEmpty
