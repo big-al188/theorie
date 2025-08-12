@@ -56,12 +56,15 @@ class _FretboardWidgetState extends State<FretboardWidget> {
             ? ResponsiveConstants.getFretboardScaleStripSpacing(screenWidth)
             : 0.0;
 
+    // No additional padding needed - label space in scaleStripHeight accounts for spacing
+    final additionalPadding = 0.0;
+
     final totalHeight =
-        chordNameHeight + boardHeight + spacingHeight + scaleStripHeight;
+        chordNameHeight + boardHeight + spacingHeight + scaleStripHeight + additionalPadding;
 
     return Container(
       width: widget.config.width,
-      height: widget.config.height ?? totalHeight,
+      height: widget.config.showScaleStrip ? totalHeight : (widget.config.height ?? totalHeight),
       padding: widget.config.padding,
       child: _buildContent(
         context,
@@ -73,14 +76,15 @@ class _FretboardWidgetState extends State<FretboardWidget> {
     );
   }
 
-  // Updated to use responsive values
+  // Updated to use responsive values and match page calculation
   double _calculateScaleStripHeight(int octaveCount, double screenWidth) {
     final noteRowHeight = ResponsiveConstants.getNoteRowHeight(screenWidth);
     final paddingPerOctave =
         ResponsiveConstants.getScaleStripPaddingPerOctave(screenWidth);
 
+    // Match exactly what the page calculates - include label space
     return UIConstants.scaleStripLabelSpace +
-        (octaveCount * noteRowHeight) +
+        (octaveCount * noteRowHeight) + 
         (octaveCount * paddingPerOctave);
   }
 

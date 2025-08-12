@@ -322,9 +322,13 @@ class FretboardPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
 
-    final chordNameX = hasHeadstock
-        ? (headWidth - chordPainter.width) / 2 // Center over headstock
-        : (size.width - chordPainter.width) / 2; // Center over entire width
+    // Always left-align chord name, whether headstock is visible or not
+    // Use a consistent left margin to avoid overlapping fret numbers
+    final leftMargin = hasHeadstock 
+        ? headWidth * 0.05  // Small margin from left edge when headstock is visible
+        : 20.0;             // Fixed margin when headstock is hidden to avoid fret numbers
+    
+    final chordNameX = leftMargin;
 
     const chordNameY = 5.0;
     chordPainter.paint(canvas, Offset(chordNameX, chordNameY));

@@ -396,9 +396,9 @@ class _FretboardCard extends StatelessWidget {
         ? ResponsiveConstants.getFretboardScaleStripSpacing(screenWidth)
         : 0.0;
 
-    // Chord name height if needed
-    final chordNameHeight =
-        (config.showChordName && config.isAnyChordMode) ? 30.0 : 0.0;
+    // Chord name height - account for cleanViewMode logic that will be applied
+    final willShowChordName = (cleanViewMode && config.isAnyChordMode);
+    final chordNameHeight = willShowChordName ? 30.0 : 0.0;
 
     // Height calculation that prevents overflow
     final baseHeight =
