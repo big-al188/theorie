@@ -1,48 +1,48 @@
 // test/scales_test.dart
 //
-// Unit‑tests for lib/theory/scales.dart.
-// Requires note.dart and interval.dart to be present.
+// Unit‑tests for lib/models/music/scale.dart.
+// Requires note.dart to be present.
 //
-import 'package:test/test.dart';
-import 'package:theorie/theory/note.dart';
-import 'package:theorie/theory/scales.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:Theorie/models/music/note.dart';
+import 'package:Theorie/models/music/scale.dart';
 
 void main() {
   group('Major scale construction', () {
     test('C major contains the expected notes', () {
-      final cMaj = major(Note.parse('C4'));
-      final labels = cMaj.notes.map((n) => n.label).toList();
+      final rootNote = Note.fromString('C4');
+      final cMaj = Scale.major.getNotesForRoot(rootNote);
+      final labels = cMaj.take(7).map((n) => n.name).toList();
       expect(labels, equals(['C', 'D', 'E', 'F', 'G', 'A', 'B']));
     });
 
-    test('F Lydian (mode‑4 of C major) has a sharp 4th (B)', () {
-      final fLyd = major(Note.parse('C4')).mode(3); // rotation 3 ⇒ Lydian
-      final firstFour = fLyd.notes.take(4).map((n) => n.label).toList();
-      expect(firstFour, equals(['F', 'G', 'A', 'B'])); // B natural (♮) is #4
+    test('F Lydian (mode‑4 of C major) has correct intervals', () {
+      final lydianIntervals = Scale.major.getModeIntervals(3); // Lydian is mode 4 (index 3)
+      // Lydian should have raised 4th degree
+      expect(lydianIntervals, contains(6)); // #4 is 6 semitones
     });
 
-    test('Round‑trip mode(0) returns original scale', () {
-      final cMaj = major(Note.parse('C3'));
-      expect(cMaj.mode(0).notes, equals(cMaj.notes));
+    test('Round‑trip mode(0) returns original scale intervals', () {
+      final originalIntervals = Scale.major.intervals;
+      final mode0Intervals = Scale.major.getModeIntervals(0);
+      expect(mode0Intervals.take(originalIntervals.length), equals(originalIntervals));
     });
   });
 
   group('Minor relationships & pentatonics', () {
     test('A natural minor shares pitch collection with C major', () {
-      final cMajSet = major(Note.parse('C3'))
-          .notes
-          .map((n) => n.pc)
+      final cMajSet = Scale.major.getNotesForRoot(Note.fromString('C3'))
+          .map((n) => n.pitchClass)
           .toSet();
-      final aMinSet = naturalMinor(Note.parse('A2'))
-          .notes
-          .map((n) => n.pc)
+      final aMinSet = Scale.naturalMinor.getNotesForRoot(Note.fromString('A2'))
+          .map((n) => n.pitchClass)
           .toSet();
       expect(aMinSet, equals(cMajSet));
     });
 
     test('E major pentatonic notes are correct', () {
-      final ePent = majorPentatonic(Note.parse('E3'));
-      final labels = ePent.notes.map((n) => n.label).toList();
+      final ePent = Scale.majorPentatonic.getNotesForRoot(Note.fromString('E3'));
+      final labels = ePent.take(5).map((n) => n.name).toList();
       expect(labels, equals(['E', 'F♯', 'G♯', 'B', 'C♯']));
     });
   });

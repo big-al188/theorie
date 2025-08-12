@@ -172,6 +172,19 @@ Consumer<AppState>(
 - **Integration Tests**: End-to-end user workflows and system integration tested
 - **Performance Tests**: Rendering and state management performance validated
 
+#### **Testing Commands & Restrictions**
+- **ALWAYS run `flutter test`**: Required after significant changes to ensure no regression
+- **NEVER run `flutter run`**: UI verification is done manually by the developer
+- **Typecheck with `flutter analyze`**: Required before completing any task
+- **Testing is mandatory**: All business logic changes must include corresponding tests
+
+#### **Coverage Testing Commands**
+- **Generate coverage report**: `flutter test --coverage`
+- **Generate coverage with JSON output**: `flutter test --coverage --reporter=json`
+- **Coverage file location**: `coverage/lcov.info`
+- **Important**: All test files must use **package-level imports** (`import 'package:Theorie/...'`) instead of relative imports (`import '../lib/...'`) for coverage to generate properly
+- **Package name requirement**: Ensure `pubspec.yaml` has `name: Theorie` without trailing spaces
+
 #### **Quality Standards**
 - **Educational Accuracy**: All music theory and quiz content verified for correctness
 - **Code Review**: All changes reviewed for architectural compliance

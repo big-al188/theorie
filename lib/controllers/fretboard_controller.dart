@@ -1,5 +1,4 @@
 // lib/controllers/fretboard_controller.dart - Updated with additional octaves support (FIXED)
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/fretboard/fretboard_config.dart';
 import '../models/fretboard/highlight_info.dart'; // NEW: Import highlight types
@@ -198,7 +197,6 @@ class FretboardController {
 
   /// Generate highlight map for open chord mode
   static Map<int, Color> getOpenChordHighlightMap(FretboardConfig config) {
-    final map = <int, Color>{};
     final chord = Chord.get(config.chordType);
     if (chord == null) return {};
 
@@ -265,7 +263,6 @@ class FretboardController {
 
     final bassStringMidi = Note.fromString(config.tuning[bassStringIndex]).midi;
     for (final stringData in stringIndicesWithTuning) {
-      final stringIndex = stringData['index'] as int;
       final openNote = stringData['openNote'] as Note;
       
       if (openNote.midi <= bassStringMidi) continue;

@@ -1,5 +1,4 @@
 // lib/models/app_state.dart - Updated with audio preferences integration and subscription service
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../../controllers/music_controller.dart';

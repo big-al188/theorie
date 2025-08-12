@@ -1,10 +1,8 @@
 // lib/models/fretboard/fretboard_config.dart - Updated with showAdditionalOctaves
 import 'package:flutter/material.dart';
 import '../music/chord.dart';
-import '../music/note.dart';
 import '../../controllers/fretboard_controller.dart';
 import '../../controllers/music_controller.dart';
-import '../../utils/color_utils.dart';
 
 /// Configuration for fretboard display and behavior
 class FretboardConfig {

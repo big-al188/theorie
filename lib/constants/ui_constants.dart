@@ -123,7 +123,7 @@ class UIConstants {
       'markers': Color(0xFF555555),
     },
     'vintage': {
-      'background': Color(0xFFFDF7),
+      'background': Color(0xFFFFFDF7),
       'fretboard': Color(0xFFD2B48C), // Tan
       'strings': Color(0xFF8B4513), // Saddle brown
       'frets': Color(0xFF654321),

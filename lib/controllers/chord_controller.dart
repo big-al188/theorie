@@ -3,9 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import '../models/music/note.dart';
 import '../models/music/chord.dart';
-import '../models/music/tuning.dart';
 import '../models/fretboard/fret_position.dart';
-import '../constants/music_constants.dart';
 import '../utils/chord_utils.dart';
 
 /// Controller for chord building and analysis
@@ -118,8 +116,8 @@ class ChordController {
 
         // Prefer strings close to last used string
         if (lastStringIndex != null) {
-          final distA = (a.stringIndex - lastStringIndex!).abs();
-          final distB = (b.stringIndex - lastStringIndex!).abs();
+          final distA = (a.stringIndex - lastStringIndex).abs();
+          final distB = (b.stringIndex - lastStringIndex).abs();
           return distA.compareTo(distB);
         }
 

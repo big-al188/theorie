@@ -2,11 +2,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
-import 'firebase_options.dart';
 import 'services/firebase_config.dart'; // Import our new config
 import 'services/stripe_config.dart';   // Import our new Stripe config
 import 'models/app_state.dart';
@@ -147,8 +144,10 @@ class _FirebaseInitializerState extends State<FirebaseInitializer> {
           firebase_auth.Persistence.LOCAL);
 
       // Enable Firestore offline persistence for web
-      await FirebaseFirestore.instance
-          .enablePersistence(const PersistenceSettings(synchronizeTabs: true));
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
 
       debugPrint('✅ [Firebase] Web configuration completed');
     } catch (e) {

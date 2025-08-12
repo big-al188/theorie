@@ -301,8 +301,6 @@ class QuizController extends ChangeNotifier {
       case QuestionType.trueFalse:
       case QuestionType.fillInBlank:
         return true; // Accept any format for unimplemented types
-      default:
-        return answer != null;
     }
   }
 
@@ -458,7 +456,7 @@ class QuizController extends ChangeNotifier {
     _lastError = null;
 
     try {
-      final result = _currentSession!.complete();
+      _currentSession!.complete();
 
       // Store the result for display
       _lastResult = QuizResult.fromSession(_currentSession!);

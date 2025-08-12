@@ -1,10 +1,7 @@
 // lib/models/fretboard/fretboard_instance.dart - Updated with showAdditionalOctaves
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:math' as math;
 import 'fretboard_config.dart';
 import '../music/chord.dart';
-import '../music/note.dart';
 
 /// Individual fretboard instance for multi-fretboard views
 class FretboardInstance {
