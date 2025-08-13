@@ -70,6 +70,7 @@ class _FretboardPageState extends State<FretboardPage> {
         showNoteNames: false,
         showAdditionalOctaves:
             false, // NEW: Default to false for new fretboards
+        showOctave: false, // NEW: Default to false for new fretboards
         isCompact: false,
       );
 
@@ -640,6 +641,26 @@ class _FretboardCard extends StatelessWidget {
                   instance.copyWith(showScaleStrip: !instance.showScaleStrip));
             },
           ),
+          // NEW: Octave Toggle (for scale mode)
+          if (instance.viewMode == ViewMode.scales)
+            IconButton(
+              icon: Icon(
+                Icons.repeat_one, // Octave icon (representing repetition/octave)
+                color: instance.showOctave
+                    ? Theme.of(context).primaryColor
+                    : null,
+              ),
+              iconSize: ResponsiveConstants.getDeviceType(screenWidth) ==
+                      DeviceType.mobile
+                  ? 20.0
+                  : 24.0,
+              tooltip: 'Toggle Octave',
+              onPressed: () {
+                onUpdate(instance.copyWith(
+                  showOctave: !instance.showOctave,
+                ));
+              },
+            ),
           // NEW: Additional Octaves Toggle (for chord inversion and open chord modes)
           if (instance.viewMode == ViewMode.chordInversions || 
               instance.viewMode == ViewMode.openChords)

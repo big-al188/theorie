@@ -28,6 +28,12 @@ class FretboardController {
 
       for (int i = 0; i < modeIntervals.length; i++) {
         final interval = modeIntervals[i];
+        
+        // Skip octave note if showOctave is disabled and this is the octave interval
+        if (!config.showOctave && interval == 12) {
+          continue;
+        }
+        
         final note = rootNote.transpose(interval);
         final color = ColorUtils.colorForDegree(interval); // Use actual interval, not position
         map[note.midi] = color;

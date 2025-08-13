@@ -23,6 +23,7 @@ void main() {
       List<String> tuning = const ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
       bool showAdditionalOctaves = false,
       bool showAllPositions = true,
+      bool showOctave = false, // Default to false (no octave) for consistency
     }) {
       return FretboardConfig(
         stringCount: tuning.length,
@@ -41,6 +42,7 @@ void main() {
         showNoteNames: true,
         showAdditionalOctaves: showAdditionalOctaves,
         showAllPositions: showAllPositions,
+        showOctave: showOctave,
         selectedOctaves: selectedOctaves,
         selectedIntervals: selectedIntervals,
         width: 800,
@@ -79,6 +81,36 @@ void main() {
 
         // Should have colors assigned
         expect(highlightMap.values.every((color) => color is Color), isTrue);
+        
+        // Should have exactly 7 notes (no octave)
+        expect(highlightMap.length, 7);
+      });
+
+      test('should generate correct highlight map for C Major scale with octave enabled', () {
+        final config = createTestConfig(
+          viewMode: ViewMode.scales,
+          root: 'C',
+          scale: 'Major',
+          modeIndex: 0,
+          selectedOctaves: {4},
+          showOctave: true, // Enable octave
+        );
+
+        final highlightMap = FretboardController.getScaleHighlightMap(config);
+
+        // C Major scale with octave: C, D, E, F, G, A, B, C
+        // C4 = MIDI 60, D4 = 62, E4 = 64, F4 = 65, G4 = 67, A4 = 69, B4 = 71, C5 = 72
+        expect(highlightMap.keys, contains(60)); // C4
+        expect(highlightMap.keys, contains(62)); // D4
+        expect(highlightMap.keys, contains(64)); // E4
+        expect(highlightMap.keys, contains(65)); // F4
+        expect(highlightMap.keys, contains(67)); // G4
+        expect(highlightMap.keys, contains(69)); // A4
+        expect(highlightMap.keys, contains(71)); // B4
+        expect(highlightMap.keys, contains(72)); // C5 (octave)
+
+        // Should have exactly 8 notes (including octave)
+        expect(highlightMap.length, 8);
       });
 
       test('should generate correct highlight map for Bb Major scale (flat preference)', () {
@@ -102,8 +134,8 @@ void main() {
         expect(highlightMap.keys, contains(79)); // G5
         expect(highlightMap.keys, contains(81)); // A5
 
-        // Should have 8 notes (7 scale notes + octave)
-        expect(highlightMap.length, 8);
+        // Should have 7 notes (no octave by default)
+        expect(highlightMap.length, 7);
       });
 
       test('should generate correct highlight map for scale modes', () {
@@ -117,8 +149,8 @@ void main() {
 
         final highlightMap = FretboardController.getScaleHighlightMap(config);
 
-        // D Dorian (mode 1 of C Major): D, E, F, G, A, B, C, D
-        // Starting from D4 = MIDI 62: D4, E4, F4, G4, A4, B4, C5, D5
+        // D Dorian (mode 1 of C Major): D, E, F, G, A, B, C (no octave by default)
+        // Starting from D4 = MIDI 62: D4, E4, F4, G4, A4, B4, C5
         expect(highlightMap.keys, contains(62)); // D4
         expect(highlightMap.keys, contains(64)); // E4
         expect(highlightMap.keys, contains(65)); // F4
@@ -126,7 +158,35 @@ void main() {
         expect(highlightMap.keys, contains(69)); // A4
         expect(highlightMap.keys, contains(71)); // B4
         expect(highlightMap.keys, contains(72)); // C5
-        expect(highlightMap.keys, contains(74)); // D5 (octave)
+
+        // Should not contain octave when showOctave is false
+        expect(highlightMap.keys, isNot(contains(74))); // D5 (octave)
+
+        expect(highlightMap.length, 7); // 7 notes (no octave)
+      });
+
+      test('should generate correct highlight map for D Dorian mode with octave enabled', () {
+        final config = createTestConfig(
+          viewMode: ViewMode.scales,
+          root: 'C',
+          scale: 'Major',
+          modeIndex: 1, // Dorian mode (starting from D)
+          selectedOctaves: {4},
+          showOctave: true, // Enable octave
+        );
+
+        final highlightMap = FretboardController.getScaleHighlightMap(config);
+
+        // D Dorian with octave: D, E, F, G, A, B, C, D
+        // Starting from D4 = MIDI 62: D4, E4, F4, G4, A4, B4, C5, D5
+        expect(highlightMap.keys, contains(62)); // D4 (1)
+        expect(highlightMap.keys, contains(64)); // E4 (2)
+        expect(highlightMap.keys, contains(65)); // F4 (♭3)
+        expect(highlightMap.keys, contains(67)); // G4 (4)
+        expect(highlightMap.keys, contains(69)); // A4 (5)
+        expect(highlightMap.keys, contains(71)); // B4 (6)
+        expect(highlightMap.keys, contains(72)); // C5 (♭7)
+        expect(highlightMap.keys, contains(74)); // D5 (8 - octave)
 
         expect(highlightMap.length, 8); // 7 notes + octave
       });
@@ -160,8 +220,8 @@ void main() {
         expect(highlightMap.keys, contains(60)); // C4
         expect(highlightMap.keys, contains(72)); // C5
 
-        // Should have C Major scale across 3 octaves (includes octave note)
-        expect(highlightMap.length, 22);
+        // Should have C Major scale across 3 octaves (no octave notes by default)
+        expect(highlightMap.length, 21); // 7 notes × 3 octaves
       });
     });
 
