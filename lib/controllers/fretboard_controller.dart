@@ -29,7 +29,7 @@ class FretboardController {
       for (int i = 0; i < modeIntervals.length; i++) {
         final interval = modeIntervals[i];
         final note = rootNote.transpose(interval);
-        final color = ColorUtils.colorForDegree(i);
+        final color = ColorUtils.colorForDegree(interval); // Use actual interval, not position
         map[note.midi] = color;
       }
     }
@@ -286,12 +286,11 @@ class FretboardController {
         final frettedNote = openNote.transpose(fret);
         
         if (basicChordMidiNotes.contains(frettedNote.midi)) {
-          final chordToneIndex = chord.intervals.indexWhere((interval) {
-            final chordToneNote = rootNote.transpose(interval);
-            return chordToneNote.pitchClass == frettedNote.pitchClass;
-          });
+          // Calculate the actual interval from the root note (same approach as chord inversion mode)
+          final referenceRoot = Note.fromString('${config.root}3'); // Use consistent reference octave
+          final extendedInterval = frettedNote.midi - referenceRoot.midi;
           
-          final color = ColorUtils.colorForDegree(chordToneIndex >= 0 ? chordToneIndex : 0);
+          final color = ColorUtils.colorForDegree(extendedInterval);
           map[frettedNote.midi] = color;
         }
       }
@@ -354,11 +353,15 @@ class FretboardController {
             return chordToneNote.pitchClass == bassNotePitchClass;
           });
           
+          // Store actual interval value for bass note
+          final actualInterval = chordToneIndex >= 0 ? chord.intervals[chordToneIndex] : 0;
+          
           highlightedPositions[positionKey] = {
             'stringIndex': stringIndex,
             'fret': fret,
             'midi': frettedNote.midi,
             'chordToneIndex': chordToneIndex,
+            'actualInterval': actualInterval, // Store the actual interval
             'note': frettedNote,
           };
           
@@ -395,11 +398,15 @@ class FretboardController {
             return chordToneNote.pitchClass == frettedNote.pitchClass;
           });
           
+          // Store actual interval value, not just the index
+          final actualInterval = chordToneIndex >= 0 ? chord.intervals[chordToneIndex] : 0;
+          
           highlightedPositions[positionKey] = {
             'stringIndex': stringIndex,
             'fret': fret,
             'midi': frettedNote.midi,
             'chordToneIndex': chordToneIndex,
+            'actualInterval': actualInterval, // Store the actual interval
             'note': frettedNote,
           };
           
@@ -413,8 +420,10 @@ class FretboardController {
     // BUT only include the exact positions we identified
     for (final positionInfo in highlightedPositions.values) {
       final midi = positionInfo['midi'] as int;
-      final chordToneIndex = positionInfo['chordToneIndex'] as int;
-      final color = ColorUtils.colorForDegree(chordToneIndex >= 0 ? chordToneIndex : 0);
+      // Calculate the actual interval directly from MIDI (same approach as chord inversion mode)
+      final referenceRoot = Note.fromString('${config.root}3'); // Use consistent reference octave
+      final extendedInterval = midi - referenceRoot.midi;
+      final color = ColorUtils.colorForDegree(extendedInterval);
       
       // CRITICAL: Only add this MIDI if it hasn't been added yet, or if it's the exact position we want
       if (!map.containsKey(midi)) {

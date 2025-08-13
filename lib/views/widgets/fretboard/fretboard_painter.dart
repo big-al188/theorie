@@ -190,7 +190,9 @@ class FretboardPainter extends CustomPainter {
             final chordToneNote = rootNote.transpose(interval);
             return chordToneNote.pitchClass == bassNotePitchClass;
           });
-          final color = ColorUtils.colorForDegree(chordToneIndex >= 0 ? chordToneIndex : 0);
+          // Use the actual interval value, not the position index
+          final actualInterval = chordToneIndex >= 0 ? chord.intervals[chordToneIndex] : 0;
+          final color = ColorUtils.colorForDegree(actualInterval);
           
           positions.add({
             'stringIndex': stringIndex,
@@ -222,7 +224,9 @@ class FretboardPainter extends CustomPainter {
             final chordToneNote = rootNote.transpose(interval);
             return chordToneNote.pitchClass == frettedNote.pitchClass;
           });
-          final color = ColorUtils.colorForDegree(chordToneIndex >= 0 ? chordToneIndex : 0);
+          // Use the actual interval value, not the position index
+          final actualInterval = chordToneIndex >= 0 ? chord.intervals[chordToneIndex] : 0;
+          final color = ColorUtils.colorForDegree(actualInterval);
           
           positions.add({
             'stringIndex': stringIndex,
