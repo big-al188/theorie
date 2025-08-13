@@ -106,6 +106,9 @@ class ScaleStrip extends StatelessWidget {
 
     int actualOctaveCount = displayOctaves.length;
 
+    // Determine number of note positions based on showOctave setting
+    final notePositions = config.showOctave ? 13 : 12; // 13 includes octave, 12 excludes it
+    
     // Use responsive height calculation
     final noteRowHeight = ResponsiveConstants.getNoteRowHeight(screenWidth);
     final paddingPerOctave =
@@ -119,7 +122,7 @@ class ScaleStrip extends StatelessWidget {
         // Ensure minimum width for mobile usability
         final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
         final minNoteWidth = deviceType == DeviceType.mobile ? 35.0 : 45.0;
-        final minRequiredWidth = 13 * minNoteWidth;
+        final minRequiredWidth = notePositions * minNoteWidth;
 
         final actualWidth = constraints.maxWidth < minRequiredWidth
             ? minRequiredWidth
@@ -136,11 +139,12 @@ class ScaleStrip extends StatelessWidget {
                   displayOctaves, // Now filters out octave-only strips
               highlightMap: FretboardController.getHighlightMap(config),
               screenWidth: screenWidth,
+              notePositions: notePositions, // Pass the calculated note positions
             ),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapDown: (details) =>
-                  _handleTap(context, details, displayOctaves, screenWidth),
+                  _handleTap(context, details, displayOctaves, screenWidth, notePositions),
             ),
           ),
         );
@@ -149,13 +153,13 @@ class ScaleStrip extends StatelessWidget {
   }
 
   void _handleTap(BuildContext context, TapDownDetails details,
-      Set<int> displayOctaves, double screenWidth) {
+      Set<int> displayOctaves, double screenWidth, int notePositions) {
     if (onNoteTap == null) return;
 
     final box = context.findRenderObject() as RenderBox;
-    final noteWidth = box.size.width / 13.0;
+    final noteWidth = box.size.width / notePositions.toDouble();
     final noteIndex =
-        (details.localPosition.dx / noteWidth).clamp(0, 12).floor();
+        (details.localPosition.dx / noteWidth).clamp(0, notePositions - 1).floor();
 
     // Use responsive row height for calculations
     final clickY = details.localPosition.dy;
@@ -174,8 +178,8 @@ class ScaleStrip extends StatelessWidget {
 
         // Calculate the extended interval based on the click position
         int extendedInterval;
-        if (noteIndex == 12) {
-          // Special handling for the 13th position (octave)
+        if (noteIndex == notePositions - 1 && notePositions == 13) {
+          // Special handling for the 13th position (octave) when showOctave is true
           extendedInterval = ((clickedOctave - referenceOctave + 1) * 12);
         } else {
           extendedInterval =
@@ -206,12 +210,14 @@ class ScaleStripPainter extends CustomPainter {
   final Set<int> displayOctaves;
   final Map<int, Color> highlightMap;
   final double screenWidth;
+  final int notePositions;
 
   ScaleStripPainter({
     required this.config,
     required this.displayOctaves,
     required this.highlightMap,
     required this.screenWidth,
+    required this.notePositions,
   });
 
   /// Calculate responsive font size for scale strip notes
@@ -306,7 +312,7 @@ class ScaleStripPainter extends CustomPainter {
     final chromaticSequence = NoteUtils.chromaticSequence(rootForDisplay);
 
     final sortedOctaves = displayOctaves.toList()..sort();
-    final noteWidth = size.width / 13.0;
+    final noteWidth = size.width / notePositions.toDouble();
 
     // Use responsive row height
     final noteRowHeight = ResponsiveConstants.getNoteRowHeight(screenWidth);
@@ -326,6 +332,7 @@ class ScaleStripPainter extends CustomPainter {
           rootNote.pitchClass,
           config.isChordMode,
           noteWidth,
+          notePositions,
         );
       } catch (e) {
         // Silently handle any drawing errors to prevent crash
@@ -343,6 +350,7 @@ class ScaleStripPainter extends CustomPainter {
     int rootPc,
     bool isChordMode,
     double noteWidth,
+    int notePositions,
   ) {
     // Use responsive spacing for mobile optimization
     final deviceType = ResponsiveConstants.getDeviceType(screenWidth);
@@ -352,7 +360,7 @@ class ScaleStripPainter extends CustomPainter {
         ? 8.0
         : 10.0; // Moved up more to prevent overlap
 
-    for (int pc = 0; pc < 13; pc++) {
+    for (int pc = 0; pc < notePositions; pc++) {
       final cx = pc * noteWidth + noteWidth / 2;
       if (cx < 0 || cx > size.width) continue;
 
@@ -642,6 +650,7 @@ class ScaleStripPainter extends CustomPainter {
     return oldDelegate.config != config ||
         oldDelegate.displayOctaves != displayOctaves ||
         oldDelegate.highlightMap != highlightMap ||
-        oldDelegate.screenWidth != screenWidth;
+        oldDelegate.screenWidth != screenWidth ||
+        oldDelegate.notePositions != notePositions;
   }
 }
