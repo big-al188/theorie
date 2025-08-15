@@ -217,11 +217,36 @@ class KeyboardController {
     return _intervalToLabel(extendedInterval);
   }
 
-  /// Convert interval to display label
+  /// Convert interval to display label with extended intervals
   static String _intervalToLabel(int extendedInterval) {
-    final simpleInterval = extendedInterval % 12;
-    switch (simpleInterval) {
-      case 0: return 'R';
+    // For negative intervals, show them as negative
+    if (extendedInterval < 0) {
+      return '-${_intervalToLabel(-extendedInterval)}';
+    }
+    
+    // Use the same logic as FretboardController for extended intervals
+    if (extendedInterval >= 12) {
+      final octave = extendedInterval ~/ 12;
+      final baseInterval = extendedInterval % 12;
+      final base = _getBaseIntervalLabel(baseInterval);
+      
+      // Convert to extended interval notation (2nd -> 9th, 3rd -> 10th, etc.)
+      final match = RegExp(r'([♭♯]?)(\d+)').firstMatch(base);
+      if (match != null) {
+        final accidental = match.group(1) ?? '';
+        final number = int.parse(match.group(2)!);
+        final extendedNumber = number + (octave * 7);
+        return '$accidental$extendedNumber';
+      }
+    }
+    
+    return _getBaseIntervalLabel(extendedInterval);
+  }
+
+  /// Get base interval label (within one octave)
+  static String _getBaseIntervalLabel(int interval) {
+    switch (interval % 12) {
+      case 0: return '1';   // Root (consistent with FretboardController)
       case 1: return '♭2';
       case 2: return '2';
       case 3: return '♭3';

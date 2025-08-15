@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/app_state.dart';
 import '../../models/keyboard/keyboard_instance.dart';
+import '../../controllers/keyboard_controller.dart';
 import '../../constants/ui_constants.dart';
 import '../widgets/common/app_bar.dart';
 import '../widgets/keyboard/keyboard_widget.dart';
@@ -11,6 +12,7 @@ import '../../models/keyboard/key_configuration.dart';
 import '../../models/keyboard/keyboard_config.dart';
 import '../../models/fretboard/fretboard_config.dart'; // For ViewMode
 import '../../models/music/chord.dart'; // For ChordInversion
+import '../../models/music/note.dart'; // For Note class
 
 /// Keyboard page following the same pattern as FretboardPage
 /// Displays and manages keyboard instances with music theory visualization
@@ -561,7 +563,142 @@ class _KeyboardCard extends StatelessWidget {
   void _handleKeyTap(KeyConfiguration keyConfig) {
     debugPrint('Keyboard key tapped: ${keyConfig.fullNoteName} (MIDI: ${keyConfig.midiNote})');
     
-    // For now, just log the tap - the UX engineer will implement detailed interaction
-    // The KeyboardController.handleKeyTap method is available for full interaction logic
+    // Handle interval mode with exact fretboard behavior
+    if (keyboard.viewMode == ViewMode.intervals) {
+      _handleIntervalModeKeyTap(keyConfig);
+    } else {
+      // For non-interval modes, use the controller
+      KeyboardController.handleKeyTap(keyConfig, keyboard.toConfig(), (updatedConfig) {
+        // Convert config back to instance and update state
+        final updatedInstance = keyboard.copyWith(
+          selectedIntervals: updatedConfig.selectedIntervals,
+          selectedOctaves: updatedConfig.selectedOctaves,
+          root: updatedConfig.root,
+          chordType: updatedConfig.chordType,
+          chordInversion: updatedConfig.chordInversion,
+          scale: updatedConfig.scale,
+          modeIndex: updatedConfig.modeIndex,
+          viewMode: updatedConfig.viewMode,
+        );
+        
+        // Update the keyboard instance
+        onUpdate(updatedInstance);
+      });
+    }
+  }
+
+  void _handleIntervalModeKeyTap(KeyConfiguration keyConfig) {
+    final tappedMidi = keyConfig.midiNote;
+    
+    // Get clicked note details with proper flat preference
+    final currentRootNote = Note.fromString('${keyboard.root}0');
+    final clickedNote = Note.fromMidi(tappedMidi, preferFlats: currentRootNote.preferFlats);
+
+    // Calculate the extended interval from the tapped note
+    final referenceOctave = keyboard.selectedOctaves.isEmpty
+        ? 3
+        : keyboard.selectedOctaves.reduce((a, b) => a < b ? a : b);
+    final rootNote = Note.fromString('${keyboard.root}$referenceOctave');
+    final extendedInterval = tappedMidi - rootNote.midi;
+
+    debugPrint('Keyboard interval tap debug:');
+    debugPrint('  Root: ${keyboard.root}$referenceOctave (MIDI ${rootNote.midi})');
+    debugPrint('  Clicked: ${clickedNote.fullName} (MIDI $tappedMidi)');
+    debugPrint('  Extended interval: $extendedInterval');
+    debugPrint('  Current intervals: ${keyboard.selectedIntervals}');
+
+    var newIntervals = Set<int>.from(keyboard.selectedIntervals);
+    var newOctaves = Set<int>.from(keyboard.selectedOctaves);
+    var newRoot = keyboard.root;
+
+    // Handle based on current state (improved behavior)
+    if (newIntervals.isEmpty) {
+      // No notes selected - this becomes the new root
+      newRoot = clickedNote.name;
+      newIntervals = {0};
+      newOctaves = {clickedNote.octave};
+      debugPrint('  → Setting new root from keyboard: $newRoot');
+    } else if (newIntervals.contains(extendedInterval)) {
+      // Removing an existing interval
+      debugPrint('  → Removing existing interval: $extendedInterval');
+      newIntervals.remove(extendedInterval);
+
+      if (newIntervals.isEmpty) {
+        // Empty state
+        debugPrint('  → All intervals removed from keyboard');
+      } else if (extendedInterval == 0) {
+        // Root removal - ONLY remove the root, keep all other notes
+        // Find the lowest interval to become the new root
+        final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
+        final newRootMidi = rootNote.midi + lowestInterval;
+        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+        newRoot = newRootNote.name;
+
+        // Collect all octaves for the remaining intervals 
+        newOctaves = <int>{};
+        
+        // Adjust all intervals relative to new root and collect octaves
+        final adjustedIntervals = <int>{};
+        for (final interval in newIntervals) {
+          final adjustedInterval = interval - lowestInterval;
+          adjustedIntervals.add(adjustedInterval);
+
+          final noteMidi = newRootMidi + adjustedInterval;
+          final noteOctave = Note.fromMidi(noteMidi).octave;
+          newOctaves.add(noteOctave);
+        }
+        newIntervals = adjustedIntervals;
+        debugPrint('  → Root removed, new root: $newRoot (MIDI $newRootMidi)');
+        debugPrint('  → Adjusted intervals: $adjustedIntervals, octaves: $newOctaves');
+      }
+      // Removed the "single interval becomes root" logic - let user control this
+    } else {
+      // Adding a new interval - use fretboard-style root shifting logic
+      debugPrint('  → Adding new interval: $extendedInterval');
+      newIntervals.add(extendedInterval);
+      newOctaves.add(clickedNote.octave);
+      
+      // Check if we have negative intervals - if so, shift root by octave to accommodate
+      final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
+      if (lowestInterval < 0) {
+        // Calculate how many octaves down we need to shift to make the lowest interval positive
+        final octaveShift = ((lowestInterval.abs() - 1) ~/ 12 + 1) * 12;
+        final newRootMidi = rootNote.midi - octaveShift;
+        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
+        newRoot = newRootNote.name;
+        
+        // Clear octaves and recalculate
+        newOctaves = <int>{};
+        
+        // Adjust all intervals to be relative to new root
+        final adjustedIntervals = <int>{};
+        for (final interval in newIntervals) {
+          final adjustedInterval = interval + octaveShift;
+          adjustedIntervals.add(adjustedInterval);
+          
+          final noteMidi = newRootMidi + adjustedInterval;
+          final noteOctave = Note.fromMidi(noteMidi).octave;
+          newOctaves.add(noteOctave);
+        }
+        newIntervals = adjustedIntervals;
+        
+        debugPrint('  → Root shifted by $octaveShift semitones to accommodate negative intervals');
+        debugPrint('  → New root: $newRoot (MIDI $newRootMidi)');
+        debugPrint('  → Adjusted intervals: $adjustedIntervals');
+      } else {
+        debugPrint('  → Added interval $extendedInterval to existing set');
+      }
+    }
+
+    debugPrint('  → Final state: root=$newRoot, intervals=$newIntervals, octaves=$newOctaves');
+
+    // Update the keyboard instance
+    final updatedInstance = keyboard.copyWith(
+      root: newRoot,
+      selectedIntervals: newIntervals,
+      selectedOctaves: newOctaves,
+    );
+    
+    onUpdate(updatedInstance);
   }
 }

@@ -4,6 +4,9 @@ import '../../../models/keyboard/keyboard_instance.dart';
 import '../../../constants/keyboard_constants.dart';
 import '../../../models/fretboard/fretboard_config.dart'; // For ViewMode
 import '../../../models/music/scale.dart';
+import '../../../models/music/chord.dart';
+import 'chord_selector.dart';
+import 'octave_selector.dart';
 
 /// Controls widget for keyboard configuration
 /// Following the same pattern as FretboardControls
@@ -137,28 +140,57 @@ class KeyboardControls extends StatelessWidget {
         
         if (instance.viewMode.isChordMode) ...[
           const SizedBox(height: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          // Chord type and inversion row
+          Row(
             children: [
-              const Text('Chord:'),
-              const SizedBox(height: 4),
-              SizedBox(
-                width: double.infinity,
-                child: _buildChordSelector(),
+              // Chord type selector
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Chord:'),
+                    const SizedBox(height: 4),
+                    ChordSelector(
+                      currentChordType: instance.chordType,
+                      onChordSelected: (chordType) {
+                        onUpdate(instance.copyWith(
+                          chordType: chordType,
+                          chordInversion: ChordInversion.root, // Reset to root when chord changes
+                        ));
+                      },
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 16),
+              // Chord inversion selector
+              if (instance.viewMode == ViewMode.chordInversions)
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Inversion:'),
+                      const SizedBox(height: 4),
+                      _buildChordInversionSelector(),
+                    ],
+                  ),
+                )
+              else
+                const Expanded(flex: 2, child: SizedBox()), // Placeholder for other chord modes
             ],
           ),
         ],
         
         // Octave selector
         const SizedBox(height: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Octaves:'),
-            const SizedBox(height: 4),
-            _buildOctaveSelector(),
-          ],
+        OctaveSelector(
+          selectedOctaves: instance.selectedOctaves,
+          isChordMode: instance.viewMode.isChordMode,
+          onChanged: (octaves) {
+            onUpdate(instance.copyWith(selectedOctaves: octaves));
+          },
         ),
       ],
     );
@@ -245,56 +277,38 @@ class KeyboardControls extends StatelessWidget {
     );
   }
 
-  Widget _buildChordSelector() {
-    final chords = ['major', 'minor', 'major7', 'minor7', 'dominant7'];
-    return DropdownButtonFormField<String>(
-      value: instance.chordType,
+  Widget _buildChordInversionSelector() {
+    // Get available inversions for the current chord type (same logic as fretboard)
+    final chord = Chord.get(instance.chordType);
+    final availableInversions = chord?.availableInversions ?? [ChordInversion.root];
+    
+    return DropdownButtonFormField<ChordInversion>(
+      value: availableInversions.contains(instance.chordInversion) 
+          ? instance.chordInversion 
+          : availableInversions.first,
       decoration: const InputDecoration(
         isDense: true,
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
-      isExpanded: true, // Prevent overflow
-      items: chords.map((String chord) {
-        return DropdownMenuItem<String>(
-          value: chord,
+      isExpanded: true,
+      items: availableInversions.map((ChordInversion inversion) {
+        return DropdownMenuItem<ChordInversion>(
+          value: inversion,
           child: Text(
-            chord,
+            inversion.displayName,
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),
         );
       }).toList(),
-      onChanged: (String? newChord) {
-        if (newChord != null) {
-          onUpdate(instance.copyWith(chordType: newChord));
+      onChanged: (ChordInversion? newInversion) {
+        if (newInversion != null) {
+          onUpdate(instance.copyWith(chordInversion: newInversion));
         }
       },
     );
   }
 
-  Widget _buildOctaveSelector() {
-    return Wrap(
-      spacing: 8.0,
-      children: [0, 1, 2, 3, 4, 5, 6, 7].map((int octave) {
-        final isSelected = instance.selectedOctaves.contains(octave);
-        return FilterChip(
-          label: Text('$octave'),
-          selected: isSelected,
-          onSelected: (bool selected) {
-            Set<int> newOctaves = Set.from(instance.selectedOctaves);
-            if (selected) {
-              newOctaves.add(octave);
-            } else {
-              if (newOctaves.length > 1) {
-                newOctaves.remove(octave);
-              }
-            }
-            onUpdate(instance.copyWith(selectedOctaves: newOctaves));
-          },
-        );
-      }).toList(),
-    );
-  }
 
   void _showKeyboardConfigDialog(BuildContext context) {
     showDialog(
