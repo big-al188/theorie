@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/keyboard/keyboard_instance.dart';
 import '../../../constants/keyboard_constants.dart';
 import '../../../models/fretboard/fretboard_config.dart'; // For ViewMode
+import '../../../models/music/scale.dart';
 
 /// Controls widget for keyboard configuration
 /// Following the same pattern as FretboardControls
@@ -217,7 +218,8 @@ class KeyboardControls extends StatelessWidget {
   }
 
   Widget _buildScaleSelector() {
-    final scales = ['Major', 'Minor', 'Harmonic Minor', 'Melodic Minor', 'Dorian', 'Mixolydian'];
+    // Use the same scale list as the main ScaleSelector widget
+    final scales = Scale.all.keys.toList();
     return DropdownButtonFormField<String>(
       value: instance.scale,
       decoration: const InputDecoration(

@@ -100,10 +100,10 @@ class KeyboardPainter extends CustomPainter {
       if (key.isHighlighted && key.highlightColor != null) {
         final highlightColor = key.highlightColor!;
         Paint highlightPaint = Paint()
-          ..color = highlightColor.withOpacity(0.25)
+          ..color = highlightColor.withOpacity(0.45) // Increased from 0.25 for better visibility
           ..style = PaintingStyle.fill;
         
-        // Draw highlight with subtle border
+        // Draw highlight with more vibrant border
         final highlightRect = keyRect.deflate(2.0);
         final highlightPath = Path()
           ..addRRect(RRect.fromRectAndCorners(
@@ -114,11 +114,11 @@ class KeyboardPainter extends CustomPainter {
         
         canvas.drawPath(highlightPath, highlightPaint);
         
-        // Highlight border
+        // More vibrant highlight border
         Paint highlightBorderPaint = Paint()
-          ..color = highlightColor.withOpacity(0.6)
+          ..color = highlightColor.withOpacity(0.85) // Increased from 0.6 for better visibility
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0;
+          ..strokeWidth = 1.5; // Slightly thicker border for visibility
         
         canvas.drawPath(highlightPath, highlightBorderPaint);
       }
@@ -240,10 +240,10 @@ class KeyboardPainter extends CustomPainter {
             if (key.isHighlighted && key.highlightColor != null) {
               final highlightColor = key.highlightColor!;
               Paint highlightPaint = Paint()
-                ..color = highlightColor.withOpacity(0.35)
+                ..color = highlightColor.withOpacity(0.65) // Increased from 0.35 for much better visibility on black keys
                 ..style = PaintingStyle.fill;
               
-              // Draw highlight with subtle border
+              // Draw highlight with more vibrant border
               final highlightRect = keyRect.deflate(2.0);
               final highlightPath = Path()
                 ..addRRect(RRect.fromRectAndCorners(
@@ -254,11 +254,11 @@ class KeyboardPainter extends CustomPainter {
               
               canvas.drawPath(highlightPath, highlightPaint);
               
-              // Highlight border
+              // Much more vibrant highlight border for black keys
               Paint highlightBorderPaint = Paint()
-                ..color = highlightColor.withOpacity(0.7)
+                ..color = highlightColor.withOpacity(0.95) // Increased from 0.7 for maximum visibility
                 ..style = PaintingStyle.stroke
-                ..strokeWidth = 1.0;
+                ..strokeWidth = 1.8; // Thicker border for better contrast on black keys
               
               canvas.drawPath(highlightPath, highlightBorderPaint);
             }
@@ -389,7 +389,7 @@ class KeyboardPainter extends CustomPainter {
         textColor = whiteKeyTextColor;
       }
 
-      _drawTextLabel(canvas, text, centerX, centerY, textColor, fontSize, true);
+      _drawTextLabel(canvas, text, centerX, centerY, textColor, fontSize, true, key.isHighlighted);
     }
   }
 
@@ -442,25 +442,13 @@ class KeyboardPainter extends CustomPainter {
           textColor = blackKeyTextColor;
         }
         
-        _drawTextLabel(canvas, text, centerX, centerY, textColor, fontSize, false);
+        _drawTextLabel(canvas, text, centerX, centerY, textColor, fontSize, false, key.isHighlighted);
       }
     }
   }
 
-  void _drawTextLabel(Canvas canvas, String text, double x, double y, Color color, double fontSize, bool isWhiteKey) {
-    // Add subtle background for better readability
-    if (isWhiteKey) {
-      final backgroundPaint = Paint()
-        ..color = Colors.white.withOpacity(0.8)
-        ..style = PaintingStyle.fill;
-      
-      final backgroundRect = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset(x, y), width: fontSize * 2.5, height: fontSize * 1.8),
-        Radius.circular(fontSize * 0.3),
-      );
-      
-      canvas.drawRRect(backgroundRect, backgroundPaint);
-    }
+  void _drawTextLabel(Canvas canvas, String text, double x, double y, Color color, double fontSize, bool isWhiteKey, bool isHighlighted) {
+    // No background box - clean text labels only
     
     final textSpan = TextSpan(
       text: text,
