@@ -85,18 +85,21 @@ class TieredLearningSection {
   static LearningLevel _mapToLegacyLevel(LearningTier tier) {
     switch (tier) {
       case LearningTier.introduction:
+        return LearningLevel.introduction;
       case LearningTier.fundamentals:
-        return LearningLevel.beginner;
+        return LearningLevel.fundamentals;
       case LearningTier.essentials:
-        return LearningLevel.novice;
+        return LearningLevel.essentials;
       case LearningTier.intermediate:
         return LearningLevel.intermediate;
       case LearningTier.advanced:
-      case LearningTier.professional:
         return LearningLevel.advanced;
+      case LearningTier.professional:
+        return LearningLevel.professional;
       case LearningTier.master:
+        return LearningLevel.master;
       case LearningTier.virtuoso:
-        return LearningLevel.expert;
+        return LearningLevel.virtuoso;
     }
   }
 }

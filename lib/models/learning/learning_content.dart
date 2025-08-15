@@ -1,6 +1,5 @@
 // lib/models/learning/learning_content.dart
 
-import 'package:flutter/material.dart';
 import 'tiers/introduction_tier.dart';
 import 'tiers/fundamentals_tier.dart';
 import 'tiers/essentials_tier.dart';
@@ -79,7 +78,7 @@ enum LearningLevel {
 /// Available instruments
 enum Instrument {
   guitar('Guitar', 'Six-string fretted instrument'),
-  piano('Piano', 'Keyboard instrument (Coming Soon)'),
+  piano('Piano', 'Keyboard instrument with interactive keys'),
   bass('Bass', 'Four-string bass guitar (Coming Soon)'),
   ukulele('Ukulele', 'Four-string small guitar (Coming Soon)');
 
@@ -87,7 +86,7 @@ enum Instrument {
   final String displayName;
   final String description;
 
-  bool get isAvailable => this == Instrument.guitar;
+  bool get isAvailable => this == Instrument.guitar || this == Instrument.piano;
 }
 
 /// Data repository for learning content

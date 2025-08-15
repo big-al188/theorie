@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/learning/learning_content.dart';
 import '../../constants/ui_constants.dart';
 import 'home_page.dart'; // This will be the original home page
+import 'keyboard_configuration_page.dart'; // Keyboard configuration page
 
 class InstrumentSelectionPage extends StatelessWidget {
   const InstrumentSelectionPage({super.key});
@@ -290,6 +291,11 @@ class InstrumentSelectionPage extends StatelessWidget {
         );
         break;
       case Instrument.piano:
+        // Navigate to keyboard configuration page
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const KeyboardConfigurationPage()),
+        );
+        break;
       case Instrument.bass:
       case Instrument.ukulele:
         // Show coming soon message

@@ -38,6 +38,12 @@ class AppState extends ChangeNotifier {
       List.from(MusicConstants.standardTunings['Guitar (6-string)']!);
   FretboardLayout _defaultLayout = FretboardLayout.rightHandedBassBottom;
 
+  // ===== KEYBOARD DEFAULTS =====
+  // Default keyboard configuration that will be used for new keyboards
+  int _defaultKeyCount = 61; // Standard keyboard
+  String _defaultStartNote = 'C2';
+  String _defaultKeyboardType = 'Keyboard';
+
   // Default music theory settings
   String _defaultRoot = AppConstants.defaultRoot;
   ViewMode _defaultViewMode = ViewMode.intervals;
@@ -115,6 +121,11 @@ class AppState extends ChangeNotifier {
       Set.unmodifiable(_defaultSelectedOctaves);
   Set<int> get defaultSelectedIntervals =>
       Set.unmodifiable(_defaultSelectedIntervals);
+
+  // ===== KEYBOARD DEFAULTS GETTERS =====
+  int get defaultKeyCount => _defaultKeyCount;
+  String get defaultStartNote => _defaultStartNote;
+  String get defaultKeyboardType => _defaultKeyboardType;
 
   // ===== APP PREFERENCES GETTERS =====
   ThemeMode get themeMode => _themeMode;
@@ -720,6 +731,27 @@ class AppState extends ChangeNotifier {
       setDefaultStringCount(tuning.length);
       setDefaultTuning(tuning);
     }
+  }
+
+  // ===== KEYBOARD DEFAULTS SETTERS =====
+  void setDefaultKeyCount(int count) {
+    if (count >= 12 && count <= 88) { // Reasonable keyboard range
+      _defaultKeyCount = count;
+      saveUserPreferences();
+      notifyListeners();
+    }
+  }
+
+  void setDefaultStartNote(String startNote) {
+    _defaultStartNote = startNote;
+    saveUserPreferences();
+    notifyListeners();
+  }
+
+  void setDefaultKeyboardType(String keyboardType) {
+    _defaultKeyboardType = keyboardType;
+    saveUserPreferences();
+    notifyListeners();
   }
 
   // ===== APP PREFERENCES SETTERS =====

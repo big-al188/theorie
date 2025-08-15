@@ -240,3 +240,4 @@ class QuestionResult {
         'feedback: $feedback'
         ')';
   }
+}
