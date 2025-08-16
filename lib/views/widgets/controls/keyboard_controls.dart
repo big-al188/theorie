@@ -197,8 +197,52 @@ class KeyboardControls extends StatelessWidget {
   }
 
   Widget _buildRootSelector() {
+    // Normalize note names for comparison (♯ -> #, ♭ -> b)
+    String normalizeNoteName(String noteName) {
+      return noteName.replaceAll('♯', '#').replaceAll('♭', 'b');
+    }
+    
+    // Find the matching dropdown root, considering both formats and enharmonic equivalents
+    String? findMatchingDropdownRoot(String value) {
+      const dropdownRoots = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      final normalizedValue = normalizeNoteName(value);
+      
+      // First try exact match
+      if (dropdownRoots.contains(value)) {
+        return value;
+      }
+      
+      // Then try normalized match  
+      for (final root in dropdownRoots) {
+        if (normalizeNoteName(root) == normalizedValue) {
+          return root;
+        }
+      }
+      
+      // Handle enharmonic equivalents (flat to sharp conversions for this dropdown)
+      const enharmonicMap = {
+        'Db': 'C#', 'D♭': 'C#',
+        'Eb': 'D#', 'E♭': 'D#', 
+        'Gb': 'F#', 'G♭': 'F#',
+        'Ab': 'G#', 'A♭': 'G#',
+        'Bb': 'A#', 'B♭': 'A#',
+      };
+      
+      // Check if the value is an enharmonic equivalent that should map to a dropdown root
+      final enharmonicEquivalent = enharmonicMap[value] ?? enharmonicMap[normalizedValue];
+      if (enharmonicEquivalent != null && dropdownRoots.contains(enharmonicEquivalent)) {
+        return enharmonicEquivalent;
+      }
+      
+      return null;
+    }
+    
+    // Get the appropriate value to use in dropdown
+    final matchingRoot = findMatchingDropdownRoot(instance.root);
+    final dropdownValue = matchingRoot ?? 'C'; // Fallback to C if no match found
+    
     return DropdownButtonFormField<String>(
-      value: instance.root,
+      value: dropdownValue,
       decoration: const InputDecoration(
         isDense: true,
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),

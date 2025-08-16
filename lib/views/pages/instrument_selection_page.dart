@@ -149,24 +149,31 @@ class InstrumentSelectionPage extends StatelessWidget {
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(
-                _getInstrumentIcon(instrument),
-                size: iconSize,
-                color: isAvailable 
-                    ? Theme.of(context).primaryColor 
-                    : Colors.grey.shade400,
+              Flexible(
+                child: Icon(
+                  _getInstrumentIcon(instrument),
+                  size: iconSize,
+                  color: isAvailable 
+                      ? Theme.of(context).primaryColor 
+                      : Colors.grey.shade400,
+                ),
               ),
               const SizedBox(height: 12),
-              Text(
-                instrument.displayName,
-                style: TextStyle(
-                  fontSize: titleFontSize,
-                  fontWeight: FontWeight.bold,
-                  color: isAvailable ? null : Colors.grey.shade500,
+              Flexible(
+                child: Text(
+                  instrument.displayName,
+                  style: TextStyle(
+                    fontSize: titleFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: isAvailable ? null : Colors.grey.shade500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                textAlign: TextAlign.center,
               ),
               // No description text on mobile for cleaner look
               if (!isAvailable) ...[
@@ -212,37 +219,46 @@ class InstrumentSelectionPage extends StatelessWidget {
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                _getInstrumentIcon(instrument),
-                size: iconSize,
-                color: isAvailable 
-                    ? Theme.of(context).primaryColor 
-                    : Colors.grey.shade400,
+              Flexible(
+                child: Icon(
+                  _getInstrumentIcon(instrument),
+                  size: iconSize,
+                  color: isAvailable 
+                      ? Theme.of(context).primaryColor 
+                      : Colors.grey.shade400,
+                ),
               ),
               const SizedBox(height: 16),
-              Text(
-                instrument.displayName,
-                style: TextStyle(
-                  fontSize: titleFontSize,
-                  fontWeight: FontWeight.bold,
-                  color: isAvailable ? null : Colors.grey.shade500,
+              Flexible(
+                child: Text(
+                  instrument.displayName,
+                  style: TextStyle(
+                    fontSize: titleFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: isAvailable ? null : Colors.grey.shade500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(
-                instrument.description,
-                style: TextStyle(
-                  fontSize: subtitleFontSize,
-                  color: isAvailable 
-                      ? Colors.grey.shade600 
-                      : Colors.grey.shade400,
-                  height: 1.3,
+              Flexible(
+                child: Text(
+                  instrument.description,
+                  style: TextStyle(
+                    fontSize: subtitleFontSize,
+                    color: isAvailable 
+                        ? Colors.grey.shade600 
+                        : Colors.grey.shade400,
+                    height: 1.3,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
               ),
               if (!isAvailable) ...[
                 const SizedBox(height: 12),

@@ -19,13 +19,63 @@ class RootSelector extends StatelessWidget {
     final state = context.watch<AppState>();
     final currentValue = value ?? state.root;
     
-    // Create a list that includes the current value if it's not in commonRoots
-    final rootOptions = MusicConstants.commonRoots.contains(currentValue)
-        ? MusicConstants.commonRoots
-        : [...MusicConstants.commonRoots, currentValue];
+    // Normalize note names for comparison (♯ -> #, ♭ -> b)
+    String normalizeNoteName(String noteName) {
+      return noteName.replaceAll('♯', '#').replaceAll('♭', 'b');
+    }
     
-    // Sort the list to maintain consistent order
-    final sortedRoots = List<String>.from(rootOptions)
+    // Find the matching common root, considering both formats and enharmonic equivalents
+    String? findMatchingCommonRoot(String value) {
+      final normalizedValue = normalizeNoteName(value);
+      
+      // First try exact match
+      if (MusicConstants.commonRoots.contains(value)) {
+        return value;
+      }
+      
+      // Then try normalized match
+      for (final root in MusicConstants.commonRoots) {
+        if (normalizeNoteName(root) == normalizedValue) {
+          return root;
+        }
+      }
+      
+      // Handle enharmonic equivalents (sharp to flat conversions)
+      const enharmonicMap = {
+        'F#': 'Gb', 'f#': 'Gb',
+        'C#': 'Db', 'c#': 'Db', 
+        'G#': 'Ab', 'g#': 'Ab',
+        'D#': 'Eb', 'd#': 'Eb',
+        'A#': 'Bb', 'a#': 'Bb',
+        // Unicode versions
+        'F♯': 'Gb',
+        'C♯': 'Db',
+        'G♯': 'Ab', 
+        'D♯': 'Eb',
+        'A♯': 'Bb',
+      };
+      
+      // Check if the value is an enharmonic equivalent that should map to a common root
+      final enharmonicEquivalent = enharmonicMap[value] ?? enharmonicMap[normalizedValue];
+      if (enharmonicEquivalent != null && MusicConstants.commonRoots.contains(enharmonicEquivalent)) {
+        return enharmonicEquivalent;
+      }
+      
+      return null;
+    }
+    
+    // Get the appropriate value to use in dropdown
+    final matchingRoot = findMatchingCommonRoot(currentValue);
+    final dropdownValue = matchingRoot ?? currentValue;
+    
+    // Create a set to avoid duplicates, then convert to list
+    final rootOptionsSet = Set<String>.from(MusicConstants.commonRoots);
+    
+    // Ensure the dropdown value is always included
+    rootOptionsSet.add(dropdownValue);
+    
+    // Convert to list and sort
+    final sortedRoots = rootOptionsSet.toList()
       ..sort((a, b) {
         // Sort by circle of fifths order if possible
         final aIndex = MusicConstants.circleOfFifths.indexOf(a);
@@ -38,7 +88,7 @@ class RootSelector extends StatelessWidget {
       });
 
     return DropdownButton<String>(
-      value: currentValue,
+      value: dropdownValue,
       isExpanded: true,
       underline: const SizedBox(),
       items: sortedRoots

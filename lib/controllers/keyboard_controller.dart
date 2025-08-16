@@ -36,6 +36,11 @@ class KeyboardController {
     final scale = Scale.get(config.scale);
     if (scale == null) return {};
 
+    // Calculate keyboard MIDI range
+    final startNote = Note.fromString(config.startNote);
+    final keyboardStartMidi = startNote.midi;
+    final keyboardEndMidi = keyboardStartMidi + config.keyCount - 1;
+
     // Get the effective root for the mode
     final effectiveRoot = MusicController.getModeRoot(
         config.root, config.scale, config.modeIndex);
@@ -55,8 +60,12 @@ class KeyboardController {
         }
         
         final note = rootNote.transpose(interval);
-        final color = ColorUtils.colorForDegree(interval);
-        map[note.midi] = color;
+        
+        // Only add to highlight map if within keyboard range
+        if (note.midi >= keyboardStartMidi && note.midi <= keyboardEndMidi) {
+          final color = ColorUtils.colorForDegree(interval);
+          map[note.midi] = color;
+        }
       }
     }
 
@@ -70,6 +79,11 @@ class KeyboardController {
     // Handle empty intervals
     if (config.selectedIntervals.isEmpty) return {};
 
+    // Calculate keyboard MIDI range
+    final startNote = Note.fromString(config.startNote);
+    final keyboardStartMidi = startNote.midi;
+    final keyboardEndMidi = keyboardStartMidi + config.keyCount - 1;
+
     // Use the configured octaves, or default to octave 3
     final octaves = config.selectedOctaves.isNotEmpty
         ? config.selectedOctaves
@@ -79,10 +93,17 @@ class KeyboardController {
 
     for (final extendedInterval in config.selectedIntervals) {
       final specificMidi = rootNote.midi + extendedInterval;
-      final noteOctave = Note.fromMidi(specificMidi).octave;
-
-      if (octaves.contains(noteOctave)) {
-        map[specificMidi] = ColorUtils.colorForDegree(extendedInterval);
+      
+      // Only add to highlight map if within keyboard range
+      if (specificMidi >= keyboardStartMidi && specificMidi <= keyboardEndMidi) {
+        final noteOctave = Note.fromMidi(specificMidi).octave;
+        
+        // Only highlight if in selected octaves
+        if (octaves.contains(noteOctave)) {
+          // Use the actual extended interval for color (but mod 12 for color consistency)
+          final colorInterval = extendedInterval % 12;
+          map[specificMidi] = ColorUtils.colorForDegree(colorInterval);
+        }
       }
     }
 
@@ -94,6 +115,11 @@ class KeyboardController {
     final map = <int, Color>{};
     final chord = Chord.get(config.chordType);
     if (chord == null) return {};
+
+    // Calculate keyboard MIDI range
+    final startNote = Note.fromString(config.startNote);
+    final keyboardStartMidi = startNote.midi;
+    final keyboardEndMidi = keyboardStartMidi + config.keyCount - 1;
 
     // Use the user's selected octave
     final octave = config.selectedChordOctave;
@@ -113,11 +139,14 @@ class KeyboardController {
 
     // Color each note based on its interval from the user's selected root
     for (final midi in voicingMidiNotes) {
-      final extendedInterval = midi - rootNote.midi;
-      map[midi] = ColorUtils.colorForDegree(extendedInterval);
+      // Only add to highlight map if within keyboard range
+      if (midi >= keyboardStartMidi && midi <= keyboardEndMidi) {
+        final extendedInterval = midi - rootNote.midi;
+        map[midi] = ColorUtils.colorForDegree(extendedInterval);
 
-      debugPrint(
-          'MIDI $midi -> interval $extendedInterval -> color ${ColorUtils.colorForDegree(extendedInterval)}');
+        debugPrint(
+            'MIDI $midi -> interval $extendedInterval -> color ${ColorUtils.colorForDegree(extendedInterval)}');
+      }
     }
 
     // Add additional octaves if requested
@@ -135,6 +164,11 @@ class KeyboardController {
       Map<int, Color> baseMap, KeyboardConfig config) {
     final additionalMap = <int, Color>{};
     
+    // Calculate keyboard MIDI range
+    final startNote = Note.fromString(config.startNote);
+    final keyboardStartMidi = startNote.midi;
+    final keyboardEndMidi = keyboardStartMidi + config.keyCount - 1;
+    
     // Add highlights one octave up and down
     for (final entry in baseMap.entries) {
       final baseMidi = entry.key;
@@ -142,13 +176,13 @@ class KeyboardController {
       
       // Add octave above
       final upperOctave = baseMidi + 12;
-      if (upperOctave <= 127) { // MIDI range check
+      if (upperOctave >= keyboardStartMidi && upperOctave <= keyboardEndMidi) {
         additionalMap[upperOctave] = color;
       }
       
       // Add octave below
       final lowerOctave = baseMidi - 12;
-      if (lowerOctave >= 0) { // MIDI range check
+      if (lowerOctave >= keyboardStartMidi && lowerOctave <= keyboardEndMidi) {
         additionalMap[lowerOctave] = color;
       }
     }
@@ -285,6 +319,45 @@ class KeyboardController {
     final octaveOffset = octave * whiteKeysPerOctave * whiteKeyWidth;
 
     return octaveOffset + (visualPosition * whiteKeyWidth);
+  }
+
+  /// Handle octave changes while preserving actual note positions
+  static KeyboardConfig handleOctaveChange(KeyboardConfig config, Set<int> newSelectedOctaves) {
+    // If not in interval mode, just update octaves normally
+    if (!config.isIntervalMode || config.selectedIntervals.isEmpty) {
+      return config.copyWith(selectedOctaves: newSelectedOctaves);
+    }
+
+    // For interval mode, preserve the actual MIDI notes when reference octave changes
+    final oldReferenceOctave = config.minSelectedOctave;
+    final newReferenceOctave = newSelectedOctaves.isEmpty 
+        ? 3 
+        : newSelectedOctaves.reduce((a, b) => a < b ? a : b);
+
+    // If reference octave didn't change, just update octaves
+    if (oldReferenceOctave == newReferenceOctave) {
+      return config.copyWith(selectedOctaves: newSelectedOctaves);
+    }
+
+    // Calculate current actual MIDI notes
+    final oldRootMidi = Note.fromString('${config.root}$oldReferenceOctave').midi;
+    final actualMidiNotes = config.selectedIntervals.map((interval) => oldRootMidi + interval).toSet();
+
+    // Recalculate intervals relative to new reference octave
+    final newRootMidi = Note.fromString('${config.root}$newReferenceOctave').midi;
+    final newIntervals = actualMidiNotes.map((midi) => midi - newRootMidi).toSet();
+
+    debugPrint('Keyboard octave change:');
+    debugPrint('  Old reference: ${config.root}$oldReferenceOctave (MIDI $oldRootMidi)');
+    debugPrint('  New reference: ${config.root}$newReferenceOctave (MIDI $newRootMidi)');
+    debugPrint('  Old intervals: ${config.selectedIntervals}');
+    debugPrint('  New intervals: $newIntervals');
+    debugPrint('  Preserved MIDI notes: $actualMidiNotes');
+
+    return config.copyWith(
+      selectedOctaves: newSelectedOctaves,
+      selectedIntervals: newIntervals,
+    );
   }
 
   /// Handle key tap interaction

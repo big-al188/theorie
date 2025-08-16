@@ -589,104 +589,59 @@ class _KeyboardCard extends StatelessWidget {
 
   void _handleIntervalModeKeyTap(KeyConfiguration keyConfig) {
     final tappedMidi = keyConfig.midiNote;
-    
-    // Get clicked note details with proper flat preference
-    final currentRootNote = Note.fromString('${keyboard.root}0');
-    final clickedNote = Note.fromMidi(tappedMidi, preferFlats: currentRootNote.preferFlats);
-
-    // Calculate the extended interval from the tapped note
-    final referenceOctave = keyboard.selectedOctaves.isEmpty
-        ? 3
-        : keyboard.selectedOctaves.reduce((a, b) => a < b ? a : b);
-    final rootNote = Note.fromString('${keyboard.root}$referenceOctave');
-    final extendedInterval = tappedMidi - rootNote.midi;
+    final clickedNote = Note.fromMidi(tappedMidi);
 
     debugPrint('Keyboard interval tap debug:');
-    debugPrint('  Root: ${keyboard.root}$referenceOctave (MIDI ${rootNote.midi})');
     debugPrint('  Clicked: ${clickedNote.fullName} (MIDI $tappedMidi)');
-    debugPrint('  Extended interval: $extendedInterval');
     debugPrint('  Current intervals: ${keyboard.selectedIntervals}');
 
     var newIntervals = Set<int>.from(keyboard.selectedIntervals);
     var newOctaves = Set<int>.from(keyboard.selectedOctaves);
     var newRoot = keyboard.root;
 
-    // Handle based on current state (improved behavior)
     if (newIntervals.isEmpty) {
-      // No notes selected - this becomes the new root
+      // First note clicked becomes the root
       newRoot = clickedNote.name;
       newIntervals = {0};
       newOctaves = {clickedNote.octave};
-      debugPrint('  → Setting new root from keyboard: $newRoot');
-    } else if (newIntervals.contains(extendedInterval)) {
-      // Removing an existing interval
-      debugPrint('  → Removing existing interval: $extendedInterval');
-      newIntervals.remove(extendedInterval);
-
-      if (newIntervals.isEmpty) {
-        // Empty state
-        debugPrint('  → All intervals removed from keyboard');
-      } else if (extendedInterval == 0) {
-        // Root removal - ONLY remove the root, keep all other notes
-        // Find the lowest interval to become the new root
-        final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
-        final newRootMidi = rootNote.midi + lowestInterval;
-        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
-        newRoot = newRootNote.name;
-
-        // Collect all octaves for the remaining intervals 
-        newOctaves = <int>{};
-        
-        // Adjust all intervals relative to new root and collect octaves
-        final adjustedIntervals = <int>{};
-        for (final interval in newIntervals) {
-          final adjustedInterval = interval - lowestInterval;
-          adjustedIntervals.add(adjustedInterval);
-
-          final noteMidi = newRootMidi + adjustedInterval;
-          final noteOctave = Note.fromMidi(noteMidi).octave;
-          newOctaves.add(noteOctave);
-        }
-        newIntervals = adjustedIntervals;
-        debugPrint('  → Root removed, new root: $newRoot (MIDI $newRootMidi)');
-        debugPrint('  → Adjusted intervals: $adjustedIntervals, octaves: $newOctaves');
-      }
-      // Removed the "single interval becomes root" logic - let user control this
+      debugPrint('  → Setting new root: $newRoot at octave ${clickedNote.octave}');
     } else {
-      // Adding a new interval - use fretboard-style root shifting logic
-      debugPrint('  → Adding new interval: $extendedInterval');
-      newIntervals.add(extendedInterval);
-      newOctaves.add(clickedNote.octave);
+      // Calculate current actual MIDI notes that are highlighted
+      final currentReferenceOctave = keyboard.selectedOctaves.isEmpty ? 4 : keyboard.selectedOctaves.reduce((a, b) => a < b ? a : b);
+      final currentRootNote = Note.fromString('${keyboard.root}$currentReferenceOctave');
+      final currentActualMidiNotes = keyboard.selectedIntervals.map((interval) => currentRootNote.midi + interval).toSet();
       
-      // Check if we have negative intervals - if so, shift root by octave to accommodate
-      final lowestInterval = newIntervals.reduce((a, b) => a < b ? a : b);
-      if (lowestInterval < 0) {
-        // Calculate how many octaves down we need to shift to make the lowest interval positive
-        final octaveShift = ((lowestInterval.abs() - 1) ~/ 12 + 1) * 12;
-        final newRootMidi = rootNote.midi - octaveShift;
-        final newRootNote = Note.fromMidi(newRootMidi, preferFlats: rootNote.preferFlats);
-        newRoot = newRootNote.name;
-        
-        // Clear octaves and recalculate
-        newOctaves = <int>{};
-        
-        // Adjust all intervals to be relative to new root
-        final adjustedIntervals = <int>{};
-        for (final interval in newIntervals) {
-          final adjustedInterval = interval + octaveShift;
-          adjustedIntervals.add(adjustedInterval);
-          
-          final noteMidi = newRootMidi + adjustedInterval;
-          final noteOctave = Note.fromMidi(noteMidi).octave;
-          newOctaves.add(noteOctave);
-        }
-        newIntervals = adjustedIntervals;
-        
-        debugPrint('  → Root shifted by $octaveShift semitones to accommodate negative intervals');
-        debugPrint('  → New root: $newRoot (MIDI $newRootMidi)');
-        debugPrint('  → Adjusted intervals: $adjustedIntervals');
+      debugPrint('  → Current actual MIDI notes: $currentActualMidiNotes');
+      
+      if (currentActualMidiNotes.contains(tappedMidi)) {
+        // Remove the clicked note
+        currentActualMidiNotes.remove(tappedMidi);
+        debugPrint('  → Removing MIDI note: $tappedMidi');
       } else {
-        debugPrint('  → Added interval $extendedInterval to existing set');
+        // Add the clicked note  
+        currentActualMidiNotes.add(tappedMidi);
+        debugPrint('  → Adding MIDI note: $tappedMidi');
+      }
+      
+      if (currentActualMidiNotes.isEmpty) {
+        // No notes left, reset
+        newRoot = clickedNote.name;
+        newIntervals = {0};
+        newOctaves = {clickedNote.octave};
+      } else {
+        // Find the lowest note - this becomes the new root
+        final lowestMidi = currentActualMidiNotes.reduce((a, b) => a < b ? a : b);
+        final lowestNote = Note.fromMidi(lowestMidi);
+        newRoot = lowestNote.name;
+        
+        // Calculate intervals relative to the lowest note (no negative intervals)
+        newIntervals = currentActualMidiNotes.map((midi) => midi - lowestMidi).toSet();
+        
+        // Update octaves to include all octaves of the highlighted notes
+        newOctaves = currentActualMidiNotes.map((midi) => Note.fromMidi(midi).octave).toSet();
+        
+        debugPrint('  → New root: ${lowestNote.fullName} (MIDI $lowestMidi)');
+        debugPrint('  → Recalculated intervals: $newIntervals');
       }
     }
 
